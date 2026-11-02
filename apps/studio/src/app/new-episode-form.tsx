@@ -12,6 +12,7 @@ import { VOICES } from "../lib/voices";
 import { errorKey } from "../lib/errors";
 import { providerText } from "../lib/text";
 import { useI18n } from "./locale-provider";
+import { StyleGallery, type SampleKeys } from "./style-gallery";
 
 const LANGS = ["tr", "en", "es", "pt-BR", "de", "fr", "ar", "hi", "ja", "id"];
 
@@ -44,9 +45,12 @@ export function NewEpisodeForm({
   series = [],
   initialSeries,
   bank = [],
+  samples = {},
 }: {
   series?: SeriesSummary[];
   initialSeries?: string;
+  /** Stil örnekleri (paket → karakter/mekân anahtarı): galeride önizleme. */
+  samples?: SampleKeys;
   /** Karakter bankası: yalnız bugünkü bir stil paketiyle çizilmiş (stili kurulabilen, seçilebilir) karakterler. */
   bank?: LibraryCharacter[];
 }) {
@@ -247,6 +251,7 @@ export function NewEpisodeForm({
               </div>
             )}
           </div>
+          {Object.keys(samples).length > 0 && <StyleGallery samples={samples} pack={pack} onPick={setPack} />}
           {mode === "vector" && bank.length > 0 && (
             <BankPicker bank={bank} presenter={presenter} setPresenter={setPresenter} cast={bankCast} setCast={setBankCast} />
           )}

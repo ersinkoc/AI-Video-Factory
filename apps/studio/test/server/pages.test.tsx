@@ -67,8 +67,13 @@ vi.mock("../../src/lib/server", () => ({
 }));
 vi.mock("../../src/lib/update", () => ({ updateInfo: async () => fake.update }));
 vi.mock("../../src/app/new-episode-form", () => ({
-  NewEpisodeForm: ({ series, initialSeries, bank }: { series: { name: string }[]; initialSeries?: string; bank: { name: string }[] }) => (
-    <div data-form={series.map((s) => s.name).join("|")} data-initial={initialSeries ?? ""} data-bank={bank.map((c) => c.name).join("|")} />
+  NewEpisodeForm: ({ series, initialSeries, bank, samples }: { series: { name: string }[]; initialSeries?: string; bank: { name: string }[]; samples: object }) => (
+    <div
+      data-form={series.map((s) => s.name).join("|")}
+      data-initial={initialSeries ?? ""}
+      data-bank={bank.map((c) => c.name).join("|")}
+      data-samples={Object.keys(samples).join("|")}
+    />
   ),
 }));
 vi.mock("../../src/app/nav-menu", () => ({ NavMenu: () => <nav data-nav="" /> }));
@@ -405,6 +410,12 @@ describe("Karakterler sayfası", () => {
     await libraryCharacter("b", "Özel");
     await libraryCharacter("c", "Eski paket", "kaldirilmis-paket");
     expect(await html(NewEpisodePage({ searchParams: Promise.resolve({}) }))).toContain('data-bank="Ada"');
+  });
+
+  it("yeni bölüm formuna stil örnekleri gider; örnek yoksa boş", async () => {
+    expect(await html(NewEpisodePage({ searchParams: Promise.resolve({}) }))).toContain('data-samples=""');
+    await putJson(fake.store, "library/style-samples.json", { noir: { character: "c.svg", source: "drawn", at: "t" }, pixel: { background: "b.svg", source: "library", at: "t" } });
+    expect(await html(NewEpisodePage({ searchParams: Promise.resolve({}) }))).toContain('data-samples="noir|pixel"');
   });
 });
 

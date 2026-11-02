@@ -8,6 +8,7 @@ export * from "./qa.ts";
 export * from "./lessons.ts";
 export * from "./curate.ts";
 export * from "./library.ts";
+export * from "./samples.ts";
 export * from "./settings.ts";
 export * from "./series.ts";
 export * from "./lock.ts";

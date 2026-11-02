@@ -17,6 +17,7 @@ import {
 import { backfillLibraryIdentities, curateLessons, EpisodePipeline, listLibraryCharacters, loadLessons, saveLessons } from "@ys/pipeline";
 import { createStoreFromEnv } from "@ys/storage";
 import { bankCommand } from "./bank.ts";
+import { samplesCommand } from "./styles.ts";
 import { episodeCommand, positive, renderDemo } from "./episode.ts";
 import { surviveBrokenPipe } from "./pipes.ts";
 
@@ -38,6 +39,8 @@ Komutlar:
   cost   [--episode id]             Maliyet defteri özeti
   version                           Çalışan sürüm
   styles                            Hazır stil paketleri
+  styles samples [paket...]         Yeni bölüm formunun stil önizlemeleri: bölümlerden alınır, eksikler çizilir
+                                    (Claude + kapı, paket başına ~$0.2–0.3; tamamlanmış paket atlanır)
   library [--backfill]              Kütüphanedeki karakterler; --backfill eski bölümlerden kimlik yazar (ücretsiz)
   bank [list]                       Karakter bankası (bölümlerde ve bankada çizilen onaylı karakterler)
   bank add --name "..." --desc "..." --pack <paket> [--line ...] [--role "sunucu"] [--reference "..."]
@@ -169,6 +172,14 @@ async function main(): Promise<void> {
       console.log(`${c.id.slice(0, 8)}  ${c.name.padEnd(28)} ${(c.pack ?? "özel").padEnd(18)} ${c.lineStyle.padEnd(8)} ${c.episodes.length} bölüm`);
     }
     return;
+  }
+
+  if (command === "styles" && positionals[1] === "samples") {
+    const store = createStoreFromEnv(process.env);
+    const log = (m: string) => console.error(m);
+    const gateway = new MediaGateway({ providers, store, ledger, log: (m) => log(`  · ${m}`) });
+    const pipeline = new EpisodePipeline({ gateway, store, ledger, workDir: WORK_DIR, log, agentDeps: { log } });
+    return samplesCommand({ pipeline, print: (l) => console.log(l) }, positionals.slice(2));
   }
 
   if (command === "styles") {

@@ -46,6 +46,9 @@ const fake = vi.hoisted(() => {
       opts.agentDeps.log("ajan günlüğü");
       state.pipelines.push(opts as never);
     }
+    async drawStyleSamples(packs: string[]) {
+      return Object.fromEntries(packs.map((p) => [p, { character: "c.svg", source: "drawn", at: "t" }]));
+    }
   }
   class FakeDbLedger {
     constructor(db: { url: string }) {
@@ -168,6 +171,13 @@ describe("yardım, sürüm ve listeler", () => {
     const r = await cli("styles");
     expect(r.out.split("\n")).toHaveLength(STYLE_PACKS.length);
     expect(r.out).toContain(STYLE_PACKS[0]!.name.tr);
+  });
+
+  it("styles samples verilen paketlerin örneklerini çizdirir ve durumlarını yazar", async () => {
+    const r = await cli("styles", "samples", "noir");
+    expect(r.out.split("\n")).toHaveLength(STYLE_PACKS.length);
+    expect(r.out).toContain(`${"noir".padEnd(18)} karakter  -  çizildi`);
+    expect(r.err).toContain("pipeline günlüğü");
   });
 
   it("providers fiyatı, kaliteyi ve atlananları gösterir", async () => {

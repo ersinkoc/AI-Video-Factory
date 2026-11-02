@@ -110,6 +110,7 @@ import {
   type SceneVoice,
   type Stage,
 } from "./state.ts";
+import { existingSamples, loadStyleSamples, SAMPLE_BRIEF, STYLE_SAMPLES_ID, STYLE_SAMPLES_KEY, type StyleSample, type StyleSamples } from "./samples.ts";
 import { shortRange, shortTimeline } from "./short.ts";
 import { buildTimeline, clipSeconds, estimateWordTimings, resolveShotTimes, sceneOffsets, toSrt } from "./timing.ts";
 import type { EpisodeReview } from "./state.ts";
@@ -149,6 +150,29 @@ function metaOf(out: VectorAssetOut, kind: AssetBrief["kind"]): VectorAssetMeta 
 /** Karakterin yan görünüşünün kütüphane anahtarı: ön çiziminden türer (aynı ön çizim → aynı yan çizim). */
 const sideKeyOf = (frontKey: string) => frontKey.replace(/\.svg$/, ".side.svg");
 /** Videoda görünen timeline: altyazı kapalıysa (`input.captions === false`) gömülmez; `.srt` yine tam timeline'dan. */
+/** Bölüme bağlı olmayan çizim için sanal bölüm (karakter bankası, stil örnekleri): durumu kaydedilmez. */
+function virtualState(id: string, packId: string, topic: string, lineStyle?: LineStyle): EpisodeState {
+  const pack = stylePackOf(packId);
+  if (!pack) throw new LocalizedError(msg("err.bank.badPack", { pack: packId }));
+  return {
+    ...newEpisodeState({
+      topic,
+      lang: "en",
+      targetSec: 60,
+      tier: "standard",
+      aiClipRatio: 0,
+      budgetUsd: 1,
+      motionMode: "vector",
+      lineStyle,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+    }),
+    id,
+    style: styleFromPack(pack),
+  };
+}
+
 const onScreen = (state: EpisodeState, timeline: Timeline): Timeline =>
   state.input.captions === false ? { ...timeline, captions: [] } : timeline;
 
@@ -283,29 +307,53 @@ export class EpisodePipeline {
     lineStyle?: LineStyle;
     reference?: string;
   }): Promise<LibraryCharacter> {
-    const pack = stylePackOf(o.pack);
-    if (!pack) throw new LocalizedError(msg("err.bank.badPack", { pack: o.pack }));
-    const state: EpisodeState = {
-      ...newEpisodeState({
-        topic: o.name,
-        lang: "en",
-        targetSec: 60,
-        tier: "standard",
-        aiClipRatio: 0,
-        budgetUsd: 1,
-        motionMode: "vector",
-        lineStyle: o.lineStyle,
-        width: 1920,
-        height: 1080,
-        fps: 30,
-      }),
-      id: CHARACTER_BANK_ID,
-      style: styleFromPack(pack),
-    };
+    const state = virtualState(CHARACTER_BANK_ID, o.pack, o.name, o.lineStyle);
     const ref = await this.designAsset(state, "concept", { kind: "character", name: o.name, description: o.description, reference: o.reference });
     const meta = VectorAssetMeta.parse(await getJson(this.deps.store, `${ref.key}.json`));
     await putJson(this.deps.store, `${ref.key}.json`, { ...meta, identity: { ...meta.identity!, role: o.role?.trim() || undefined, bank: true } });
     return (await listLibraryCharacters(this.deps.store)).find((c) => c.key === ref.key)!;
+  }
+
+  /**
+   * Stil örnekleri: her paket için bir karakter ve bir mekân (yeni bölüm formunun önizlemesi). Bölümlerde çizilmiş
+   * olan alınır (ücretsiz); eksik karakter bankaya sunucu olarak, eksik mekân kütüphaneye çizilir (Claude + kapı).
+   * Kapıdan geçemeyen örnek atlanır, öteki paketler sürer; her paketten sonra dizin kaydedilir.
+   */
+  async drawStyleSamples(packIds: string[] = []): Promise<StyleSamples> {
+    const packs = packIds.length ? packIds : STYLE_PACKS.map((p) => p.id);
+    for (const id of packs) if (!stylePackOf(id)) throw new LocalizedError(msg("err.bank.badPack", { pack: id }));
+    const all = await loadStyleSamples(this.deps.store);
+    const found = await existingSamples(this.deps.store);
+    // Paketler paralel çizilir; dizin sırayla yazılır ki eşzamanlı kayıtlar birbirini ezmesin.
+    let saving: Promise<unknown> = Promise.resolve();
+    await mapLimit(packs, this.deps.concurrency ?? 3, async (pack) => {
+      const prev = all[pack];
+      if (prev?.character && prev.background) return;
+      const sample: StyleSample = { source: "library", ...found[pack], ...prev, at: new Date().toISOString() };
+      if (!sample.character) {
+        try {
+          const brief = SAMPLE_BRIEF.character;
+          sample.character = (await this.createBankCharacter({ name: brief.name, description: brief.description, role: brief.role, pack })).key;
+          sample.source = "drawn";
+        } catch (e) {
+          this.log(msg("log.samples.failed", { pack, what: SAMPLE_BRIEF.character.name, error: errorText(e) }));
+        }
+      }
+      if (!sample.background) {
+        try {
+          const brief = SAMPLE_BRIEF.background;
+          sample.background = (await this.designAsset(virtualState(STYLE_SAMPLES_ID, pack, brief.name), "concept", { kind: "background", ...brief })).key;
+          sample.source = "drawn";
+        } catch (e) {
+          this.log(msg("log.samples.failed", { pack, what: SAMPLE_BRIEF.background.name, error: errorText(e) }));
+        }
+      }
+      if (!sample.character && !sample.background) return;
+      all[pack] = sample;
+      await (saving = saving.then(() => putJson(this.deps.store, STYLE_SAMPLES_KEY, all)));
+      this.log(msg("log.samples.done", { pack, source: sample.source }));
+    });
+    return all;
   }
 
   async run(id: string, opts: RunEpisodeOptions = {}): Promise<EpisodeState> {
