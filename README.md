@@ -195,7 +195,7 @@ Third-party parts keep their own terms. In particular, [Remotion](https://github
 | `packages/media-gateway` | Every paid generation call: cost and quality router, cache, budget cap, fallback |
 | `packages/agents` | Claude Agent SDK agents with JSON-schema output |
 | `packages/pipeline` | Episode state machine and stages, references, map and flag generation, estimates |
-| `packages/video` | Remotion compositions, including the vector scene renderer, PixiJS (WebGL) particle atmospheres, a three.js 3D globe for planet-scale maps, paper.js-measured draw-on reveals, GSAP kinetic text and Manim formula/graph boards |
+| `packages/video` | Remotion compositions, including the vector scene renderer, PixiJS (WebGL) particle atmospheres, a three.js 3D globe for planet-scale maps, paper.js-measured draw-on reveals, GSAP kinetic text, Manim formula/graph boards and frame-locked synthesized sound effects |
 | `packages/storage`, `packages/db` | Local or S3 asset store; Postgres cost ledger |
 | `apps/studio` | Next.js Studio |
 | `apps/cli` | `pnpm ys` |

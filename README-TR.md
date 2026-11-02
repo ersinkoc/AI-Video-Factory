@@ -195,7 +195,7 @@ Release betiği yalnız `main` dalında, commit edilmemiş değişiklik yokken, 
 | `packages/media-gateway` | Her ücretli üretim çağrısı: maliyet ve kalite router'ı, önbellek, bütçe tavanı, yedek sağlayıcı |
 | `packages/agents` | JSON şema çıktılı Claude Agent SDK ajanları |
 | `packages/pipeline` | Bölüm durum makinesi ve aşamalar, referanslar, harita ve bayrak üretimi, tahminler |
-| `packages/video` | Remotion kompozisyonları; vektör sahne çizicisi, PixiJS (WebGL) parçacık atmosferleri, gezegen ölçekli haritalar için three.js 3D küre, paper.js ile ölçülen çizerek belirme, GSAP kinetik yazı ve Manim formül/grafik tahtaları dahil |
+| `packages/video` | Remotion kompozisyonları; vektör sahne çizicisi, PixiJS (WebGL) parçacık atmosferleri, gezegen ölçekli haritalar için three.js 3D küre, paper.js ile ölçülen çizerek belirme, GSAP kinetik yazı, Manim formül/grafik tahtaları ve kareye kilitli sentez efekt sesleri dahil |
 | `packages/storage`, `packages/db` | Yerel ya da S3 varlık deposu; Postgres maliyet defteri |
 | `apps/studio` | Next.js Stüdyo |
 | `apps/cli` | `pnpm ys` |

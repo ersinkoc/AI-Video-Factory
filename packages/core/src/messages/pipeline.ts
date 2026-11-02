@@ -147,6 +147,7 @@ export const PIPELINE_MESSAGES = {
   },
   "log.geo.fromLibrary": { tr: "  {id}: kütüphaneden (gerçek veri)", en: "  {id}: from the library (real data)" },
   "log.geo.map": { tr: "  {id}: harita gerçek veriden üretildi ({kb} KB)", en: "  {id}: map generated from real data ({kb} KB)" },
+  "log.sfx.done": { tr: "  efekt sesi: {n} olay, kareye kilitli ({kb} KB)", en: "  sound effects: {n} frame-locked events ({kb} KB)" },
   "log.math.done": { tr: "  {shot}: Manim tahtası üretildi ({sec} sn)", en: "  {shot}: Manim board rendered ({sec}s)" },
   "log.math.fromLibrary": { tr: "  {shot}: Manim tahtası kütüphaneden", en: "  {shot}: Manim board from library" },
   "log.math.skipped": { tr: "  {shot}: Manim tahtası atlandı: {error}", en: "  {shot}: Manim board skipped: {error}" },

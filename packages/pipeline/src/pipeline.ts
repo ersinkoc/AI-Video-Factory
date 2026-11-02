@@ -88,6 +88,7 @@ import { mapLimit, normalizeClip, probeDurationMs } from "./media.ts";
 import { anonymizeNames, castAliases } from "./names.ts";
 import { generateFlag, generateMap } from "./geo.ts";
 import { boardAccent, cleanMath, renderBoard } from "./manim.ts";
+import { mixSfx, sfxEvents, wavFile } from "@ys/video/sfx";
 import { findReferences, findVectorSources, rasterizeSvg, searchQuery, type References } from "./reference.ts";
 import { frameRank, judgeFrame, QA_MAX_BYTES, redrawPrompt } from "./qa.ts";
 import {
@@ -1609,6 +1610,20 @@ export class EpisodePipeline {
     state.mathBoards = boards;
   }
 
+  /**
+   * Kareye kilitli efekt sesleri: animasyonlardan çıkarılan olaylar koddan sentezlenip tek ize karışır (API yok) ve
+   * timeline'a "sfx" sesi olarak eklenir. Olay yoksa iz eklenmez.
+   */
+  private async soundEffects(state: EpisodeState, timeline: Timeline): Promise<void> {
+    const events = sfxEvents(timeline);
+    if (!events.length) return;
+    const bytes = wavFile(mixSfx(events, timeline.durationInFrames, timeline.fps));
+    const key = `assets/sfx/${state.id}/${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}.wav`;
+    await this.deps.store.put(key, bytes, "audio/wav");
+    timeline.audio.push({ role: "sfx", assetUrl: key, fromFrame: 0, durationInFrames: timeline.durationInFrames, volume: 0.8 });
+    this.log(msg("log.sfx.done", { n: events.length, kb: Math.round(bytes.length / 1024) }));
+  }
+
   /** Timeline'a gömülecek SVG'ler: seçili karakter/mekân varlıkları ve çizilmiş nesneler. */
   private async vectorAssets(state: EpisodeState): Promise<Record<string, VectorAsset>> {
     const out: Record<string, VectorAsset> = {};
@@ -2066,6 +2081,7 @@ export class EpisodePipeline {
       const vector = motionModeOf(state.input) === "vector" ? await this.vectorAssets(state) : {};
       if (motionModeOf(state.input) === "vector") await this.mathBoards(state);
       state.timeline = buildTimeline(state, (key) => key, vector);
+      if (motionModeOf(state.input) === "vector" && state.input.sfx !== false) await this.soundEffects(state, state.timeline);
       const sec = state.timeline.durationInFrames / state.timeline.fps;
       this.log(msg("log.timeline.done", { min: (sec / 60).toFixed(1), visuals: state.timeline.visuals.length }));
     },

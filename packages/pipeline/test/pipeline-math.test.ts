@@ -90,6 +90,23 @@ describe("Manim tahtaları", () => {
     expect(h.logs.some((l) => l.includes("önizleme kareleri çıkarılamadı"))).toBe(false);
   });
 
+  it("efekt sesleri: animasyonlardan tek WAV izi timeline'a eklenir; kapalıysa ya da olay yoksa iz yok", async () => {
+    const h = harness();
+    const kinetic = shot("s1-sh1", 0, 4000, { texts: [{ text: "Altair doğdu", x: 960, y: 200, anims: [{ type: "kinetic", start: 0, end: 0.5 }] }] });
+    const id = await h.seed(ready({ shots: [kinetic, SHOTS[2]] }));
+    const state = await h.pipeline.run(id, { only: "timeline" });
+    const sfx = state.timeline!.audio.find((a) => a.role === "sfx")!;
+    expect(sfx).toMatchObject({ fromFrame: 0, durationInFrames: state.timeline!.durationInFrames, volume: 0.8 });
+    expect(sfx.assetUrl).toMatch(new RegExp(`^assets/sfx/${id}/[0-9a-f]{16}\\.wav$`));
+    expect(new TextDecoder().decode(h.store.map.get(sfx.assetUrl)!.slice(0, 4))).toBe("RIFF");
+    expect(h.logs.some((l) => /^ {2}efekt sesi: 3 olay, kareye kilitli \(\d+ KB\)$/.test(l))).toBe(true);
+
+    const off = await h.seed(ready({ shots: [kinetic], input: { ...ready().input, sfx: false } }));
+    expect((await h.pipeline.run(off, { only: "timeline" })).timeline!.audio.some((a) => a.role === "sfx")).toBe(false);
+    const quiet = await h.seed(ready({ shots: [SHOTS[2]] }));
+    expect((await h.pipeline.run(quiet, { only: "timeline" })).timeline!.audio.some((a) => a.role === "sfx")).toBe(false);
+  });
+
   it("çekimsiz bölümde tahta aranmaz, timeline eksik veri hatası verir", async () => {
     const h = harness();
     const id = await h.seed(ready({ shots: undefined }));

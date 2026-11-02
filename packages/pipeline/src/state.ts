@@ -69,6 +69,11 @@ export interface EpisodeInput {
    */
   captions?: boolean;
   /**
+   * Vektör modunda animasyonlara kareye kilitli efekt sesi (kelime oturması, daktilo, sayaç, pıt, vınlama, kalem):
+   * koddan sentezlenir, API yok. Verilmezse açık.
+   */
+  sfx?: boolean;
+  /**
    * Karakter bankasından ekrandaki sunucu (kütüphane kimliği): kadroya yeniden çizilmeden girer, anlatımı o konuşur;
    * yönetmen onu çekimlerin çoğuna koyar. Yalnız vektör modunda.
    */

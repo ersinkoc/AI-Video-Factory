@@ -1,5 +1,6 @@
 import { gsap } from "gsap";
 import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { KINETIC } from "./kinetic-timing.ts";
 
 /**
  * Kinetik yazı (GSAP): plaka soldan silinerek açılır, kelimeler maskenin altından sırayla ve hafif yaylanarak
@@ -16,12 +17,12 @@ export function useKinetic(q: number | undefined, words: number) {
     if (!on || !el) return;
     const tl = gsap
       .timeline({ paused: true })
-      .fromTo(el, { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 0.35, ease: "power3.out" })
+      .fromTo(el, { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: KINETIC.wipe, ease: "power3.out" })
       .fromTo(
         el.querySelectorAll("[data-word] > span"),
         { yPercent: 110, rotate: 4, opacity: 0 },
-        { yPercent: 0, rotate: 0, opacity: 1, duration: 0.45, ease: "back.out(1.7)", stagger: 0.07 },
-        0.15,
+        { yPercent: 0, rotate: 0, opacity: 1, duration: KINETIC.word, ease: "back.out(1.7)", stagger: KINETIC.stagger },
+        KINETIC.words,
       );
     timeline.current = tl;
     return () => {
