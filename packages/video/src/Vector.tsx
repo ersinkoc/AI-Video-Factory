@@ -29,6 +29,7 @@ import {
 import { useMemo, type CSSProperties } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
+import { Figure3D } from "./Figure3D.tsx";
 import { Globe3D } from "./Globe3D.tsx";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
@@ -868,6 +869,17 @@ function drawOf(anims: VectorAnim[], p: number): number | undefined {
   return a && local(p, a);
 }
 
+/** 3D figürün ayak altındaki yumuşak gölgesi (SVG karakterlerde gölge çizimin içinde). */
+const CONTACT_SHADOW: CSSProperties = {
+  position: "absolute",
+  left: "12%",
+  width: "76%",
+  bottom: "-2.5%",
+  height: "5%",
+  borderRadius: "50%",
+  background: "radial-gradient(closest-side, rgba(20,14,10,0.42), rgba(20,14,10,0))",
+};
+
 function Layer({
   layer,
   asset,
@@ -888,10 +900,13 @@ function Layer({
 }) {
   const { width: w, height: h } = placed;
   const { tr, pose } = motion;
+  // 3D figür: SVG yerine three.js kuklası (yan görünüş çizimi varsa yürürken o kullanılır). WebGL açılamazsa SVG
+  // pozuyla birlikte yedek olarak gösterilir.
+  const figure = motion.side ? undefined : asset.meta.figure;
   const raw = prefixSvgIds(fitSvg((motion.side ?? asset).svg, "meet"), prefix);
   const shaped = pose?.torso ? wrapTorso(raw, prefix) : raw;
   // Elle çizim: öğeler bir kez işaretlenir (paper.js uzunlukları), her karede yalnız CSS değişir.
-  const drawing = draw !== undefined;
+  const drawing = draw !== undefined && !figure;
   const plan = useMemo(() => (drawing ? drawPlan(shaped, `${prefix}d`) : undefined), [drawing, shaped, prefix]);
   const svg = plan?.svg ?? shaped;
 
@@ -918,11 +933,20 @@ function Layer({
     transformOrigin: "50% 100%",
     filter: sketch ? "url(#ys-sketch)" : undefined,
   };
+  const drawn = <div style={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: svg }} />;
   return (
     <div style={style}>
       {rigCss && <style>{rigCss}</style>}
       {plan && <style>{drawCss(plan, draw!)}</style>}
-      <div style={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: svg }} />
+      {figure ? (
+        <>
+          {/* Temas gölgesi: 3D figür zemine bassın (oturan karakterde yok). */}
+          {!placed.sitting && <div data-contact style={CONTACT_SHADOW} />}
+          <Figure3D spec={figure} pose={pose} fallback={drawn} />
+        </>
+      ) : (
+        drawn
+      )}
     </div>
   );
 }

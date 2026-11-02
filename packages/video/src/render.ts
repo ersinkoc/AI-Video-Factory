@@ -4,7 +4,7 @@ import { availableParallelism, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
-import { openBrowser, renderMedia, renderStill, selectComposition } from "@remotion/renderer";
+import { openBrowser, renderMedia, renderStill, selectComposition, type OpenGlRenderer } from "@remotion/renderer";
 import type { Timeline } from "@ys/core";
 import { runMediaTool } from "./tools.ts";
 
@@ -40,6 +40,23 @@ const DEFAULT_VIDEO_CACHE_BYTES = 2 * 1024 ** 3;
  */
 const BROWSER_TIMEOUT_MS = 120_000;
 const MAX_DEFAULT_CONCURRENCY = 8;
+
+const GL_BACKENDS: readonly OpenGlRenderer[] = ["angle", "swangle", "egl", "swiftshader", "vulkan", "angle-egl"];
+/** Ekran kartı yoksa ya da sürücü sorun çıkarırsa: her makinede çalışan yazılım GL (SwiftShader, ANGLE üzerinden). */
+export const SOFTWARE_GL: OpenGlRenderer = "swangle";
+
+/**
+ * Chrome'un çizim arka ucu. Varsayılan "angle": ekran kartı (3 Kas ölçümü, 90 karelik çekim: vektör sahne 12,2 → 7,5 sn,
+ * 3D figürlü sahne 56 → 8,2 sn; yazılım GL'de figür 4,6 kat yavaştı). `YS_RENDER_GL` ile değişir (bilinmeyen değer
+ * varsayılana döner). Ekran kartıyla render tarayıcı/GPU hatasıyla düşerse bir kez yazılım GL ile baştan alınır.
+ */
+export function renderGl(env = process.env.YS_RENDER_GL): OpenGlRenderer {
+  return GL_BACKENDS.find((g) => g === env) ?? "angle";
+}
+
+/** Ekran kartı ya da tarayıcı çöktü: yazılım GL ile yeniden denemeye değer. */
+export const isGpuFailure = (e: unknown) =>
+  e instanceof Error && /\bGPU\b|WebGL|context lost|Target closed|Session closed|Page crashed|crashed/i.test(e.message);
 
 /**
  * Geçici dosya hatası (klasör/dosya kayboldu, kilitli) veya tarayıcı kurulumu zaman aşımı: aynı render'ı tekrar denemek
@@ -120,11 +137,14 @@ export async function withRenderLock<R>(fn: () => Promise<R>, onWait?: (holderPi
 export async function renderEpisode(opts: RenderOptions): Promise<string> {
   const tempDir = join(dirname(resolve(opts.outputPath)), ".render-tmp");
   return withRenderLock(async () => {
+    let gl = renderGl();
     for (let attempt = 0; ; attempt++) {
       try {
-        return await withTempDir(tempDir, () => renderOnce(opts));
+        return await withTempDir(tempDir, () => renderOnce(opts, gl));
       } catch (e) {
-        if (attempt >= 1 || !isTransientRenderFailure(e)) throw e;
+        if (attempt >= 1) throw e;
+        if (gl !== SOFTWARE_GL && isGpuFailure(e)) gl = SOFTWARE_GL;
+        else if (!isTransientRenderFailure(e)) throw e;
         // split en az bir parça döndürür; "?? ''" yalnız tip için (at() tipte undefined dönebilir).
         /* v8 ignore next */
         opts.onRetry?.((e as Error).message.split("\n").at(-1) ?? "");
@@ -133,11 +153,12 @@ export async function renderEpisode(opts: RenderOptions): Promise<string> {
   }, opts.onWait);
 }
 
-async function renderOnce(opts: RenderOptions): Promise<string> {
+async function renderOnce(opts: RenderOptions, gl: OpenGlRenderer): Promise<string> {
   // Göreli publicDir ile bundle sunucusu görselleri çözemiyor ("source image cannot be decoded").
   const serveUrl = await bundle({ entryPoint: ENTRY, publicDir: resolve(opts.publicDir) });
   const inputProps = { timeline: opts.timeline };
-  const composition = await selectComposition({ serveUrl, id: "Episode", inputProps });
+  const chromiumOptions = { gl };
+  const composition = await selectComposition({ serveUrl, id: "Episode", inputProps, chromiumOptions });
 
   // Uzantı ne olursa olsun ham dosya ayrı: aynı yol olursa ffmpeg kendi girdisinin üstüne yazar, rm sonucu siler.
   const rawPath = `${opts.outputPath.replace(/\.mp4$/i, "")}.raw.mp4`;
@@ -147,6 +168,7 @@ async function renderOnce(opts: RenderOptions): Promise<string> {
     inputProps,
     codec: "h264",
     outputLocation: rawPath,
+    chromiumOptions,
     concurrency:
       opts.concurrency ?? Math.max(1, Math.min(MAX_DEFAULT_CONCURRENCY, Math.floor(availableParallelism() / 2))),
     timeoutInMilliseconds: BROWSER_TIMEOUT_MS,
@@ -208,7 +230,7 @@ async function stillsOnce(opts: StillsOptions): Promise<Record<string, string>> 
   const inputProps = { timeline: opts.timeline };
   // Tek tarayıcı bütün kareler için: önceden her kare ayrı Chrome açıyordu (30+ açılış); yükte biri zaman aşımına düşünce
   // tüm aşama düşüyordu.
-  const browser = await openBrowser("chrome");
+  const browser = await openBrowser("chrome", { chromiumOptions: { gl: renderGl() } });
   try {
     const composition = await selectComposition({ serveUrl, id: "Episode", inputProps, puppeteerInstance: browser, timeoutInMilliseconds: BROWSER_TIMEOUT_MS });
     const out: Record<string, string> = {};
@@ -252,7 +274,8 @@ export function renderThumbnail(opts: ThumbnailOptions): Promise<string> {
   return withRenderLock(async () => {
     const serveUrl = await bundle({ entryPoint: ENTRY, publicDir: resolve(opts.publicDir) });
     const inputProps = { timeline: opts.timeline, shotId: opts.shotId, side: opts.side, title: opts.title };
-    const composition = await selectComposition({ serveUrl, id: "Thumbnail", inputProps, timeoutInMilliseconds: BROWSER_TIMEOUT_MS });
+    const chromiumOptions = { gl: renderGl() };
+    const composition = await selectComposition({ serveUrl, id: "Thumbnail", inputProps, chromiumOptions, timeoutInMilliseconds: BROWSER_TIMEOUT_MS });
     await renderStill({
       serveUrl,
       composition,
@@ -262,6 +285,7 @@ export function renderThumbnail(opts: ThumbnailOptions): Promise<string> {
       output: opts.output,
       imageFormat: "jpeg",
       jpegQuality: 92,
+      chromiumOptions,
       timeoutInMilliseconds: BROWSER_TIMEOUT_MS,
     });
     return opts.output;

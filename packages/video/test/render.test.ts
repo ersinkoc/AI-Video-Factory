@@ -37,7 +37,7 @@ const DIR = mkdtempSync(join(tmpdir(), "ys-render-"));
 const LOCK = join(DIR, "render.lock");
 process.env.YS_RENDER_LOCK = LOCK;
 const mod = await import("../src/render.ts");
-const { renderEpisode, renderStills, renderThumbnail, withRenderLock, isTransientRenderFailure, normalizeLoudness, ENTRY } = mod;
+const { renderEpisode, renderStills, renderThumbnail, withRenderLock, isTransientRenderFailure, isGpuFailure, renderGl, normalizeLoudness, ENTRY } = mod;
 
 const timeline = { episodeId: "e1" } as Timeline;
 const browser = { close: vi.fn() };
@@ -79,7 +79,8 @@ describe("renderEpisode", () => {
     expect(await renderEpisode({ timeline, publicDir: "pub", outputPath: output, onProgress: (p) => progress.push(p) })).toBe(output);
 
     expect(remotion.bundle).toHaveBeenCalledWith({ entryPoint: ENTRY, publicDir: join(process.cwd(), "pub") });
-    expect(remotion.selectComposition).toHaveBeenCalledWith({ serveUrl: "http://bundle", id: "Episode", inputProps: { timeline } });
+    // Varsayılan çizim arka ucu ekran kartı (ANGLE).
+    expect(remotion.selectComposition).toHaveBeenCalledWith({ serveUrl: "http://bundle", id: "Episode", inputProps: { timeline }, chromiumOptions: { gl: "angle" } });
     const media = remotion.renderMedia.mock.calls[0]![0];
     const rawPath = output.replace(/\.mp4$/i, "") + ".raw.mp4";
     expect(media).toMatchObject({
@@ -88,6 +89,7 @@ describe("renderEpisode", () => {
       inputProps: { timeline },
       codec: "h264",
       outputLocation: rawPath,
+      chromiumOptions: { gl: "angle" },
       timeoutInMilliseconds: 120_000,
       offthreadVideoCacheSizeInBytes: 2 * 1024 ** 3,
     });
@@ -124,6 +126,25 @@ describe("renderEpisode", () => {
     await expect(renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4") })).rejects.toBe(err);
     expect(remotion.bundle).toHaveBeenCalledTimes(2);
     expect(existsSync(LOCK)).toBe(false);
+  });
+
+  it("ekran kartı/tarayıcı çökünce bir kez yazılım GL ile baştan alır", async () => {
+    remotion.renderMedia.mockRejectedValueOnce(new Error("Error: Page crashed!"));
+    const reasons: string[] = [];
+    await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), onRetry: (r) => reasons.push(r) });
+    expect(reasons).toEqual(["Error: Page crashed!"]);
+    expect(remotion.renderMedia.mock.calls.map((c) => c[0].chromiumOptions)).toEqual([{ gl: "angle" }, { gl: "swangle" }]);
+  });
+
+  it("zaten yazılım GL'deyken çöken render geçici değilse yeniden denenmez", async () => {
+    process.env.YS_RENDER_GL = "swangle";
+    try {
+      remotion.renderMedia.mockRejectedValue(new Error("Target closed"));
+      await expect(renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4") })).rejects.toThrow("Target closed");
+      expect(remotion.renderMedia).toHaveBeenCalledTimes(1);
+    } finally {
+      delete process.env.YS_RENDER_GL;
+    }
   });
 
   it("kalıcı hatayı yeniden denemeden iletir", async () => {
@@ -182,6 +203,23 @@ describe("normalizeLoudness", () => {
   });
 });
 
+describe("çizim arka ucu", () => {
+  it("YS_RENDER_GL bilinen bir değerse o, yoksa ekran kartı (angle)", () => {
+    expect(renderGl(undefined)).toBe("angle");
+    expect(renderGl("swangle")).toBe("swangle");
+    expect(renderGl("vulkan")).toBe("vulkan");
+    expect(renderGl("opengl")).toBe("angle");
+  });
+
+  it("GPU/tarayıcı çökmesini tanır", () => {
+    for (const m of ["GPU process exited", "WebGL context lost", "Target closed", "Session closed", "Page crashed!", "Browser crashed"]) {
+      expect(isGpuFailure(new Error(m)), m).toBe(true);
+    }
+    expect(isGpuFailure(new Error("composition bulunamadı"))).toBe(false);
+    expect(isGpuFailure("GPU")).toBe(false);
+  });
+});
+
 describe("isTransientRenderFailure", () => {
   it("yalnız dosya/tarayıcı kurulum hatalarını geçici sayar", () => {
     for (const m of ["ENOENT: x", "EBUSY: locked", "EPERM: operation", "No such file or directory", "while setting up the headless browser"]) {
@@ -198,7 +236,7 @@ describe("renderStills", () => {
     const res = await renderStills({ timeline, publicDir: "pub", frames: { a: 0, b: 45 }, outDir });
     expect(res).toEqual({ a: join(outDir, "a.jpg"), b: join(outDir, "b.jpg") });
     expect(remotion.openBrowser).toHaveBeenCalledTimes(1);
-    expect(remotion.openBrowser).toHaveBeenCalledWith("chrome");
+    expect(remotion.openBrowser).toHaveBeenCalledWith("chrome", { chromiumOptions: { gl: "angle" } });
     expect(remotion.selectComposition).toHaveBeenCalledWith({
       serveUrl: "http://bundle",
       id: "Episode",
@@ -235,8 +273,8 @@ describe("renderThumbnail", () => {
     const out = await renderThumbnail({ timeline, publicDir: "pub", shotId: "s1", side: "right", title: "Başlık", output });
     expect(out).toBe(output);
     const inputProps = { timeline, shotId: "s1", side: "right", title: "Başlık" };
-    expect(remotion.selectComposition).toHaveBeenCalledWith({ serveUrl: "http://bundle", id: "Thumbnail", inputProps, timeoutInMilliseconds: 120_000 });
-    expect(remotion.renderStill).toHaveBeenCalledWith(expect.objectContaining({ inputProps, frame: 80, output, imageFormat: "jpeg", jpegQuality: 92 }));
+    expect(remotion.selectComposition).toHaveBeenCalledWith({ serveUrl: "http://bundle", id: "Thumbnail", inputProps, chromiumOptions: { gl: "angle" }, timeoutInMilliseconds: 120_000 });
+    expect(remotion.renderStill).toHaveBeenCalledWith(expect.objectContaining({ inputProps, frame: 80, output, imageFormat: "jpeg", jpegQuality: 92, chromiumOptions: { gl: "angle" } }));
     expect(remotion.renderStill.mock.calls[0]![0]).not.toHaveProperty("scale");
     expect(existsSync(LOCK)).toBe(false);
   });

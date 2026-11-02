@@ -93,7 +93,8 @@ pnpm studio:build && pnpm studio:start   # production derlemesi, aynı port
 2. **Senaryo.** Sahneleri düzenle ve onayla.
 3. **Konsept.** Karakterler ve mekânlar seçilip çizilir. Kalite kapısı paneli her çizimi referanslarıyla, puanlarıyla, kusurlarıyla ve çizim planıyla gösterir. Kabul et, reddet ya da notla yeniden çizdir.
 4. **Üretim.** Pipeline şeridi, canlı panel ve etkinlik günlüğü her ajan çağrısını modeli, maliyeti ve süresiyle gösterir. Çekimler sekmesi render'dan önce her çekimin önizleme karesini gösterir; vektör modunda bir çekimin karesi, nesnelerinin hepsi çizilir çizilmez gelir.
-5. **İzle ve indir:** videoyu, `.srt` altyazı dosyasını ve incelemesini gör. Altyazı her zaman videonun yanına `.srt` olarak yazılır; videoya gömülmesi bölüm başına bir anahtardır (değiştirmek yalnız render'ı tekrarlar, ücretsizdir). Yayın paketi YouTube başlığını, bölümlü açıklamayı, etiketleri (her birinin kopyala düğmesi var) ve indirilebilir 1280×720 küçük resmi verir. Yatay bölüm ayrıca dikey bir Short alır: paket en iyi 20–60 saniyesini seçer, yerelde 9:16 olarak yeniden render edilir.
+5. **İzle ve indir:** videoyu, `.srt` altyazı dosyasını ve incelemesini gör. Altyazı her zaman videonun yanına `.srt` olarak yazılır; videoya gömülmesi bölüm başına bir anahtardır (değiştirmek yalnız render'ı tekrarlar, ücretsizdir).
+ Yayın paketi YouTube başlığını, bölümlü açıklamayı, etiketleri (her birinin kopyala düğmesi var) ve indirilebilir 1280×720 küçük resmi verir. Yatay bölüm ayrıca dikey bir Short alır: paket en iyi 20–60 saniyesini seçer, yerelde 9:16 olarak yeniden render edilir.
 
 Ekran yazıları tek düzende: mekân, tarih ve olay satırları sol üstte sabit bir bilgi kartında, kişi etiketleri kişinin yanında; hepsi aynı yazı tipi ve plaka stiliyle.
 
@@ -148,6 +149,7 @@ Anahtarlar ve ayarlar `.env` dosyasında durur (bkz. `.env.example`). Önemliler
 | `STORE=s3`, `LEDGER=db` | Yerel dosyalar yerine S3 ve Postgres kullanır. |
 | `GEMINI_OMNI_VIDEO=1` | Gemini Omni Flash videoyu açar (Veo'nun yerine; henüz gerçek çağrıyla doğrulanmadı). |
 | `YS_UPDATE_CHECK=0` | Stüdyo'nun güncelleme kontrolünü kapatır. |
+| `YS_RENDER_GL` | Render'da Chrome'un çizim arka ucu. Varsayılan `angle` (ekran kartı; yaklaşık %40 daha hızlı, 3D figürler için gerekli). `swangle`, ekran kartı olmayan makineler için yazılım GL'dir. Ekran kartıyla çöken render bir kez yazılım GL ile yeniden denenir. |
 
 ## Sürümler ve güncelleme
 

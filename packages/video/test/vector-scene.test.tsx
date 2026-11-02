@@ -19,6 +19,15 @@ vi.mock("../src/Globe3D.tsx", () => ({
   Globe3D: ({ globe, p, seed }: { globe: { lon: number }; p: number; seed: string }) => <div data-globe={`${globe.lon}|${p}|${seed}`} />,
 }));
 
+// 3D figür ayrı testte (figure3d-view.test.tsx); burada yalnız katmana hangi tarif, poz ve SVG yedeğiyle konduğu.
+vi.mock("../src/Figure3D.tsx", () => ({
+  Figure3D: ({ spec, pose, fallback }: { spec: { skin: string }; pose?: Record<string, { rotate: number }>; fallback: unknown }) => (
+    <div data-figure={spec.skin} data-arm={pose?.["arm-r"]?.rotate}>
+      {fallback as never}
+    </div>
+  ),
+}));
+
 const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, heldFraming, fillWide, wrapTorso, mouthOpen, stageFit, tagBounds, contentFit } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
@@ -75,6 +84,11 @@ const ASSETS = {
   babbage: asset("babbage", "character", `<svg viewBox="0 0 400 800">${PARTS.map((p) => `<g id="${p}"><rect width="10" height="10" fill="#553333"/></g>`).join("")}</svg>`, 400, 800, {
     check: { kind: "character", name: "Charles Babbage", recognizable: 8, passed: true },
   }),
+  // 3D figürlü karakter (SVG de var: kalite kapısı ve WebGL yedeği); yan görünüşü SVG.
+  toy: asset("toy", "character", `<svg viewBox="0 0 400 800">${PARTS.map((p) => `<g id="${p}"><rect width="10" height="10" fill="#777777"/></g>`).join("")}</svg>`, 400, 800, {
+    figure: { skin: "#f1c7a5", hair: { style: "short", color: "#3a2a20" }, top: { style: "sweater", color: "#5b7fbf" }, bottom: { style: "trousers", color: "#3b3f4a" }, shoes: "#2b2622" },
+  }),
+  "toy~side": asset("toy~side", "character", `<svg viewBox="0 0 400 800">${PARTS.map((p) => `<g id="${p}"><rect width="10" height="10" fill="#0000aa"/></g>`).join("")}</svg>`, 400, 800),
   "walker~side": asset("walker~side", "character", `<svg viewBox="0 0 400 800">${PARTS.map((p) => `<g id="${p}"><rect width="10" height="10" fill="#0000aa"/></g>`).join("")}</svg>`, 400, 800),
 };
 
@@ -664,6 +678,30 @@ describe("vektör sahne: yan görünüş", () => {
   it("oturan karakter yan görünüşe dönmez", () => {
     const c = scene({ layers: [{ asset: "chair", x: 600, depth: 0 }, { asset: "walker", x: 600, on: 0, anims: [{ type: "walk", toX: 1500 }] }] }, { frame: 25 });
     expect(layerBox(c, "body").innerHTML).not.toContain("#0000aa");
+  });
+});
+
+describe("vektör sahne: 3D figür", () => {
+  it("figürlü karakter three.js kuklasıyla, iskelet pozuyla çizilir; SVG yedek olarak içinde, ayak altında temas gölgesi", () => {
+    const c = scene({ layers: [{ asset: "toy", x: 960, depth: 0, anims: [{ type: "wave" }] }] }, { frame: 90 });
+    const fig = c.querySelector("[data-figure]")!;
+    expect(fig.getAttribute("data-figure")).toBe("#f1c7a5");
+    // El sallarken sağ kol kalkar: poz figüre de gider.
+    expect(Math.abs(Number(fig.getAttribute("data-arm")))).toBeGreaterThan(30);
+    expect(fig.innerHTML).toContain("#777777");
+    expect(c.querySelector("[data-contact]")).not.toBeNull();
+    // Yedek SVG'nin pozu da hazır (WebGL açılamazsa kukla yine oynar).
+    expect(pose(c, "arm-r").rotate).toBeCloseTo(Number(fig.getAttribute("data-arm")), 1);
+  });
+
+  it("oturan figürde temas gölgesi yok; yürürken yan görünüş çizimi varsa o gösterilir", () => {
+    const sitting = scene({ layers: [{ asset: "chair", x: 960, depth: 0 }, { asset: "toy", x: 960, on: 0 }] }, { frame: 10 });
+    expect(sitting.querySelector("[data-figure]")).not.toBeNull();
+    expect(sitting.querySelector("[data-contact]")).toBeNull();
+    cleanup();
+    const walking = scene({ layers: [{ asset: "toy", x: 600, depth: 0, anims: [{ type: "walk", toX: 1500 }] }] }, { frame: 25 });
+    expect(walking.querySelector("[data-figure]")).toBeNull();
+    expect(layerBox(walking, "body").innerHTML).toContain("#0000aa");
   });
 });
 

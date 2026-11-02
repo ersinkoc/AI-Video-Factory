@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FigureSpec } from "./figure.ts";
 import { MapLabel } from "./geo.ts";
 
 /**
@@ -167,6 +168,11 @@ export const VectorAssetMeta = z.object({
       texture: z.string(),
     })
     .optional(),
+  /**
+   * 3D figür tarifi (yalnız karakter): render SVG yerine bunu three.js ile yumuşak ışıklı 3D bir kukla olarak çizer;
+   * iskelet pozları aynen uygulanır. SVG yine saklanır (kalite kapısı, küçük resim, eski render'lar).
+   */
+  figure: FigureSpec.optional(),
   /** Gerçek veriden üretildi (harita, bayrak): çizgi stili ve zemin temizliği uygulanmaz, olduğu gibi gösterilir. */
   exact: z.boolean().optional(),
   /** Kalite kapısı sonucu; olmayan (eski) varlık kullanılmadan önce denetlenir. */

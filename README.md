@@ -93,7 +93,8 @@ pnpm studio:build && pnpm studio:start   # production build, same port
 2. **Script.** Edit the scenes and approve them.
 3. **Concept.** Characters and places are cast and drawn. The quality-gate panel shows each drawing with its references, scores, defects and drawing plan. Accept, reject or redraw with a note.
 4. **Production.** The pipeline rail, live panel and activity log show every agent call with its model, cost and duration. The Shots tab shows a preview frame of every shot before the render; in vector mode a shot's frame appears as soon as all of its props are drawn.
-5. **Watch and download** the video and its `.srt` subtitle file, and read its review. Subtitles are always written as an `.srt` next to the video; burning them in is a per-episode switch (changing it re-renders only, at no cost). The publishing package gives a YouTube title, a description with chapters, tags (each with a copy button) and a downloadable 1280×720 thumbnail. A horizontal episode also gets a vertical Short: the package picks its best 20–60 seconds and they are re-rendered locally as 9:16.
+5. **Watch and download** the video and its `.srt` subtitle file, and read its review. Subtitles are always written as an `.srt` next to the video; burning them in is a per-episode switch (changing it re-renders only, at no cost).
+ The publishing package gives a YouTube title, a description with chapters, tags (each with a copy button) and a downloadable 1280×720 thumbnail. A horizontal episode also gets a vertical Short: the package picks its best 20–60 seconds and they are re-rendered locally as 9:16.
 
 On-screen text follows one layout: place, date and event lines sit in a fixed info card at the top-left, and name tags stay next to their person, all in one typeface and one plate style.
 
@@ -148,6 +149,7 @@ Keys and switches live in `.env` (see `.env.example`). Notable ones:
 | `STORE=s3`, `LEDGER=db` | Use S3 and Postgres instead of local files. |
 | `GEMINI_OMNI_VIDEO=1` | Enable Gemini Omni Flash video (the Veo replacement; not yet verified with a real run). |
 | `YS_UPDATE_CHECK=0` | Turn off the Studio's update check. |
+| `YS_RENDER_GL` | Chrome drawing backend for renders. Default `angle` (graphics card; about 40% faster, and needed for 3D figures). `swangle` is software GL for machines without a GPU. A GPU render that crashes is retried once with software GL. |
 
 ## Versions and updates
 
