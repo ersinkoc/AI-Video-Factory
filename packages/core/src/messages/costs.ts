@@ -87,6 +87,7 @@ export const COSTS_MESSAGES = {
   "cost.stage.clips": { tr: "Animasyon", en: "Animation" },
   "cost.stage.timeline": { tr: "Kurgu", en: "Edit" },
   "cost.stage.render": { tr: "Render", en: "Render" },
+  "cost.stage.package": { tr: "Yayın paketi", en: "Publishing package" },
   "cost.stage.review": { tr: "İnceleme", en: "Review" },
   "cost.join": { tr: "{a}; {b}", en: "{a}; {b}" },
   "cost.noProvider": {
@@ -148,6 +149,10 @@ export const COSTS_MESSAGES = {
   "cost.via.svg": { tr: "SVG", en: "SVG" },
   "cost.via.draftReview": { tr: "taslak denetimi", en: "draft review" },
   "cost.via.vision": { tr: "görsel", en: "vision" },
+  "cost.basis.package": {
+    tr: "bir yazım çağrısı (~${usd}) + yerel küçük resim",
+    en: "one writing call (~${usd}) + local thumbnail",
+  },
   "cost.via.local": { tr: "yerel", en: "local" },
   "cost.via.remotion": { tr: "yerel (Remotion)", en: "local (Remotion)" },
 } as const;

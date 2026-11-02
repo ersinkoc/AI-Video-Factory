@@ -88,6 +88,7 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
             )}
           </div>
         )}
+        {state.package && <PackageCard pkg={state.package} />}
         <Review data={data} />
       </div>
       <Facts data={data} />
@@ -96,6 +97,34 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
 }
 
 const LESSON_PREVIEW = 5;
+
+/** Yayın paketi: YouTube'a yüklerken kopyalanacak başlık, açıklama (bölümler ve hashtag'lerle) ve etiketler. */
+function PackageCard({ pkg }: { pkg: NonNullable<EpisodeResponse["state"]["package"]> }) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState<string>();
+  const copy = (key: string, text: string) => {
+    void navigator.clipboard.writeText(text).then(() => setCopied(key));
+  };
+  const field = (key: string, label: string, text: string, rows = 1) => (
+    <label className="grid gap-1 text-sm">
+      <span className="flex items-center justify-between">
+        <span className="text-muted">{label}</span>
+        <button type="button" className="btn-ghost" onClick={() => copy(key, text)}>
+          {copied === key ? t("video.package.copied") : t("video.package.copy")}
+        </button>
+      </span>
+      {rows > 1 ? <textarea readOnly rows={rows} className="field" value={text} /> : <input readOnly className="field" value={text} />}
+    </label>
+  );
+  return (
+    <section className="card grid gap-3 p-4">
+      <h3 className="font-semibold">{t("video.package")}</h3>
+      {field("title", t("video.package.title"), pkg.title)}
+      {field("description", t("video.package.description"), pkg.description, 8)}
+      {field("tags", t("video.package.tags"), pkg.tags.join(", "))}
+    </section>
+  );
+}
 
 function Review({ data }: { data: EpisodeResponse }) {
   const { t } = useI18n();

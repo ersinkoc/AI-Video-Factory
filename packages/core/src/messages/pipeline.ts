@@ -147,6 +147,8 @@ export const PIPELINE_MESSAGES = {
   },
   "log.geo.fromLibrary": { tr: "  {id}: kütüphaneden (gerçek veri)", en: "  {id}: from the library (real data)" },
   "log.geo.map": { tr: "  {id}: harita gerçek veriden üretildi ({kb} KB)", en: "  {id}: map generated from real data ({kb} KB)" },
+  "log.package.done": { tr: "  yayın paketi (başlık, açıklama, bölümler, etiketler): {path}", en: "  publishing package (title, description, chapters, tags): {path}" },
+  "log.package.failed": { tr: "⚠ yayın paketi yazılamadı (küçük resim yine çıkarılır): {error}", en: "⚠ publishing package could not be written (the thumbnail is still made): {error}" },
   "log.thumbnail.done": { tr: "  küçük resim: {path}", en: "  thumbnail: {path}" },
   "log.thumbnail.failed": { tr: "⚠ küçük resim çıkarılamadı (video hazır): {error}", en: "⚠ thumbnail could not be made (the video is ready): {error}" },
   "log.sfx.done": { tr: "  efekt sesi: {n} olay, kareye kilitli ({kb} KB)", en: "  sound effects: {n} frame-locked events ({kb} KB)" },

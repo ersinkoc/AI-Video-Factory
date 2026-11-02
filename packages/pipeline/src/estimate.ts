@@ -76,6 +76,8 @@ const withReality = (drawUsd: number) => GATE.planUsd + drawUsd * (1 + GATE.extr
 
 /** Render sonrası inceleme. Henüz ölçülmedi: kare denetiminin (Haiku, ~$0.001/görsel) 6 karelik grubundan tahmin. */
 const REVIEW = { perBatch: 6, batchUsd: 0.006, batchSec: 8, stillSec: 0.8 };
+/** Yayın paketi: tek yazım çağrısı (başlık, açıklama, bölümler, etiketler) + yerel küçük resim karesi. */
+const PACKAGE = { usd: 0.03, sec: 25 };
 
 /** Aynı anda kaç görsel/klip üretiliyor (pipeline concurrency). */
 const PARALLEL = 3;
@@ -360,6 +362,17 @@ export function estimateEpisode(state: EpisodeState, ctx: EstimateContext, modeO
     costUsd: 0,
     seconds: 30 + videoSec * (vector ? VECTOR.renderX : 1.1),
     basis: vector ? msg("cost.basis.renderVector", { x: VECTOR.renderX }) : msg("cost.basis.render"),
+  });
+
+  // --- yayın paketi: tek yazım çağrısı ve yerel küçük resim
+  add({
+    stage: "package",
+    providerId: "claude",
+    quantity: 1,
+    unit: msg("unit.call"),
+    costUsd: PACKAGE.usd,
+    seconds: PACKAGE.sec,
+    basis: msg("cost.basis.package", { usd: PACKAGE.usd }),
   });
 
   // --- inceleme: çekim başına bir kare (yerel), 6 karelik gruplar halinde ucuz görsel model

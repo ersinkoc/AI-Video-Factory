@@ -16,6 +16,8 @@ export const STAGES = [
   "clips",
   "timeline",
   "render",
+  /** Yayın paketi: YouTube başlığı, açıklama, bölümler, etiketler ve küçük resim. */
+  "package",
   /** Render sonrası inceleme: kareler denetlenir, dersler kalıcı deftere yazılır. */
   "review",
 ] as const;
@@ -222,6 +224,8 @@ export interface EpisodeState {
   mathBoards?: Record<string, string>;
   /** Render sonrası inceleme sonucu. */
   review?: EpisodeReview;
+  /** Yayın paketi (package aşaması): yüklemeye hazır metinler; açıklama bölüm satırları ve hashtag'lerle birlikte. */
+  package?: { title: string; thumbnailText: string; description: string; tags: string[]; at: string };
   /** Render öncesi taslak kontrolü: ortalama puan ve yeniden planlanan sahneler. */
   draftReview?: EpisodeReview & { avg: number; revisedScenes: string[] };
   /** Senaryo doktorunun düzelttiği sorunlar (bölümler arası öğrenme için saklanır). */

@@ -823,39 +823,73 @@ describe("timeline, render ve inceleme", () => {
     expect(render.episode.mock.calls.at(-1)![0].timeline.captions.length).toBeGreaterThan(0);
   });
 
-  it("render: küçük resim videonun yanına yazılır; çıkarılamazsa video yine hazır; yalnız klipte küçük resim yok", async () => {
+  const PKG = {
+    title: "Microsoft'un İlk Yazılımı",
+    thumbnailText: "Elinde Olmayan Program",
+    description: "Kanca satırı.\n\nAyrıntı paragrafı.",
+    chapters: [{ scene: "s1", title: "Başlangıç" }],
+    tags: ["microsoft", "bill gates"],
+    hashtags: ["tarih", "#teknoloji"],
+  };
+
+  it("package: yayın paketi ve küçük resim videonun yanına yazılır; hikâye yoksa konu başlık sayılır", async () => {
     const h = harness();
+    const none = await h.seed(makeState());
+    await expect(h.pipeline.run(none, { only: "package" })).rejects.toThrow("timeline/render/script/voice yok");
+
     const id = await ready(h);
     await h.pipeline.run(id, { only: "timeline" });
-    const state = await h.pipeline.run(id, { only: "render" });
+    await h.pipeline.run(id, { only: "render" });
+    expect(render.thumbnail).not.toHaveBeenCalled();
+    onAgent("packager", () => PKG);
+    const state = await h.pipeline.run(id, { only: "package" });
+    // Tek sahnede bölüm listesi yok (en az 3 gerekir); hashtag'ler # ile, boşluksuz.
+    expect(state.package).toMatchObject({ title: PKG.title, thumbnailText: PKG.thumbnailText, description: "Kanca satırı.\n\nAyrıntı paragrafı.\n\n#tarih #teknoloji", tags: PKG.tags });
+    const input = callsOf("packager")[0]!.args[0];
+    expect(input).toMatchObject({ lang: "tr", story: { title: state.input.topic } });
+    const txt = state.render!.path.replace(/\.mp4$/, ".youtube.txt");
+    expect(readFileSync(txt, "utf8")).toBe(`${PKG.title}\n\n${state.package!.description}\n\nmicrosoft, bill gates`);
+    expect(h.logs).toContain(`  yayın paketi (başlık, açıklama, bölümler, etiketler): ${txt}`);
+    // Küçük resim ajanın kısa metniyle; durağan karelerde başlık solda.
     const jpg = state.render!.path.replace(/\.mp4$/, ".jpg");
     expect(state.render!.thumbnail).toBe(jpg);
     expect(readFileSync(jpg, "utf8")).toBe("jpeg:thumb");
-    const call = render.thumbnail.mock.calls.at(-1)![0];
-    // Hikâye yoksa konu başlık olur; durağan karelerde başlık solda.
-    expect(call).toMatchObject({ title: state.input.topic, side: "left", output: jpg });
-    expect(state.timeline!.visuals.some((v) => v.shotId === call.shotId && v.kind === "still_motion")).toBe(true);
+    expect(render.thumbnail.mock.calls.at(-1)![0]).toMatchObject({ title: PKG.thumbnailText, side: "left", output: jpg });
     expect(h.logs).toContain(`  küçük resim: ${jpg}`);
+    expect(h.logs).toContain("  başka bir render sürüyor (süreç 4242); sıra bekleniyor");
+  });
 
-    // Hikâye başlığı kısaltılarak; küçük resim düşerse video yine hazır.
-    const s = await h.pipeline.load(id);
-    s.story = { title: "Uzun Bir Açılış Cümlesi Burada: Kısa Başlık", logline: "", premise: "", hook: "", beats: [] };
-    await h.pipeline.save(s);
-    render.thumbnail.mockRejectedValueOnce(new Error("chrome yok"));
-    const failed = await h.pipeline.run(id, { only: "render" });
+  it("package: ajan düşerse küçük resim başlığın kısa parçasıyla yine çıkar; küçük resim düşerse video hazır; yalnız klipte küçük resim yok", async () => {
+    const h = harness();
+    const id = await ready(h, { story: { title: "Uzun Bir Açılış Cümlesi Burada: Kısa Başlık", logline: "l", premise: "", hook: "h", beats: [] } });
+    await h.pipeline.run(id, { only: "timeline" });
+    await h.pipeline.run(id, { only: "render" });
+    onAgent("packager", () => {
+      throw new Error("model yok");
+    });
+    const failed = await h.pipeline.run(id, { only: "package" });
+    expect(failed.package).toBeUndefined();
+    expect(h.logs.some((l) => l.startsWith("⚠ yayın paketi yazılamadı (küçük resim yine çıkarılır):"))).toBe(true);
     expect(render.thumbnail.mock.calls.at(-1)![0].title).toBe("Kısa Başlık");
-    expect(failed.render!.path).toMatch(/\.mp4$/);
-    expect(failed.render!.thumbnail).toBeUndefined();
+    expect(failed.render!.thumbnail).toBeDefined();
+
+    // Ajanın küçük resim metni boşsa başlığın kısa parçası.
+    onAgent("packager", () => ({ ...PKG, thumbnailText: "  " }));
+    render.thumbnail.mockRejectedValueOnce(new Error("chrome yok"));
+    const s = await h.pipeline.load(id);
+    delete s.render!.thumbnail;
+    await h.pipeline.save(s);
+    const noThumb = await h.pipeline.run(id, { only: "package" });
+    expect(noThumb.package!.thumbnailText).toBe("Kısa Başlık");
+    expect(noThumb.render!.thumbnail).toBeUndefined();
     expect(h.logs).toContain("⚠ küçük resim çıkarılamadı (video hazır): chrome yok");
 
-    // Yalnız klip: arka plan olacak kare yok, küçük resim denenmez.
     const clips = await h.pipeline.load(id);
     clips.timeline!.visuals = clips.timeline!.visuals.filter((v) => v.kind === "ai_clip");
     await h.pipeline.save(clips);
     render.thumbnail.mockClear();
-    const plain = await h.pipeline.run(id, { only: "render" });
+    await h.pipeline.run(id, { only: "package" });
     expect(render.thumbnail).not.toHaveBeenCalled();
-    expect(plain.render!.thumbnail).toBeUndefined();
   });
 
   it("render: altyazı kapalıysa videoya gömülmez ama .srt yine yazılır; kelime yoksa .srt yok", async () => {

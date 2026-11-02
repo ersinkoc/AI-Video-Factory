@@ -10,7 +10,7 @@ Architecture, provider choices and the roadmap are in [docs/PROJE_PLANI.md](docs
 
 ## Features
 
-- **Topic to finished video.** The pipeline runs these stages: style → story → script → *approval* → cast → concept → *approval* → voice → shots → keyframes → clips → timeline → render → review. Every stage is idempotent and saves after each sub-step, so a failed run resumes where it stopped.
+- **Topic to finished video.** The pipeline runs these stages: style → story → script → *approval* → cast → concept → *approval* → voice → shots → keyframes → clips → timeline → render → package → review. Every stage is idempotent and saves after each sub-step, so a failed run resumes where it stopped.
 - **Four motion modes:**
   - `vector`: Claude-drawn SVG characters on a rig, animated in code. This is the cheapest mode.
   - `still`: images with Ken Burns motion.
@@ -91,7 +91,7 @@ pnpm studio:build && pnpm studio:start   # production build, same port
 2. **Script.** Edit the scenes and approve them.
 3. **Concept.** Characters and places are cast and drawn. The quality-gate panel shows each drawing with its references, scores, defects and drawing plan. Accept, reject or redraw with a note.
 4. **Production.** The pipeline rail, live panel and activity log show every agent call with its model, cost and duration. The Shots tab shows a preview frame of every shot before the render; in vector mode a shot's frame appears as soon as all of its props are drawn.
-5. **Watch and download** the video and its `.srt` subtitle file, and read its review. Subtitles are always written as an `.srt` next to the video; burning them in is a per-episode switch (changing it re-renders only, at no cost).
+5. **Watch and download** the video and its `.srt` subtitle file, and read its review. Subtitles are always written as an `.srt` next to the video; burning them in is a per-episode switch (changing it re-renders only, at no cost). The publishing package gives a YouTube title, a description with chapters, tags (each with a copy button) and a downloadable 1280×720 thumbnail.
 
 On-screen text follows one layout: place, date and event lines sit in a fixed info card at the top-left, and name tags stay next to their person, all in one typeface and one plate style.
 

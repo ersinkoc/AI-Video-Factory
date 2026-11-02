@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { msg } from "@ys/core/messages";
 import type { CostGroup } from "@ys/media-gateway";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CostsTab } from "../../src/app/episodes/[id]/costs-panel.tsx";
 import { OverviewTab } from "../../src/app/episodes/[id]/overview.tsx";
@@ -193,6 +193,24 @@ describe("OverviewTab", () => {
     // Bilgiler: paket adı, ses, palet.
     expect(screen.getByText(tr("voice.gemini"))).toBeTruthy();
     expect(container.querySelectorAll('[title="#112233"]')).toHaveLength(1);
+  });
+
+  it("yayın paketi kartı başlık, açıklama ve etiketleri gösterir; kopyala düğmesi panoya yazar", async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const pkg = { title: "Başlık", thumbnailText: "K", description: "Açıklama\n\n0:00 Giriş", tags: ["a", "b"], at: "t" };
+    const { rerender } = renderIn(<OverviewTab data={makeData(makeState({ render: { path: "p", at: "t" } }))} />);
+    expect(screen.queryByText(tr("video.package"))).toBeNull();
+    rerender(<OverviewTab data={makeData(makeState({ render: { path: "p", at: "t" }, package: pkg }))} />);
+    expect(screen.getByText(tr("video.package"))).toBeTruthy();
+    expect((screen.getByDisplayValue("Başlık") as HTMLInputElement).readOnly).toBe(true);
+    expect((screen.getByDisplayValue(/0:00 Giriş/) as HTMLTextAreaElement).tagName).toBe("TEXTAREA");
+    expect(screen.getByDisplayValue("a, b")).toBeTruthy();
+    const buttons = screen.getAllByText(tr("video.package.copy"));
+    expect(buttons).toHaveLength(3);
+    await act(async () => fireEvent.click(buttons[1]!));
+    expect(writeText).toHaveBeenCalledWith("Açıklama\n\n0:00 Giriş");
+    expect(screen.getAllByText(tr("video.package.copied"))).toHaveLength(1);
   });
 
   it("efekt sesi anahtarı yalnız vektör bölümde; ayarı değiştirir", () => {

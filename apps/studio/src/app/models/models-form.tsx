@@ -13,6 +13,7 @@ const GROUPS: { title: MessageKey; roles: AgentRole[] }[] = [
     roles: ["vector-director", "asset-planner", "vector-designer:character", "vector-designer:background", "vector-designer:prop", "vector-designer:redraw", "prop-physics"],
   },
   { title: "models.group.check", roles: ["asset-guess", "asset-gate", "scene-critic", "frame-inspector", "lesson-curator"] },
+  { title: "models.group.publish", roles: ["packager"] },
   { title: "models.group.image", roles: ["director"] },
 ];
 

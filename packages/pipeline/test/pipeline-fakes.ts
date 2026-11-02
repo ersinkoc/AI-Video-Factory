@@ -34,6 +34,7 @@ export const AGENT_NAMES = [
   "assetGuess",
   "vectorDirector",
   "lessonCurator",
+  "packager",
 ] as const;
 export type AgentName = (typeof AGENT_NAMES)[number];
 

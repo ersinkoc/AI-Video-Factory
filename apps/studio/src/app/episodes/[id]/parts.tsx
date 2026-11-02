@@ -31,11 +31,11 @@ export const STAGE_GROUPS: { key: "pre" | "prod" | "post"; stages: Stage[] }[] =
     key: "prod",
     stages: ["voice", "shots", "keyframes", "clips", "timeline", "render"],
   },
-  { key: "post", stages: ["review"] },
+  { key: "post", stages: ["package", "review"] },
 ];
 
 export const AFTER_SCRIPT: Stage[] = ["cast", "concept"];
-export const AFTER_CONCEPT: Stage[] = ["voice", "shots", "keyframes", "clips", "timeline", "render", "review"];
+export const AFTER_CONCEPT: Stage[] = ["voice", "shots", "keyframes", "clips", "timeline", "render", "package", "review"];
 
 /** Verilen aşamaların tahmini toplamı: "~$1.20 · ~4 dk". */
 export function costOf(est: EpisodeEstimate, stages: Stage[], { usd, duration }: Formatters): string {

@@ -18,6 +18,9 @@ import {
   assetPlanner,
   gateDescription,
   assetGuess,
+  chapterLines,
+  fullDescription,
+  packager,
   type AgentImage,
   type VectorAssetOut,
   vectorDirector,
@@ -106,7 +109,7 @@ import {
   type SceneVoice,
   type Stage,
 } from "./state.ts";
-import { buildTimeline, clipSeconds, estimateWordTimings, resolveShotTimes, toSrt } from "./timing.ts";
+import { buildTimeline, clipSeconds, estimateWordTimings, resolveShotTimes, sceneOffsets, toSrt } from "./timing.ts";
 import type { EpisodeReview } from "./state.ts";
 
 /** Günlük satırının önemi: aşama başlangıcı, uyarı (atlanan/başarısız alt adım) ya da bilgi. */
@@ -2137,18 +2140,39 @@ export class EpisodePipeline {
       });
       state.render = { path: outputPath, at: new Date().toISOString() };
       this.log(msg("log.render.done", { path: outputPath }));
+    },
+
+    package: async (state) => {
+      const { timeline, render, script, voice } = state;
+      if (!timeline || !render || !script || !voice) throw new LocalizedError(msg("err.missing", { what: "timeline/render/script/voice" }));
+      const dir = resolve(this.deps.workDir, state.id);
+      // Metinler: hikâyesi olmayan (eski) bölümde konu başlık sayılır; ajan düşerse paket yine yazılır, küçük resim çıkar.
+      const story = state.story ?? { title: state.input.topic, logline: state.input.topic, premise: "", hook: "", beats: [] };
+      const durationSec = timeline.durationInFrames / timeline.fps;
+      let thumbnailText = thumbnailTitle(story.title);
+      try {
+        const pkg = await this.agent(state, "package", packager({ story, script, lang: state.input.lang, durationSec }, this.agentDeps));
+        const starts = sceneOffsets(script.scenes.map((s) => s.id), voice);
+        const description = fullDescription(pkg, chapterLines(pkg.chapters, Object.fromEntries(Object.entries(starts).map(([id, ms]) => [id, ms / 1000]))));
+        thumbnailText = pkg.thumbnailText.trim() || thumbnailText;
+        state.package = { title: pkg.title.trim(), thumbnailText, description, tags: pkg.tags, at: new Date().toISOString() };
+        // Yüklemede kopyalanacak metinler videonun yanında da dursun.
+        const file = join(dir, `${state.id}.youtube.txt`);
+        await writeFile(file, [state.package.title, "", description, "", state.package.tags.join(", ")].join("\n"), "utf8");
+        this.log(msg("log.package.done", { path: file }));
+      } catch (e) {
+        this.log(msg("log.package.failed", { error: errorText(e) }));
+      }
       // Küçük resim (yerel, ücretsiz): çıkarılamazsa video yine hazırdır.
       const pick = thumbnailShot(timeline);
-      if (pick) {
-        try {
-          const output = join(dir, `${state.id}.jpg`);
-          const title = thumbnailTitle(state.story?.title ?? state.input.topic);
-          await renderThumbnail({ timeline, publicDir, ...pick, title, output, onWait: (pid) => this.log(msg("log.render.wait", { pid })) });
-          state.render.thumbnail = output;
-          this.log(msg("log.thumbnail.done", { path: output }));
-        } catch (e) {
-          this.log(msg("log.thumbnail.failed", { error: errorText(e) }));
-        }
+      if (!pick) return;
+      try {
+        const output = join(dir, `${state.id}.jpg`);
+        await renderThumbnail({ timeline, publicDir: join(dir, "public"), ...pick, title: thumbnailText, output, onWait: (pid) => this.log(msg("log.render.wait", { pid })) });
+        render.thumbnail = output;
+        this.log(msg("log.thumbnail.done", { path: output }));
+      } catch (e) {
+        this.log(msg("log.thumbnail.failed", { error: errorText(e) }));
       }
     },
 
