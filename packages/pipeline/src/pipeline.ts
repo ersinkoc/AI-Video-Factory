@@ -2268,10 +2268,16 @@ export class EpisodePipeline {
           await writeFile(target, await this.bytes(a.assetUrl));
         }
         const output = join(dir, `${state.id}.short.mp4`);
+        let lastPct = -1;
         await renderEpisode({
           timeline: onScreen(state, short),
           publicDir,
           outputPath: output,
+          // İlerleme günlüğe yazılır: Stüdyo işin sürdüğünü görsün (kayıtsız uzun render "takıldı" sayılır).
+          onProgress: (p) => {
+            const pct = Math.floor(p * 10) * 10;
+            if (pct !== lastPct) this.log(msg("log.short.progress", { pct: (lastPct = pct) }));
+          },
           onWait: (pid) => this.log(msg("log.render.wait", { pid })),
           onRetry: (reason) => this.log(msg("log.render.retry", { reason })),
         });

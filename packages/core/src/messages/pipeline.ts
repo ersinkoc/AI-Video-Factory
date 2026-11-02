@@ -153,6 +153,7 @@ export const PIPELINE_MESSAGES = {
   "log.thumbnail.failed": { tr: "⚠ küçük resim çıkarılamadı (video hazır): {error}", en: "⚠ thumbnail could not be made (the video is ready): {error}" },
   "log.samples.done": { tr: "  stil örneği hazır: {pack} ({source})", en: "  style sample ready: {pack} ({source})" },
   "log.samples.failed": { tr: "⚠ stil örneği çizilemedi: {pack} / {what}: {error}", en: "⚠ style sample could not be drawn: {pack} / {what}: {error}" },
+  "log.short.progress": { tr: "  Short render %{pct}", en: "  Short render {pct}%" },
   "log.short.done": { tr: "  dikey Short ({sec} sn; sahneler: {scenes}): {path}", en: "  vertical Short ({sec} s; scenes: {scenes}): {path}" },
   "log.short.failed": { tr: "⚠ Short üretilemedi (video hazır): {error}", en: "⚠ Short could not be made (the video is ready): {error}" },
   "log.music.done": { tr: "  müzik: {n} bölüm ({moods}), anlatımda kısılır ({kb} KB)", en: "  music: {n} sections ({moods}), ducked under narration ({kb} KB)" },

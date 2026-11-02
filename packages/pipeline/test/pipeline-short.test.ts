@@ -62,6 +62,9 @@ describe("dikey Short", () => {
     const id = await prepared(h);
     render.episode.mockClear();
     render.episode.mockImplementationOnce(async (opts: any) => {
+      opts.onProgress(0.05);
+      opts.onProgress(0.07);
+      opts.onProgress(0.5);
       opts.onWait(7);
       opts.onRetry("ENOENT");
       return opts.outputPath;
@@ -84,6 +87,7 @@ describe("dikey Short", () => {
     expect(state.short).toMatchObject({ path: opts.outputPath, title: "Short başlığı", scenes: ["s2"], sec: 7 });
     expect(h.logs).toContain(`  dikey Short (7 sn; sahneler: s2): ${opts.outputPath}`);
     expect(h.logs).toContain("  başka bir render sürüyor (süreç 7); sıra bekleniyor");
+    expect(h.logs.filter((l) => l.startsWith("  Short render %"))).toEqual(["  Short render %0", "  Short render %50"]);
     // Bölümün kendi timeline'ı değişmez.
     expect(state.timeline!.width).toBe(1920);
 
