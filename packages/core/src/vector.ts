@@ -216,6 +216,8 @@ export const VectorAnimType = z.enum([
   "spin",
   "shake",
   "move",
+  // elle çiziliyormuş gibi belirme (paper.js ile kontur uzunluğu)
+  "draw_on",
   // karakter iskeleti
   "walk",
   "wave",

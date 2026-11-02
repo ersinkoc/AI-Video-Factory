@@ -1054,6 +1054,28 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     expect(bgDiv(flat, "route-0").style.opacity).toBe("");
   });
 
+  it("draw_on: nesne konturdan çizilerek belirir, bitince özgün haline döner; animasyonsuz katman işaretlenmez", () => {
+    const shot = { layers: [{ asset: "box", x: 600, depth: 0.4, anims: [{ type: "draw_on", start: 0.2, end: 0.6 }] }, { asset: "cup", x: 1200, depth: 0.4 }] };
+    const at = (frame: number) => {
+      const c = scene(shot, { frame });
+      const box = layerBox(c, "box");
+      const out = {
+        marked: box.querySelector("[data-draw]")?.getAttribute("data-draw"),
+        css: box.querySelector("style")?.textContent ?? "",
+        cup: layerBox(c, "cup").querySelector("[data-draw]"),
+      };
+      cleanup();
+      return out;
+    };
+    const before = at(0);
+    expect(before.marked).toBe("s1-0-d0");
+    expect(before.cup).toBeNull();
+    expect(before.css).toContain('[data-draw="s1-0-d0"]{fill-opacity:0.000;stroke-dasharray:400.00 400.00;stroke-dashoffset:400.00');
+    // p = 0,4: pencerenin yarısı; kare (400 birim) %62,5 çizilmiş, dolgu henüz yok.
+    expect(at(120).css).toContain("stroke-dashoffset:150.00");
+    expect(at(240).css).toBe("");
+  });
+
   it("etiket türüne göre biçimlenir", () => {
     const c = scene({ background: "map" }, { frame: 300 });
     const byText = (t: string) => [...c.querySelectorAll("div")].find((d) => d.textContent === t && d.style.whiteSpace === "nowrap") as HTMLElement;

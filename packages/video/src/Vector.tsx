@@ -25,6 +25,7 @@ import {
 } from "@ys/core";
 import { useMemo, type CSSProperties } from "react";
 import { AbsoluteFill, Easing, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
+import { drawCss, drawPlan } from "./drawOn.ts";
 import { Globe3D } from "./Globe3D.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
 import { FOREARM_LAG, gaitOf, gestureWeight, hop, paceWalks, physicalAnims, type Gait } from "./motion.ts";
@@ -839,6 +840,12 @@ function handPoint(placed: PlacedLayer, layer: VectorLayer, m: Motion): [number,
   return [placed.x + m.tr.x + dx, placed.y + m.tr.y + dy];
 }
 
+/** draw_on penceresindeki ilerleme (kalem sabit hızda, yumuşatma yok); animasyon yoksa undefined. */
+function drawOf(anims: VectorAnim[], p: number): number | undefined {
+  const a = anims.find((x) => x.type === "draw_on");
+  return a && local(p, a);
+}
+
 function Layer({
   layer,
   asset,
@@ -846,6 +853,7 @@ function Layer({
   motion,
   prefix,
   sketch,
+  draw,
 }: {
   layer: VectorLayer;
   asset: VectorAsset;
@@ -853,11 +861,17 @@ function Layer({
   motion: Motion;
   prefix: string;
   sketch: boolean;
+  /** draw_on ilerlemesi (0–1); yoksa katman olduğu gibi çizilir. */
+  draw?: number;
 }) {
   const { width: w, height: h } = placed;
   const { tr, pose } = motion;
   const raw = prefixSvgIds(fitSvg((motion.side ?? asset).svg, "meet"), prefix);
-  const svg = pose?.torso ? wrapTorso(raw, prefix) : raw;
+  const shaped = pose?.torso ? wrapTorso(raw, prefix) : raw;
+  // Elle çizim: öğeler bir kez işaretlenir (paper.js uzunlukları), her karede yalnız CSS değişir.
+  const drawing = draw !== undefined;
+  const plan = useMemo(() => (drawing ? drawPlan(shaped, `${prefix}d`) : undefined), [drawing, shaped, prefix]);
+  const svg = plan?.svg ?? shaped;
 
   // İskeletli karakterde parça dönüşleri kimlik seçicisiyle uygulanır (dönme noktaları RIG'de sabit).
   const rigCss = pose
@@ -885,6 +899,7 @@ function Layer({
   return (
     <div style={style}>
       {rigCss && <style>{rigCss}</style>}
+      {plan && <style>{drawCss(plan, draw!)}</style>}
       <div style={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: svg }} />
     </div>
   );
@@ -1312,6 +1327,7 @@ export function VectorScene({
                 motion={motions.get(pl.index)!}
                 prefix={`${visual.shotId}-${pl.index}-`}
                 sketch={lineStyle === "sketch"}
+                draw={drawOf(layer.anims, p)}
               />
             );
           })}
