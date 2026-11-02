@@ -1597,7 +1597,8 @@ export class EpisodePipeline {
         continue;
       }
       try {
-        const bytes = await renderBoard(spec, sec, accent, resolve(this.deps.workDir, state.id, "manim", shot.id));
+        // Çalışma klasörü sonra silinir: adı modelden gelen çekim kimliğinden değil hash'ten (yol aşımı olmasın).
+        const bytes = await renderBoard(spec, sec, accent, resolve(this.deps.workDir, state.id, "manim", hash));
         await this.deps.store.put(key, bytes, "video/webm");
         boards[shot.id] = key;
         this.log(msg("log.math.done", { shot: shot.id, sec: sec.toFixed(1) }));

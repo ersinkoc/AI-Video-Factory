@@ -52,6 +52,8 @@ describe("Manim tahtaları", () => {
     expect(board.render).toHaveBeenCalledTimes(2);
     expect(board.render.mock.calls[0]!.slice(0, 2)).toEqual([{ steps: ["E = mc^2"] }, 4]);
     const key = state.mathBoards!["s1-sh1"]!;
+    // Silinecek çalışma klasörü çekim kimliğinden değil hash'ten: modelden gelen kimlik yol aşımı yaptıramaz.
+    expect(board.render.mock.calls[0]![3]).toBe(join(h.workDir, id, "manim", key.slice("library/math/".length, -".webm".length)));
     expect(key).toMatch(/^library\/math\/[0-9a-f]{32}\.webm$/);
     expect(state.mathBoards!["s1-sh2"]).toBeUndefined();
     expect(h.store.map.get(key)).toEqual(new Uint8Array([7, 7, 7]));
