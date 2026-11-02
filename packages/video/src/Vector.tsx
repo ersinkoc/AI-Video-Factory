@@ -983,13 +983,26 @@ export function stageFit(width: number, height: number): number {
   return Math.min(height / H, (width / W) * (width < height ? 1.3 : 1));
 }
 
+/** Dikeyde içeriğin görünen bandın kenarına bırakılan pay (tuval px). */
+const CONTENT_MARGIN = 30;
+
+/**
+ * Dikey kadrajda sahnenin ölçeği: içerik (ekrandaki yatay uçları, tuval px) görünen banda sığmıyorsa sahne küçülür,
+ * en çok tuvalin tamamı görünene kadar. Yatay bölümden türetilen Short'ta yanlara yerleşmiş kişi kesiliyordu; içerik
+ * zaten ortadaysa ölçek değişmez.
+ */
+export function contentFit(width: number, base: number, xs: number[]): number {
+  if (!xs.length) return base;
+  const half = Math.max(...xs.map((x) => Math.abs(Math.min(W, Math.max(0, x)) - W / 2))) + CONTENT_MARGIN;
+  return Math.max(width / W, Math.min(base, width / (2 * half)));
+}
+
 /**
  * Kişi etiketlerinin tuvaldeki yatay aralığı: dikey videoda tuvalin ekranda görünen kısmı, sağda platformun düğmelerinin
  * altında kalan şerit hariç (VERTICAL_SAFE); öteki oranlarda bütün tuval.
  */
-export function tagBounds(width: number, height: number): { left: number; right: number } {
+export function tagBounds(width: number, height: number, fit = stageFit(width, height)): { left: number; right: number } {
   if (height <= width) return { left: 0, right: W };
-  const fit = stageFit(width, height);
   const offset = (width - W * fit) / 2;
   return { left: Math.max(0, -offset / fit), right: Math.min(W, (width - VERTICAL_SAFE.right - offset) / fit) };
 }
@@ -1257,21 +1270,33 @@ export function VectorScene({
   );
   const placed = useMemo(() => resolveLayout(spec, safe), [spec, safe]);
   const bg = spec.background ? safe[spec.background] : undefined;
+  const moving = (i: number) => spec.layers[i]!.anims.some((a) => a.type === "walk" || a.type === "slide_in" || a.type === "move");
+  // Geniş çekimde kadrajda kalacaklar: karakterler ve sahnedeki küçük nesneler; sahneye giren (yürüyen, kayan) hariç.
+  const keep = useMemo(
+    () =>
+      placed.filter((pl) => {
+        const layer = spec.layers[pl.index]!;
+        if (moving(pl.index)) return false;
+        return safe[layer.asset]!.kind === "character" || ((pl.grounded || pl.heldBy !== undefined) && pl.width < W * 0.4);
+      }),
+    [spec, placed, safe],
+  );
   const { cam, centre } = useMemo(() => {
     const close = closeUpCamera(spec.camera, heldFraming(placed, spec.layers), Boolean(bg?.meta.exact), (pl) => safe[spec.layers[pl.index]!.asset]!.kind !== "character");
     if (close.centre || bg?.meta.exact) return close;
-    const moving = (i: number) => spec.layers[i]!.anims.some((a) => a.type === "walk" || a.type === "slide_in" || a.type === "move");
     // Boş geniş çekim içeriğe yaklaşır; sahneye giren biri varsa yolu kadrajda kalsın diye yaklaşılmaz.
     const filled = placed.some((pl) => moving(pl.index)) ? undefined : fillWide(close.cam, placed, (pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character");
     if (filled) return filled;
-    // Geniş çekimde kadrajda kalacaklar: karakterler ve sahnedeki küçük nesneler; sahneye giren (yürüyen, kayan) hariç.
-    const keep = placed.filter((pl) => {
-      const layer = spec.layers[pl.index]!;
-      if (moving(pl.index)) return false;
-      return safe[layer.asset]!.kind === "character" || ((pl.grounded || pl.heldBy !== undefined) && pl.width < W * 0.4);
-    });
     return { cam: frameWide(close.cam, keep), centre: false };
-  }, [spec, placed, bg, safe]);
+  }, [spec, placed, bg, safe, keep]);
+  // Dikey kadraj: geniş çekimde kenara düşen kişi/nesne kesilmesin diye sahne gerektiği kadar küçülür (contentFit).
+  // Yakın çekim bilerek kırpar; harita tuvalin tamamıdır; tahta ekrana sabittir, sahneyle aynı ölçekte kalmalı.
+  const fit = useMemo(() => {
+    const base = stageFit(width, height);
+    if (height <= width || visual.overlay || bg?.meta.exact || Math.max(cam.zoomFrom, cam.zoomTo) >= CLOSE_UP.zoom) return base;
+    const xs = keep.flatMap((pl) => [0, 1].flatMap((q) => [pl.x - pl.width / 2, pl.x + pl.width / 2].map((x) => cameraPoint(cam, q, centre, [x, pl.y])[0])));
+    return contentFit(width, base, xs);
+  }, [width, height, visual.overlay, bg, cam, centre, keep]);
   const k = interpolate(p, [0, 1], [0, 1], { easing: ease });
   const dur = visual.durationInFrames / fps;
   const motions = new Map(
@@ -1306,7 +1331,7 @@ export function VectorScene({
     // üst kenarına yapışıyordu (Apple s6-sh6, 1 Kas).
     if (near && !faceOnScreen([x, y], cameraPoint(cam, k, centre, near.foot))) return undefined;
     return { x, y, head: near !== undefined };
-  }, tagBounds(width, height));
+  }, tagBounds(width, height, fit));
   const [c0 = "#1d2433", c1 = "#3a4a66", accent = "#ffd84d"] = palette;
 
   const stage = (
@@ -1397,7 +1422,6 @@ export function VectorScene({
   // arka planın bulanık, büyütülmüş kopyası doldurur. Yerleşim, yazı ve harita koordinatları değişmez.
   // Dikeyde tam sığdırma sahneyi çok küçültür: 1,3 kat yakın çekim (kenarlardan ~%12 kırpılır). İçerik zaten orta
   // bantta (x 420–1500, arka plan kuralı) yerleşir; yatay/kareye yakın oranlarda büyütme yapılmaz.
-  const fit = stageFit(width, height);
   return (
     <AbsoluteFill style={{ overflow: "hidden", background: `linear-gradient(160deg, ${c0}, ${c1})` }}>
       {bg && (

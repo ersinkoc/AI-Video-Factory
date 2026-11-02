@@ -14,17 +14,29 @@ async function capture(run: (deps: AgentDeps) => Promise<unknown>) {
   return { prompt: params!.prompt, system: params!.options.systemPrompt as string };
 }
 
-const PKG = PackageOut.parse({ title: "T", thumbnailText: "K", description: "  Açıklama.  ", chapters: [], tags: ["a"], hashtags: ["tarih", "#tek noloji", "#"] });
+const PKG = PackageOut.parse({
+  title: "T",
+  thumbnailText: "K",
+  description: "  Açıklama.  ",
+  chapters: [],
+  tags: ["a"],
+  hashtags: ["tarih", "#tek noloji", "#"],
+  short: { from: "s1", to: "s2", title: "Kısa" },
+});
 
 describe("yayın paketi", () => {
   it("istem hikâyeyi, süreyi ve sahnelerin başını verir; dil ve özel ad kuralı talimatta", async () => {
     const story = { title: "Çalışma başlığı", logline: "Bir cümle", premise: "", hook: "İlk 15 saniye", beats: [] };
-    const script = { scenes: [{ id: "s1", beatId: "b1", narration: "x".repeat(400), visualIntent: "", emotion: "", location: "" }] };
-    const c = await capture((d) => packager({ story, script, lang: "tr", durationSec: 600 }, d));
+    const scene = (id: string) => ({ id, beatId: "b1", narration: "x".repeat(400), visualIntent: "", emotion: "", location: "" });
+    const script = { scenes: [scene("s1"), scene("s2")] };
+    const c = await capture((d) => packager({ story, script, lang: "tr", durationSec: 600, sceneSec: { s1: 12.4 } }, d));
     expect(c.system).toContain("episode language (tr)");
     expect(c.system).toContain("keep names of real people, companies and products");
+    expect(c.system).toContain("the stretch to cut as a vertical Short");
     expect(c.prompt).toContain("Working title: Çalışma başlığı\nLogline: Bir cümle\nHook: İlk 15 saniye\nLength: 10 min");
-    expect(c.prompt).toContain(`s1: ${"x".repeat(280)}`);
+    // Süresi bilinen sahnede uzunluk yazılır; bilinmeyende yazılmaz.
+    expect(c.prompt).toContain(`s1 (12 s): ${"x".repeat(280)}`);
+    expect(c.prompt).toContain(`s2: ${"x".repeat(280)}`);
     expect(c.prompt).not.toContain("x".repeat(281));
   });
 

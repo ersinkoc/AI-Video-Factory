@@ -242,6 +242,33 @@ describe("OverviewTab", () => {
     expect((screen.getByLabelText(tr("video.music")) as HTMLInputElement).checked).toBe(false);
   });
 
+  it("Short: anahtar yalnız yatay bölümde; kart oynatıcı, bilgi ve indirme verir, başlığı pakette; yeniden açılınca render düğmesi", () => {
+    const act = vi.fn(async (_action: Record<string, unknown>) => true);
+    const short = { path: "/x/v.short.mp4", title: "Kısa başlık", scenes: ["s2", "s3"], sec: 42, at: "t" };
+    const pkg = { title: "Başlık", thumbnailText: "K", description: "D", tags: [], at: "t" };
+    const base = { render: { path: "/x/v.mp4", at: "t" }, package: pkg, short, done: { render: "t", package: "t", short: "t" } };
+    const { rerender } = renderIn(<OverviewTab data={makeData(makeState(base))} act={act} />);
+    const box = screen.getByLabelText(tr("video.short")) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    fireEvent.click(box);
+    expect(act).toHaveBeenLastCalledWith({ type: "set-short", enabled: false });
+    expect(screen.getByText(tr("video.short.info", { sec: 42, scenes: "s2, s3" }))).toBeTruthy();
+    expect(document.querySelector('video[src$="&short"]')).toBeTruthy();
+    expect(document.querySelector('a[href$="&short&download"]')).toBeTruthy();
+    expect(screen.getByDisplayValue("Kısa başlık")).toBeTruthy();
+    expect(screen.queryByText(tr("video.rerender"))).toBeNull();
+    // Short yeniden açıldı (paket bitmiş): devam yalnız Short'u üretir.
+    rerender(<OverviewTab data={makeData(makeState({ ...base, short: undefined, done: { render: "t", package: "t" } }, { short: false }))} act={act} />);
+    expect((screen.getByLabelText(tr("video.short")) as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByText(tr("video.short.info", { sec: 42, scenes: "s2, s3" }))).toBeNull();
+    fireEvent.click(screen.getByText(tr("video.rerender")));
+    expect(act).toHaveBeenLastCalledWith({ type: "resume" });
+    // Paketi olmayan eski bölüm: Short için yeniden render önerilmez; dikey bölümde anahtar yok.
+    rerender(<OverviewTab data={makeData(makeState({ ...base, done: { render: "t" } }, { width: 1080, height: 1920 }))} act={act} />);
+    expect(screen.queryByText(tr("video.rerender"))).toBeNull();
+    expect(screen.queryByLabelText(tr("video.short"))).toBeNull();
+  });
+
   it("altyazı anahtarı ayarı değiştirir; render yeniden açıldıysa yeniden render düğmesi çıkar", () => {
     const act = vi.fn(async (_action: Record<string, unknown>) => true);
     const done = makeState({ render: { path: "/x/v.mp4", at: "t" }, done: { render: "t" } });

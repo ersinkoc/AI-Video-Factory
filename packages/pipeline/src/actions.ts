@@ -285,30 +285,40 @@ export function setRealism(state: EpisodeState, enabled: boolean): void {
 }
 
 /**
- * Altyazının videoya gömülmesini açar/kapatır. Video zaten render edildiyse render aşaması yeniden açılır: devam
- * yalnız render'ı tekrarlar (Claude çağrısı yok, para harcamaz); eski video yenisi çıkana dek kalır.
+ * Altyazının videoya gömülmesini açar/kapatır. Video zaten render edildiyse render (ve Short) yeniden açılır: devam
+ * yalnız onları tekrarlar (Claude çağrısı yok, para harcamaz); eski video yenisi çıkana dek kalır.
  */
 export function setCaptions(state: EpisodeState, enabled: boolean): void {
   if ((state.input.captions !== false) === enabled) return;
   state.input.captions = enabled;
   delete state.done.render;
+  delete state.done.short;
 }
 
 /**
- * Kareye kilitli efekt seslerini açar/kapatır. İz timeline aşamasında üretilir: timeline ve render yeniden açılır,
- * devam yalnız bu ikisini tekrarlar (Claude çağrısı yok, para harcamaz); eski video yenisi çıkana dek kalır.
+ * Kareye kilitli efekt seslerini açar/kapatır. İz timeline aşamasında üretilir: timeline, render ve Short yeniden açılır,
+ * devam yalnız bunları tekrarlar (Claude çağrısı yok, para harcamaz); eski video yenisi çıkana dek kalır.
  */
 export function setSfx(state: EpisodeState, enabled: boolean): void {
   if ((state.input.sfx !== false) === enabled) return;
   state.input.sfx = enabled;
   delete state.done.timeline;
   delete state.done.render;
+  delete state.done.short;
 }
 
-/** Arka plan müziğini açar/kapatır: efekt sesi gibi timeline ve render yeniden açılır (ücretsiz). */
+/** Dikey Short'u açar/kapatır: yalnız short aşaması yeniden açılır (yerel render, ücretsiz). */
+export function setShort(state: EpisodeState, enabled: boolean): void {
+  if ((state.input.short !== false) === enabled) return;
+  state.input.short = enabled;
+  delete state.done.short;
+}
+
+/** Arka plan müziğini açar/kapatır: efekt sesi gibi timeline, render ve Short yeniden açılır (ücretsiz). */
 export function setMusic(state: EpisodeState, enabled: boolean): void {
   if ((state.input.music !== false) === enabled) return;
   state.input.music = enabled;
   delete state.done.timeline;
   delete state.done.render;
+  delete state.done.short;
 }

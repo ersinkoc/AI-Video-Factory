@@ -110,6 +110,7 @@ import {
   type SceneVoice,
   type Stage,
 } from "./state.ts";
+import { shortRange, shortTimeline } from "./short.ts";
 import { buildTimeline, clipSeconds, estimateWordTimings, resolveShotTimes, sceneOffsets, toSrt } from "./timing.ts";
 import type { EpisodeReview } from "./state.ts";
 
@@ -2167,12 +2168,15 @@ export class EpisodePipeline {
       const story = state.story ?? { title: state.input.topic, logline: state.input.topic, premise: "", hook: "", beats: [] };
       const durationSec = timeline.durationInFrames / timeline.fps;
       let thumbnailText = thumbnailTitle(story.title);
+      const ids = script.scenes.map((s) => s.id);
+      const starts = Object.entries(sceneOffsets(ids, voice)).map(([id, ms]) => [id, ms / 1000] as const);
+      // Sahne süresi: sonraki sahnenin başına (sonuncusu videonun sonuna) kadar; ajan Short aralığını buna göre seçer.
+      const sceneSec = Object.fromEntries(starts.map(([id, at], i) => [id, (starts[i + 1]?.[1] ?? durationSec) - at]));
       try {
-        const pkg = await this.agent(state, "package", packager({ story, script, lang: state.input.lang, durationSec }, this.agentDeps));
-        const starts = sceneOffsets(script.scenes.map((s) => s.id), voice);
-        const description = fullDescription(pkg, chapterLines(pkg.chapters, Object.fromEntries(Object.entries(starts).map(([id, ms]) => [id, ms / 1000]))));
+        const pkg = await this.agent(state, "package", packager({ story, script, lang: state.input.lang, durationSec, sceneSec }, this.agentDeps));
+        const description = fullDescription(pkg, chapterLines(pkg.chapters, Object.fromEntries(starts)));
         thumbnailText = pkg.thumbnailText.trim() || thumbnailText;
-        state.package = { title: pkg.title.trim(), thumbnailText, description, tags: pkg.tags, at: new Date().toISOString() };
+        state.package = { title: pkg.title.trim(), thumbnailText, description, tags: pkg.tags, short: { ...pkg.short, title: pkg.short.title.trim() }, at: new Date().toISOString() };
         // Yüklemede kopyalanacak metinler videonun yanında da dursun.
         const file = join(dir, `${state.id}.youtube.txt`);
         await writeFile(file, [state.package.title, "", description, "", state.package.tags.join(", ")].join("\n"), "utf8");
@@ -2190,6 +2194,45 @@ export class EpisodePipeline {
         this.log(msg("log.thumbnail.done", { path: output }));
       } catch (e) {
         this.log(msg("log.thumbnail.failed", { error: errorText(e) }));
+      }
+    },
+
+    short: async (state) => {
+      const { timeline, render, script, voice } = state;
+      if (!timeline || !render || !script || !voice) throw new LocalizedError(msg("err.missing", { what: "timeline/render/script/voice" }));
+      delete state.short;
+      // Dikey bölüm zaten Short biçiminde.
+      if (state.input.short === false || timeline.height > timeline.width) return;
+      const dir = resolve(this.deps.workDir, state.id);
+      const publicDir = join(dir, "public");
+      const ids = script.scenes.map((s) => s.id);
+      const range = shortRange(ids, sceneOffsets(ids, voice), (timeline.durationInFrames / timeline.fps) * 1000, state.package?.short);
+      const short = shortTimeline(timeline, range.fromMs, range.toMs);
+      // Short ek çıktıdır: üretilemezse bölüm yine hazırdır.
+      try {
+        if (motionModeOf(state.input) === "vector" && state.input.sfx !== false) await this.soundEffects(state, short);
+        if (state.input.music !== false) await this.music(state, short);
+        // Bölümün varlıkları render aşamasında indirildi; kısa için üretilen ses izleri henüz render klasöründe yok.
+        for (const a of short.audio) {
+          const target = join(publicDir, ...a.assetUrl.split("/"));
+          if (existsSync(target)) continue;
+          await mkdir(dirname(target), { recursive: true });
+          await writeFile(target, await this.bytes(a.assetUrl));
+        }
+        const output = join(dir, `${state.id}.short.mp4`);
+        await renderEpisode({
+          timeline: onScreen(state, short),
+          publicDir,
+          outputPath: output,
+          onWait: (pid) => this.log(msg("log.render.wait", { pid })),
+          onRetry: (reason) => this.log(msg("log.render.retry", { reason })),
+        });
+        const sec = Math.round(short.durationInFrames / short.fps);
+        const title = state.package?.short?.title || state.package?.title || state.input.topic;
+        state.short = { path: output, title, scenes: range.scenes, sec, at: new Date().toISOString() };
+        this.log(msg("log.short.done", { path: output, sec, scenes: range.scenes.join(", ") }));
+      } catch (e) {
+        this.log(msg("log.short.failed", { error: errorText(e) }));
       }
     },
 

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AssetCheck } from "@ys/core";
 import { FsAssetStore, getJson, putJson, type AssetStore } from "@ys/storage";
-import { acceptAsset, newEpisodeState, rejectAsset, setCaptions, setMusic, setRealism, setSfx, type EpisodeInput, type EpisodeState } from "../src/light.ts";
+import { acceptAsset, newEpisodeState, rejectAsset, setCaptions, setMusic, setRealism, setSfx, setShort, type EpisodeInput, type EpisodeState } from "../src/light.ts";
 
 const input: EpisodeInput = { topic: "t", lang: "tr", targetSec: 60, tier: "economy", aiClipRatio: 0, budgetUsd: 3, width: 1920, height: 1080, fps: 30 };
 const KEY = "library/vector/character/abc.svg";
@@ -94,12 +94,15 @@ describe("kalite kapısında insan kararı", () => {
   it("altyazı ayarı değişince yalnız render yeniden açılır; aynı ayar hiçbir şeyi bozmaz", () => {
     const { state } = setup();
     state.done.render = "x";
+    state.done.short = "x";
     state.done.review = "x";
     setCaptions(state, true);
     expect(state.done.render).toBe("x");
     setCaptions(state, false);
     expect(state.input.captions).toBe(false);
     expect(state.done.render).toBeUndefined();
+    // Short'a da altyazı gömülür.
+    expect(state.done.short).toBeUndefined();
     expect(state.done.review).toBe("x");
     state.done.render = "y";
     setCaptions(state, false);
@@ -108,11 +111,12 @@ describe("kalite kapısında insan kararı", () => {
 
   it("efekt sesi ayarı değişince timeline ve render yeniden açılır (iz timeline'da üretilir); aynı ayar dokunmaz", () => {
     const { state } = setup();
-    Object.assign(state.done, { timeline: "x", render: "x", review: "x" });
+    Object.assign(state.done, { timeline: "x", render: "x", short: "x", review: "x" });
     setSfx(state, true);
     expect(state.done).toMatchObject({ timeline: "x", render: "x" });
     setSfx(state, false);
     expect(state.input.sfx).toBe(false);
+    expect(state.done.short).toBeUndefined();
     expect(state.done.timeline).toBeUndefined();
     expect(state.done.render).toBeUndefined();
     expect(state.done.review).toBe("x");
@@ -125,7 +129,7 @@ describe("kalite kapısında insan kararı", () => {
 
   it("müzik ayarı değişince timeline ve render yeniden açılır; aynı ayar dokunmaz", () => {
     const { state } = setup();
-    Object.assign(state.done, { timeline: "x", render: "x", package: "x" });
+    Object.assign(state.done, { timeline: "x", render: "x", package: "x", short: "x" });
     setMusic(state, true);
     expect(state.done).toMatchObject({ timeline: "x", render: "x" });
     setMusic(state, false);
@@ -133,8 +137,20 @@ describe("kalite kapısında insan kararı", () => {
     expect(state.done.timeline).toBeUndefined();
     expect(state.done.render).toBeUndefined();
     expect(state.done.package).toBe("x");
+    expect(state.done.short).toBeUndefined();
     state.done.timeline = "y";
     setMusic(state, false);
     expect(state.done.timeline).toBe("y");
+  });
+
+  it("Short ayarı değişince yalnız short aşaması yeniden açılır; aynı ayar dokunmaz", () => {
+    const { state } = setup();
+    Object.assign(state.done, { render: "x", package: "x", short: "x", review: "x" });
+    setShort(state, true);
+    expect(state.done.short).toBe("x");
+    setShort(state, false);
+    expect(state.input.short).toBe(false);
+    expect(state.done).toMatchObject({ render: "x", package: "x", review: "x" });
+    expect(state.done.short).toBeUndefined();
   });
 });

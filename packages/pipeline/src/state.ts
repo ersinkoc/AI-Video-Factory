@@ -18,6 +18,8 @@ export const STAGES = [
   "render",
   /** Yayın paketi: YouTube başlığı, açıklama, bölümler, etiketler ve küçük resim. */
   "package",
+  /** Dikey Short: paketin seçtiği sahne aralığı 9:16 olarak yeniden render edilir (API yok). */
+  "short",
   /** Render sonrası inceleme: kareler denetlenir, dersler kalıcı deftere yazılır. */
   "review",
 ] as const;
@@ -80,6 +82,8 @@ export interface EpisodeInput {
    * Verilmezse açık.
    */
   music?: boolean;
+  /** Yatay bölümden dikey Short (paketin seçtiği 20–60 sn) yerelde render edilir. Verilmezse açık. */
+  short?: boolean;
   /**
    * Karakter bankasından ekrandaki sunucu (kütüphane kimliği): kadroya yeniden çizilmeden girer, anlatımı o konuşur;
    * yönetmen onu çekimlerin çoğuna koyar. Yalnız vektör modunda.
@@ -230,7 +234,17 @@ export interface EpisodeState {
   /** Render sonrası inceleme sonucu. */
   review?: EpisodeReview;
   /** Yayın paketi (package aşaması): yüklemeye hazır metinler; açıklama bölüm satırları ve hashtag'lerle birlikte. */
-  package?: { title: string; thumbnailText: string; description: string; tags: string[]; at: string };
+  package?: {
+    title: string;
+    thumbnailText: string;
+    description: string;
+    tags: string[];
+    /** Short'a kesilecek sahne aralığı (dahil) ve başlığı; eski paketlerde yok. */
+    short?: { from: string; to: string; title: string };
+    at: string;
+  };
+  /** Dikey Short (short aşaması): videonun yanındaki dosya, başlık, sahneler ve süre. */
+  short?: { path: string; title: string; scenes: string[]; sec: number; at: string };
   /** Render öncesi taslak kontrolü: ortalama puan ve yeniden planlanan sahneler. */
   draftReview?: EpisodeReview & { avg: number; revisedScenes: string[] };
   /** Senaryo doktorunun düzelttiği sorunlar (bölümler arası öğrenme için saklanır). */

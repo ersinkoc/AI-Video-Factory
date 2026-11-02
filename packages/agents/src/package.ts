@@ -15,6 +15,13 @@ export const PackageOut = z.object({
     .describe("3-8 chapters in story order, the first starting at the first scene; short titles in the episode language"),
   tags: z.array(z.string().max(30)).max(15).describe("Search tags in the episode language (plus well-known English names), most specific first"),
   hashtags: z.array(z.string().max(30)).max(3).describe("Up to 3 hashtags without the # sign, no spaces"),
+  short: z
+    .object({
+      from: z.string().describe("Id of the first scene of the Short"),
+      to: z.string().describe("Id of the last scene of the Short (inclusive; may equal from)"),
+      title: z.string().max(100).describe("YouTube Shorts title in the episode language, under 60 characters"),
+    })
+    .describe("The best stretch of consecutive scenes for a vertical YouTube Short, 20-60 s in total: it must make sense on its own, open with a hook and end on a payoff"),
 });
 export type PackageOut = z.infer<typeof PackageOut>;
 
@@ -24,22 +31,26 @@ export interface PackageInput {
   lang: string;
   /** Video süresi (sn): açıklamanın ve bölümlerin ölçüsü. */
   durationSec: number;
+  /** Sahne süreleri (sn): Short için uygun aralığı seçebilsin. */
+  sceneSec?: Record<string, number>;
 }
 
 /**
- * Yayın paketi: YouTube başlığı, küçük resim metni, açıklama, bölüm başlıkları, etiketler ve hashtag'ler. Bölüm
- * zamanları kodda sahne başlangıçlarından hesaplanır (model süreleri bilmez); burada yalnız metinler.
+ * Yayın paketi: YouTube başlığı, küçük resim metni, açıklama, bölüm başlıkları, etiketler, hashtag'ler ve Short'a
+ * kesilecek sahne aralığı. Bölüm zamanları ve Short'un süre sınırı kodda sahne başlangıçlarından hesaplanır; burada
+ * yalnız metinler ve seçim.
  */
 export function packager(input: PackageInput, deps?: AgentDeps): Promise<AgentResult<PackageOut>> {
-  const scenes = input.script.scenes.map((s) => `${s.id}: ${s.narration.slice(0, 280)}`).join("\n");
+  const sec = (id: string) => (input.sceneSec?.[id] !== undefined ? ` (${Math.round(input.sceneSec[id]!)} s)` : "");
+  const scenes = input.script.scenes.map((s) => `${s.id}${sec(s.id)}: ${s.narration.slice(0, 280)}`).join("\n");
   return runStructured(
     {
       name: "packager",
       model: models().fast,
       effort: "low",
       schema: PackageOut,
-      system: `You package a finished narrative YouTube video for publishing: title, thumbnail text, description, chapters, tags. Write everything in the episode language (${input.lang}); keep names of real people, companies and products as they are spelled. Be specific and honest: promise only what the video delivers.`,
-      prompt: `Working title: ${input.story.title}\nLogline: ${input.story.logline}\nHook: ${input.story.hook}\nLength: ${Math.round(input.durationSec / 60)} min\n\nScenes (id: narration start):\n${scenes}`,
+      system: `You package a finished narrative YouTube video for publishing: title, thumbnail text, description, chapters, tags, and the stretch to cut as a vertical Short. Write everything in the episode language (${input.lang}); keep names of real people, companies and products as they are spelled. Be specific and honest: promise only what the video delivers.`,
+      prompt: `Working title: ${input.story.title}\nLogline: ${input.story.logline}\nHook: ${input.story.hook}\nLength: ${Math.round(input.durationSec / 60)} min\n\nScenes (id (length): narration start):\n${scenes}`,
     },
     deps,
   );

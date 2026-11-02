@@ -17,7 +17,7 @@ vi.mock("../src/Globe3D.tsx", () => ({
   Globe3D: ({ globe, p, seed }: { globe: { lon: number }; p: number; seed: string }) => <div data-globe={`${globe.lon}|${p}|${seed}`} />,
 }));
 
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, heldFraming, fillWide, wrapTorso, mouthOpen, stageFit, tagBounds } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, heldFraming, fillWide, wrapTorso, mouthOpen, stageFit, tagBounds, contentFit } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -1392,6 +1392,43 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     expect(parseFloat(box.style.left)).toBeCloseTo((1080 - 1920 * fit) / 2);
     expect(parseFloat(box.style.top)).toBeCloseTo((1920 - 1080 * fit) / 2);
     expect(c.querySelector('[id="s1-bd-wall"]')!.closest("svg")!.parentElement!.style.filter).toContain("blur(28px)");
+  });
+
+  it("dikeyde iki kenara yerleşmiş kişiler kesilmesin diye sahne küçülür; ortadaki içerikte, yakın çekimde ve tahtalı çekimde ölçek aynı", () => {
+    const base = (1080 / 1920) * 1.3;
+    const scale = (c: HTMLElement) => {
+      const box = [...c.querySelectorAll("div")].find((d) => d.style.transformOrigin === "0 0" || d.style.transformOrigin === "0px 0px") as HTMLElement;
+      return Number(/scale\(([\d.]+)\)/.exec(box.style.transform)![1]);
+    };
+    const tall = { width: 1080, height: 1920 };
+    const spread = [
+      { asset: "ada", x: 150 },
+      { asset: "babbage", x: 1770 },
+    ];
+    const fit = scale(scene({ background: "room", layers: spread }, tall));
+    expect(fit).toBeLessThan(base);
+    expect(fit).toBeGreaterThanOrEqual(1080 / 1920);
+    // Kişiler görünen bandın içinde: sahnenin sol kenarı ekranda kişinin solunda.
+    const left = (1080 - 1920 * fit) / 2;
+    expect(left + (150 - 100) * fit).toBeGreaterThan(-1);
+    const centred = [
+      { asset: "ada", x: 800 },
+      { asset: "babbage", x: 1120 },
+    ];
+    expect(scale(scene({ background: "room", layers: centred }, tall))).toBeCloseTo(base);
+    expect(scale(scene({ background: "room", layers: spread, camera: { zoomFrom: 2, zoomTo: 2 } }, tall))).toBeCloseTo(base);
+    // Yatay kadrajda dokunulmaz.
+    expect(scene({ background: "room", layers: spread }).querySelector('[style*="scale(0."]')).toBeNull();
+  });
+
+  it("contentFit: içerik yoksa ya da bantta ise ölçek aynı; taşan içerik kadar küçülür, en çok tuvalin tamamı", () => {
+    const base = (1080 / 1920) * 1.3;
+    expect(contentFit(1080, base, [])).toBe(base);
+    expect(contentFit(1080, base, [700, 1200])).toBe(base);
+    expect(contentFit(1080, base, [100, 1800])).toBeCloseTo(1080 / (2 * (860 + 30)));
+    // Tuvalin dışı tuval kenarı sayılır; tuvalin tamamından küçük olmaz.
+    expect(contentFit(1080, base, [-500, 2400])).toBe(1080 / 1920);
+    expect(tagBounds(1080, 1920, 1080 / 1920)).toEqual({ left: 0, right: (1080 - 150) / (1080 / 1920) });
   });
 
   it("kare kadrajda büyütme yapılmaz; arka plan yoksa bulanık kopya da yoktur", () => {

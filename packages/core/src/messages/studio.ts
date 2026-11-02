@@ -14,6 +14,7 @@ export const STUDIO_MESSAGES = {
   "api.jobRunning": { tr: "Zaten çalışan bir iş var: {label}", en: "A job is already running: {label}" },
   "api.noVideo": { tr: "Video yok", en: "No video" },
   "api.noVideoFile": { tr: "Video dosyası yok", en: "Video file missing" },
+  "api.noShort": { tr: "Short yok (yatay bölümde short aşamasıyla üretilir)", en: "No Short (made by the short stage of a horizontal episode)" },
   "api.noThumbnail": { tr: "Küçük resim yok (bölümü yeniden render et)", en: "No thumbnail (render the episode again)" },
   "api.noSubtitles": { tr: "Altyazı dosyası yok (bölümü yeniden render et)", en: "No subtitle file (render the episode again)" },
   "api.forbidden": { tr: "Yasak", en: "Forbidden" },

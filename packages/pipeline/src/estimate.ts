@@ -1,6 +1,7 @@
 import { msg, type Capability, type Msg, type Text } from "@ys/core";
 import { billing, rankProviders, type GenerationRequest, type ProviderAdapter } from "@ys/media-gateway";
 import { gateBefore, isApproved, motionModeOf, STAGES, type EpisodeState, type MotionMode, type Stage } from "./state.ts";
+import { SHORT } from "./short.ts";
 import { clipSeconds } from "./timing.ts";
 
 /*
@@ -374,6 +375,20 @@ export function estimateEpisode(state: EpisodeState, ctx: EstimateContext, modeO
     seconds: PACKAGE.sec,
     basis: msg("cost.basis.package", { usd: PACKAGE.usd }),
   });
+
+  // --- dikey Short: seçilen aralığın yerel render'ı (yatay bölümde, kapatılmadıysa)
+  if (input.short !== false && input.width >= input.height) {
+    const shortSec = Math.min(videoSec, SHORT.maxSec);
+    add({
+      stage: "short",
+      via: msg("cost.via.remotion"),
+      quantity: Math.round(shortSec),
+      unit: msg("unit.videoSec"),
+      costUsd: 0,
+      seconds: 30 + shortSec * (vector ? VECTOR.renderX : 1.1),
+      basis: msg("cost.basis.short", { sec: SHORT.maxSec }),
+    });
+  }
 
   // --- inceleme: çekim başına bir kare (yerel), 6 karelik gruplar halinde ucuz görsel model
   const batches = Math.ceil(shotCount / REVIEW.perBatch);

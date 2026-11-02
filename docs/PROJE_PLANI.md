@@ -444,7 +444,7 @@ Aynı metin Almancada ~%20–30 uzar, Japoncada kısalır. Çözüm üç katmanl
 
 | Modül | Açıklama | Faz |
 |---|---|---|
-| **Shorts türetici** | Uzun videodan en güçlü 3–5 an seçilir (retention verisi + Claude). 9:16 yeniden kompozisyon yapılır (Remotion'da ayrı layout, keyframe'ler 9:16 da üretilebilir), hook altyazılı, ana videoya bağlantılı | 5 |
+| **Shorts türetici** | ✅ İlk sürüm (2 Kas): yayın paketi ajanı ardışık sahnelerden 20–60 sn seçer, `short` aşaması 9:16 yerel render eder (`pipeline/src/short.ts`, dikeyde `contentFit`), müzik/efekt yeniden üretilir. Sonraki: uzun videodan en güçlü 3–5 an seçilir (retention verisi + Claude). 9:16 yeniden kompozisyon yapılır (Remotion'da ayrı layout, keyframe'ler 9:16 da üretilebilir), hook altyazılı, ana videoya bağlantılı | 5 |
 | **Çoklu en-boy render** | 16:9 ana, 9:16 Shorts, 1:1 sosyal. Layout'lar Timeline'dan türetilir | 5 |
 | **Dizi / sezon sürekliliği** | `SeriesBible`: bölümler arası olay örgüsü, karakter gelişimi, geçmiş olay kaydı. Story ajanı önceki bölümleri hafızadan okur | 3 |
 | **Varlık kütüphanesi ve yeniden kullanım** | Onaylanmış keyframe'ler, klipler, mekânlar ve müzikler etiketlenip aranabilir (embedding). Yeni bölüm önce kütüphaneye bakar. Maliyet her bölümde düşer | 3 |

@@ -10,7 +10,7 @@ Mimari, sağlayıcı seçimi ve yol haritası: [docs/PROJE_PLANI.md](docs/PROJE_
 
 ## Özellikler
 
-- **Konudan bitmiş videoya.** Pipeline şu aşamalardan geçer: stil → hikâye → senaryo → *onay* → kadro → konsept → *onay* → ses → çekimler → kareler → klipler → kurgu → render → yayın paketi → inceleme. Her aşama idempotent'tir ve her alt adımdan sonra kaydeder; hata alan çalıştırma kaldığı yerden devam eder.
+- **Konudan bitmiş videoya.** Pipeline şu aşamalardan geçer: stil → hikâye → senaryo → *onay* → kadro → konsept → *onay* → ses → çekimler → kareler → klipler → kurgu → render → yayın paketi → Short → inceleme. Her aşama idempotent'tir ve her alt adımdan sonra kaydeder; hata alan çalıştırma kaldığı yerden devam eder.
 - **Dört hareket modu:**
   - `vector`: Claude'un çizdiği iskeletli SVG karakterler, hareketleri kodda. En ucuz mod.
   - `still`: Ken Burns hareketli görseller.
@@ -25,6 +25,7 @@ Mimari, sağlayıcı seçimi ve yol haritası: [docs/PROJE_PLANI.md](docs/PROJE_
 - **Son söz insanın.** Stüdyo'da kapının reddettiği bir çizimi kabul edebilir, geçirdiğini de tasarımcıya bir notla reddedebilirsin. Gerçeklik denetimini bir bölüm için kapatabilirsin.
 - **24 hazır stil paketi.** Örneğin düz anlatım, Osmanlı minyatürü, kara film, teknik çizim, ukiyo-e, synthwave, kara tahta, suluboya ve 8-bit piksel. *Otomatik* modda ucuz bir ajan konuya uyan paketi seçer; istersen kendin seçebilir ya da *Özel* ile sanat yönetmenine serbest tasarım yaptırabilirsin. Paket renkleri, çizim kurallarını ve çizgi stilini sabitler; aynı paketteki bölümler aynı elden çıkmış görünür. Liste için: `pnpm ys styles`.
 - **Fiziğe uyan vektör animasyon.** Karakterler iskeletli kuklalardır, tamamen kodla hareket eder: yerdeki şey havalanmaz, yürüyüş adımları alınan yoldan sayılır, elde tutulan nesne elde kalır ve bir karakter çekimde yalnız bir kez görünür. Jestlerde hazırlık ve taşma vardır; işaret hedefe uzanır, gözler konuşulan kişiyi izler, anlatırken baskın el kullanılır. İsteğe bağlı yan görünüşle yürüyen karakter profile döner. Özne çok küçük kalacaksa yakın çekim kendini yeniden çerçeveler.
+- **Her bölümden dikey Short.** Yayın ajanı ardışık sahnelerin en güçlü 20–60 saniyesini seçer; kod onları API maliyeti olmadan 9:16 olarak yeniden render eder, müzik ve efektler kısaya göre yeniden üretilir. Dikey kadrajda sahne gerekirse çekim başına küçülür, kenardaki karakterler kesilmez.
 - **API maliyeti olmadan müzik ve ses.** Arka plan müziği koddan sentezlenir: bölümleri yönetmenin her çekime verdiği havaya (aydınlık, sıcak, soğuk, gece, dramatik) uyar, hepsi aynı anahtarda ve çapraz kararmalı; anlatım sırasında kelime kelime kısılır. Vektör modunda animasyonlara kareye kilitli efekt sesleri de eklenir. İkisi de bölüm başına bir anahtardır.
 - **Düzenli ekran yazıları ve isteğe bağlı altyazı.** Mekân, tarih ve olay satırları sol üstte tek bir bilgi kartında, kişi etiketleri kişinin yanında durur. Altyazı her zaman videonun yanına `.srt` olarak yazılır; videoya gömülmesi bölüm başına bir anahtardır.
 - **Karakter bankası.** Konudan bağımsız karakterleri (sunucu, bilim insanı, çocuk…) sakla; ekrandaki sunucu yap, kadroya ekle ya da seri maskotu yap. Hiçbir zaman yeniden çizilmezler.
@@ -92,7 +93,7 @@ pnpm studio:build && pnpm studio:start   # production derlemesi, aynı port
 2. **Senaryo.** Sahneleri düzenle ve onayla.
 3. **Konsept.** Karakterler ve mekânlar seçilip çizilir. Kalite kapısı paneli her çizimi referanslarıyla, puanlarıyla, kusurlarıyla ve çizim planıyla gösterir. Kabul et, reddet ya da notla yeniden çizdir.
 4. **Üretim.** Pipeline şeridi, canlı panel ve etkinlik günlüğü her ajan çağrısını modeli, maliyeti ve süresiyle gösterir. Çekimler sekmesi render'dan önce her çekimin önizleme karesini gösterir; vektör modunda bir çekimin karesi, nesnelerinin hepsi çizilir çizilmez gelir.
-5. **İzle ve indir:** videoyu, `.srt` altyazı dosyasını ve incelemesini gör. Altyazı her zaman videonun yanına `.srt` olarak yazılır; videoya gömülmesi bölüm başına bir anahtardır (değiştirmek yalnız render'ı tekrarlar, ücretsizdir). Yayın paketi YouTube başlığını, bölümlü açıklamayı, etiketleri (her birinin kopyala düğmesi var) ve indirilebilir 1280×720 küçük resmi verir.
+5. **İzle ve indir:** videoyu, `.srt` altyazı dosyasını ve incelemesini gör. Altyazı her zaman videonun yanına `.srt` olarak yazılır; videoya gömülmesi bölüm başına bir anahtardır (değiştirmek yalnız render'ı tekrarlar, ücretsizdir). Yayın paketi YouTube başlığını, bölümlü açıklamayı, etiketleri (her birinin kopyala düğmesi var) ve indirilebilir 1280×720 küçük resmi verir. Yatay bölüm ayrıca dikey bir Short alır: paket en iyi 20–60 saniyesini seçer, yerelde 9:16 olarak yeniden render edilir.
 
 Ekran yazıları tek düzende: mekân, tarih ve olay satırları sol üstte sabit bir bilgi kartında, kişi etiketleri kişinin yanında; hepsi aynı yazı tipi ve plaka stiliyle.
 

@@ -830,6 +830,7 @@ describe("timeline, render ve inceleme", () => {
     chapters: [{ scene: "s1", title: "Başlangıç" }],
     tags: ["microsoft", "bill gates"],
     hashtags: ["tarih", "#teknoloji"],
+    short: { from: "s1", to: "s1", title: " Gates'in Hamlesi " },
   };
 
   it("package: yayın paketi ve küçük resim videonun yanına yazılır; hikâye yoksa konu başlık sayılır", async () => {
@@ -844,9 +845,19 @@ describe("timeline, render ve inceleme", () => {
     onAgent("packager", () => PKG);
     const state = await h.pipeline.run(id, { only: "package" });
     // Tek sahnede bölüm listesi yok (en az 3 gerekir); hashtag'ler # ile, boşluksuz.
-    expect(state.package).toMatchObject({ title: PKG.title, thumbnailText: PKG.thumbnailText, description: "Kanca satırı.\n\nAyrıntı paragrafı.\n\n#tarih #teknoloji", tags: PKG.tags });
+    expect(state.package).toMatchObject({
+      title: PKG.title,
+      thumbnailText: PKG.thumbnailText,
+      description: "Kanca satırı.\n\nAyrıntı paragrafı.\n\n#tarih #teknoloji",
+      tags: PKG.tags,
+      short: { from: "s1", to: "s1", title: "Gates'in Hamlesi" },
+    });
     const input = callsOf("packager")[0]!.args[0];
     expect(input).toMatchObject({ lang: "tr", story: { title: state.input.topic } });
+    // Ajan Short aralığını seçebilsin diye sahne süreleri (son sahne videonun sonuna kadar).
+    const sceneSec = (input as { sceneSec: Record<string, number> }).sceneSec;
+    expect(Object.keys(sceneSec)).toEqual(state.script!.scenes.map((s) => s.id));
+    expect(Object.values(sceneSec).reduce((a, b) => a + b, 0)).toBeCloseTo(state.timeline!.durationInFrames / state.timeline!.fps, 5);
     const txt = state.render!.path.replace(/\.mp4$/, ".youtube.txt");
     expect(readFileSync(txt, "utf8")).toBe(`${PKG.title}\n\n${state.package!.description}\n\nmicrosoft, bill gates`);
     expect(h.logs).toContain(`  yayın paketi (başlık, açıklama, bölümler, etiketler): ${txt}`);

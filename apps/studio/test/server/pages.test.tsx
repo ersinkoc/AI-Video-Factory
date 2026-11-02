@@ -164,7 +164,7 @@ describe("Ana sayfa", () => {
     expect(h).toContain('data-status="running"');
     expect(t).toContain("Çalışıyor · Stil");
     expect(t).toContain("Vektör");
-    expect(t).toContain("2/13 · $3.00");
+    expect(t).toContain("2/14 · $3.00");
     expect(h).toContain('href="/episodes/e-video"');
     // Form artık kendi sayfasında; ana sayfada yalnız ona giden düğme var.
     expect(h).not.toContain("data-form");

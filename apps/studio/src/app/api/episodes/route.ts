@@ -36,6 +36,7 @@ interface CreateBody {
   captions?: boolean;
   sfx?: boolean;
   music?: boolean;
+  short?: boolean;
   /** Karakter bankasından sunucu ve kadroya eklenecekler (kütüphane kimlikleri). */
   presenter?: string;
   bankCast?: string[];
@@ -74,6 +75,8 @@ export async function POST(req: Request) {
     sfx: body.sfx !== false,
     // Arka plan müziği her modda; gönderilmezse açık.
     music: body.music !== false,
+    // Yatay bölümden dikey Short; gönderilmezse açık.
+    short: body.short !== false,
     // Boş: stil paketinin çizgi stili.
     lineStyle: body.lineStyle ? LineStyle.optional().catch(undefined).parse(body.lineStyle) : undefined,
     series: typeof body.series === "string" ? cleanSeries(body.series) : undefined,

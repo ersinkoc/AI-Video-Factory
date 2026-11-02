@@ -91,15 +91,38 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
                 {t("video.music")}
               </label>
             )}
-            {act && !state.done.render && (
-              // Altyazı ayarı değişti: yalnız render yeniden çalışır (ücretsiz).
+            {act && state.input.width > state.input.height && (
+              <label className="flex items-center gap-2 text-sm" title={t("form.short.hint")}>
+                <input
+                  type="checkbox"
+                  checked={state.input.short !== false}
+                  disabled={busy}
+                  onChange={(e) => act({ type: "set-short", enabled: e.target.checked })}
+                />
+                {t("video.short")}
+              </label>
+            )}
+            {act && (!state.done.render || (state.done.package && !state.done.short)) && (
+              // Altyazı/ses/Short ayarı değişti: yalnız render ve Short yeniden çalışır (ücretsiz).
               <button className="btn-primary" disabled={busy} onClick={() => act({ type: "resume" })}>
                 <RefreshCw size={16} /> {t("video.rerender")}
               </button>
             )}
           </div>
         )}
-        {state.package && <PackageCard pkg={state.package} />}
+        {src && state.short && (
+          <section className="card flex flex-wrap items-start gap-4 p-4">
+            <video src={`${src}&short`} controls className="aspect-[9/16] w-48 rounded-lg border border-line bg-black" />
+            <div className="grid gap-2 text-sm">
+              <h3 className="font-semibold">{t("video.short")}</h3>
+              <p className="text-muted">{t("video.short.info", { sec: state.short.sec, scenes: state.short.scenes.join(", ") })}</p>
+              <a className="btn-ghost" href={`${src}&short&download`}>
+                <Download size={16} /> {t("video.download")}
+              </a>
+            </div>
+          </section>
+        )}
+        {state.package && <PackageCard pkg={state.package} shortTitle={state.short?.title} />}
         <Review data={data} />
       </div>
       <Facts data={data} />
@@ -110,7 +133,7 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
 const LESSON_PREVIEW = 5;
 
 /** Yayın paketi: YouTube'a yüklerken kopyalanacak başlık, açıklama (bölümler ve hashtag'lerle) ve etiketler. */
-function PackageCard({ pkg }: { pkg: NonNullable<EpisodeResponse["state"]["package"]> }) {
+function PackageCard({ pkg, shortTitle }: { pkg: NonNullable<EpisodeResponse["state"]["package"]>; shortTitle?: string }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState<string>();
   const copy = (key: string, text: string) => {
@@ -133,6 +156,7 @@ function PackageCard({ pkg }: { pkg: NonNullable<EpisodeResponse["state"]["packa
       {field("title", t("video.package.title"), pkg.title)}
       {field("description", t("video.package.description"), pkg.description, 8)}
       {field("tags", t("video.package.tags"), pkg.tags.join(", "))}
+      {shortTitle && field("short", t("video.short.title"), shortTitle)}
     </section>
   );
 }

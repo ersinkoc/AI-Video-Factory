@@ -153,6 +153,7 @@ describe("/api/episodes", () => {
       captions: true,
       sfx: true,
       music: true,
+      short: true,
       stylePack: "auto",
       width: 1920,
       height: 1080,
@@ -183,13 +184,14 @@ describe("/api/episodes", () => {
         captions: false,
         sfx: false,
         music: false,
+        short: false,
         lineStyle: "ink",
         stylePack: STYLE_PACK_IDS[0],
         series: "  Osmanlı   Tarihi ",
       }),
     );
     const s = await load(((await res.json()) as { id: string }).id);
-    expect(s.input).toMatchObject({ lang: "en-US", targetSec: 90, budgetUsd: 7, tier: "premium", motionMode: "vector", voiceId: "v1", qa: false, realism: false, captions: false, sfx: false, music: false, lineStyle: "ink", stylePack: STYLE_PACK_IDS[0], width: 1080, height: 1920 });
+    expect(s.input).toMatchObject({ lang: "en-US", targetSec: 90, budgetUsd: 7, tier: "premium", motionMode: "vector", voiceId: "v1", qa: false, realism: false, captions: false, sfx: false, music: false, short: false, lineStyle: "ink", stylePack: STYLE_PACK_IDS[0], width: 1080, height: 1920 });
     expect(s.input.styleHint).toHaveLength(300);
     expect(s.input.series).toBe("Osmanlı Tarihi");
 
@@ -494,6 +496,20 @@ describe("GET /api/episodes/[id]/video", () => {
     expect(dl.headers.get("content-disposition")).toBe('attachment; filename="v-kucuk.jpg"');
   });
 
+  it("?short dikey Short'u oynatır, &download ile indirtir; Short yoksa 404", async () => {
+    expect(await (await get("v-var", TR, "?short")).text()).toBe("Short yok (yatay bölümde short aşamasıyla üretilir)");
+    const mp4 = join(root, "video.short.mp4");
+    writeFileSync(mp4, bytes.slice(0, 10));
+    await saveEpisode("v-short", { render: { path: join(root, "video.mp4"), at: "t" }, short: { path: mp4, title: "Kısa", scenes: ["s1"], sec: 30, at: "t" } });
+    const res = await get("v-short", TR, "?short");
+    expect(res.headers.get("content-length")).toBe("10");
+    expect(res.headers.get("content-disposition")).toBeNull();
+    await res.arrayBuffer();
+    const dl = await get("v-short", TR, "?short&download");
+    expect(dl.headers.get("content-disposition")).toBe('attachment; filename="v-short.short.mp4"');
+    await dl.arrayBuffer();
+  });
+
   it("Range: baştan, açık uçlu, sondan ve boyutu aşan son", async () => {
     const cases: [string, number, number][] = [
       ["bytes=0-99", 0, 99],
@@ -660,6 +676,8 @@ describe("POST /api/episodes/[id]/action", () => {
     expect((await load("a5")).input.music).toBe(false);
     await ok("a5", { type: "set-music", enabled: "evet" });
     expect((await load("a5")).input.music).toBe(false);
+    await ok("a5", { type: "set-short", enabled: false });
+    expect((await load("a5")).input.short).toBe(false);
   });
 
   it("kalite kapısında insan kararı: kabul ve ret durum dosyasına ve varlık kaydına yazılır", async () => {

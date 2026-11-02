@@ -201,6 +201,7 @@ describe("NewEpisodeForm", () => {
         sideViews: false,
         captions: false,
         music: true,
+        short: true,
         stylePack: "auto",
       },
     ]);
@@ -220,10 +221,11 @@ describe("NewEpisodeForm", () => {
     fireEvent.click(document.querySelector('input[name="sfx"]')!);
     // Müzik her modda, varsayılan açık.
     fireEvent.click(document.querySelector('input[name="music"]')!);
+    fireEvent.click(document.querySelector('input[name="short"]')!);
     await submit();
     const button = screen.getByRole("button", { name: tr("form.submitting") }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(api.creates[0]).toMatchObject({ motionMode: "vector", lineStyle: "ink", qa: false, captions: true, sfx: false, music: false });
+    expect(api.creates[0]).toMatchObject({ motionMode: "vector", lineStyle: "ink", qa: false, captions: true, sfx: false, music: false, short: false });
     await act(async () => finish(json({ id: "v1" })));
     expect(router.push).toHaveBeenCalledWith("/episodes/v1");
   });

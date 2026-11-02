@@ -88,6 +88,7 @@ export const COSTS_MESSAGES = {
   "cost.stage.timeline": { tr: "Kurgu", en: "Edit" },
   "cost.stage.render": { tr: "Render", en: "Render" },
   "cost.stage.package": { tr: "Yayın paketi", en: "Publishing package" },
+  "cost.stage.short": { tr: "Dikey Short", en: "Vertical Short" },
   "cost.stage.review": { tr: "İnceleme", en: "Review" },
   "cost.join": { tr: "{a}; {b}", en: "{a}; {b}" },
   "cost.noProvider": {
@@ -152,6 +153,10 @@ export const COSTS_MESSAGES = {
   "cost.basis.package": {
     tr: "bir yazım çağrısı (~${usd}) + yerel küçük resim",
     en: "one writing call (~${usd}) + local thumbnail",
+  },
+  "cost.basis.short": {
+    tr: "paketin seçtiği en çok {sec} sn, 9:16 yerel render; müzik ve efekt yeniden üretilir",
+    en: "up to {sec} s chosen by the package, local 9:16 render; music and effects are regenerated",
   },
   "cost.via.local": { tr: "yerel", en: "local" },
   "cost.via.remotion": { tr: "yerel (Remotion)", en: "local (Remotion)" },

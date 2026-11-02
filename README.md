@@ -10,7 +10,7 @@ Architecture, provider choices and the roadmap are in [docs/PROJE_PLANI.md](docs
 
 ## Features
 
-- **Topic to finished video.** The pipeline runs these stages: style → story → script → *approval* → cast → concept → *approval* → voice → shots → keyframes → clips → timeline → render → package → review. Every stage is idempotent and saves after each sub-step, so a failed run resumes where it stopped.
+- **Topic to finished video.** The pipeline runs these stages: style → story → script → *approval* → cast → concept → *approval* → voice → shots → keyframes → clips → timeline → render → package → short → review. Every stage is idempotent and saves after each sub-step, so a failed run resumes where it stopped.
 - **Four motion modes:**
   - `vector`: Claude-drawn SVG characters on a rig, animated in code. This is the cheapest mode.
   - `still`: images with Ken Burns motion.
@@ -25,6 +25,7 @@ Architecture, provider choices and the roadmap are in [docs/PROJE_PLANI.md](docs
 - **The human has the final say.** In the Studio you can accept a drawing the gate rejected, or reject one it passed and add a note for the designer. You can also turn the reality check off for one episode.
 - **24 ready-made style packs.** Examples include flat explainer, Ottoman miniature, film noir, blueprint, ukiyo-e, synthwave, chalkboard, watercolour and 8-bit pixel. In *Automatic* mode a cheap agent picks the pack that fits the topic; you can also choose one yourself, or choose *Custom* to let the art director design freely. A pack fixes the colours, drawing rules and line style, so all episodes in a pack look as if the same hand made them. Run `pnpm ys styles` to list them.
 - **Vector animation that obeys physics.** Characters are puppets on a rig, moved entirely in code: things on the floor never float, walk steps follow the distance travelled, held objects stay in the hand, and a character appears only once per shot. Gestures have anticipation and overshoot; pointing aims at its target, eyes follow the listener, and explaining uses one dominant hand. Optional side views let walking characters turn to profile. Close-ups reframe themselves when the subject would stay tiny.
+- **A vertical Short from every episode.** The publishing agent picks the strongest 20–60 seconds of consecutive scenes; code re-renders them as 9:16 at no API cost, with music and effects regenerated for the clip. In vertical frames the stage shrinks per shot when needed so characters at the edges are not cut.
 - **Music and sound without API costs.** Background music is synthesized in code: its sections follow the mood the director gives each shot (bright, warm, cool, night, dramatic), all in one key with crossfades, and it ducks under the narration word by word. In vector mode, animations also get frame-locked sound effects. Both are per-episode switches.
 - **Clean on-screen text and optional subtitles.** Place, date and event lines sit in one info card at the top-left; name tags stay next to their person. Subtitles are always written as an `.srt` next to the video, and burning them in is a per-episode switch.
 - **Character bank.** Keep topic-independent characters (a presenter, a scientist, a child…) and use them as the on-screen presenter, add them to a cast, or make them a series mascot. They are never redrawn.
@@ -92,7 +93,7 @@ pnpm studio:build && pnpm studio:start   # production build, same port
 2. **Script.** Edit the scenes and approve them.
 3. **Concept.** Characters and places are cast and drawn. The quality-gate panel shows each drawing with its references, scores, defects and drawing plan. Accept, reject or redraw with a note.
 4. **Production.** The pipeline rail, live panel and activity log show every agent call with its model, cost and duration. The Shots tab shows a preview frame of every shot before the render; in vector mode a shot's frame appears as soon as all of its props are drawn.
-5. **Watch and download** the video and its `.srt` subtitle file, and read its review. Subtitles are always written as an `.srt` next to the video; burning them in is a per-episode switch (changing it re-renders only, at no cost). The publishing package gives a YouTube title, a description with chapters, tags (each with a copy button) and a downloadable 1280×720 thumbnail.
+5. **Watch and download** the video and its `.srt` subtitle file, and read its review. Subtitles are always written as an `.srt` next to the video; burning them in is a per-episode switch (changing it re-renders only, at no cost). The publishing package gives a YouTube title, a description with chapters, tags (each with a copy button) and a downloadable 1280×720 thumbnail. A horizontal episode also gets a vertical Short: the package picks its best 20–60 seconds and they are re-rendered locally as 9:16.
 
 On-screen text follows one layout: place, date and event lines sit in a fixed info card at the top-left, and name tags stay next to their person, all in one typeface and one plate style.
 

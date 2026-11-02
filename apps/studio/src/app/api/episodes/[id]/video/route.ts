@@ -48,7 +48,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       },
     });
   }
-  const path = state.render.path;
+  // "?short": dikey Short (videonun yanındaki .short.mp4).
+  const short = new URL(req.url).searchParams.has("short");
+  if (short && !state.short) return textResponse(req, msg("api.noShort"), 404);
+  const path = short ? state.short!.path : state.render.path;
   const info = await stat(path).catch(() => undefined);
   if (!info) return textResponse(req, msg("api.noVideoFile"), 404);
   const { size } = info;
@@ -56,7 +59,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const headers: Record<string, string> = {
     "content-type": "video/mp4",
     "accept-ranges": "bytes",
-    ...(download ? { "content-disposition": `attachment; filename="${id}.mp4"` } : {}),
+    ...(download ? { "content-disposition": `attachment; filename="${id}${short ? ".short" : ""}.mp4"` } : {}),
   };
 
   const range = /bytes=(\d*)-(\d*)/.exec(req.headers.get("range") ?? "");

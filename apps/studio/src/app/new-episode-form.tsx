@@ -137,6 +137,7 @@ export function NewEpisodeForm({
           captions: form.get("captions") === "on",
           ...(mode === "vector" ? { sfx: form.get("sfx") === "on" } : {}),
           music: form.get("music") === "on",
+          short: form.get("short") === "on",
           lineStyle: form.get("lineStyle") || undefined,
           stylePack: form.get("stylePack"),
           ...(mode === "vector" && presenter ? { presenter } : {}),
@@ -301,6 +302,7 @@ export function NewEpisodeForm({
             <Toggle name="sideViews" label={t("form.sideViews")} hint={t("form.sideViews.hint")} />
             {mode === "vector" && <Toggle name="sfx" defaultChecked label={t("form.sfx")} hint={t("form.sfx.hint")} />}
             <Toggle name="music" defaultChecked label={t("form.music")} hint={t("form.music.hint")} />
+            <Toggle name="short" defaultChecked label={t("form.short")} hint={t("form.short.hint")} />
           </div>
         </Section>
       </div>
