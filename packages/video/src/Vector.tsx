@@ -614,7 +614,7 @@ export function frameWide(cam: VectorShot["camera"], keep: PlacedLayer[]): Vecto
  * Geniş çekimi doldurma: en çok zoom (yakın çekimin altında), yan pay, en az kazanç; ekranda kafaların üst sınırı,
  * nesnelerin alt sınırı (altyazı bandının üstü) ve kişinin kesilebileceği yer (diz, boyunun alttan %30'u).
  */
-const FILL = { most: 1.8, margin: 1.2, gain: 1.1, top: 0.08, props: 0.8, knee: 0.3 } as const;
+const FILL = { most: 1.8, margin: 1.2, gain: 1.1, top: 0.08, props: 0.8, knee: 0.3, offCentre: 0.15 } as const;
 
 /**
  * Geniş çekimde içerik kadrajın küçük bir bölümündeyse kamera ona yaklaşır (yakın çekim sınırının altında): boş
@@ -635,8 +635,16 @@ export function fillWide(
   const top = Math.max(0, Math.min(...content.map((pl) => pl.y - pl.height)));
   // Ekranda y = H/2 + (nokta - odak) × zoom. Her alt çizgi (nesnenin tabanı ya da kişinin dizi) kendi sınırının üstünde.
   const lines = content.map((pl) => (person(pl) ? { y: pl.y - pl.height * FILL.knee, max: 1 } : { y: Math.min(H, pl.y), max: FILL.props }));
-  const zoom = Math.min(FILL.most, W / FILL.margin / (right - left), ...lines.map((l) => ((l.max - FILL.top) * H) / (l.y - top)));
-  if (zoom < z * FILL.gain) return undefined;
+  const most = Math.min(FILL.most, W / FILL.margin / (right - left), ...lines.map((l) => ((l.max - FILL.top) * H) / (l.y - top)));
+  // Yaklaşmaya değmiyorsa yönetmenin zoom'u kalır; ama içerik kadrajın bir yanına yığılıp öbür yarısı boşsa (Microsoft
+  // s8-sh5, 2 Kas: kişi solda, sağ yarı boş duvar) o zoom'la ortalanır. Kayan kamera bilerek kaydırır, ona dokunulmaz.
+  let zoom = most;
+  if (most < z * FILL.gain) {
+    const s = Math.max(1, z);
+    const view = ((cam.focusX ?? W / 2) * (s - 1)) / s + W / (2 * s);
+    if (most < z || cam.panX !== 0 || Math.abs((left + right) / 2 - view) < (W / s) * FILL.offCentre) return undefined;
+    zoom = z;
+  }
   const low = Math.max(...lines.map((l) => l.y - ((l.max - 0.5) * H) / zoom));
   const high = top + ((0.5 - FILL.top) * H) / zoom;
   const y = Math.min(Math.max((top + Math.max(...lines.map((l) => l.y))) / 2, low), high);

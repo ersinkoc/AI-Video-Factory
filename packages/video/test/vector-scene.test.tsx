@@ -1200,6 +1200,24 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     expect(fillWide(cam, [{ ...PL, x: 960, y: 1080, width: 1920, height: 1080 }], isMan)).toBeUndefined();
   });
 
+  it("yaklaşmaya değmeyen ama bir yana yığılmış içerik yönetmenin zoom'uyla ortalanır (Microsoft s8-sh5)", () => {
+    // Soldaki kişi ve ortadaki küçük cihaz: yaklaşma 1,3 → ~1,42, kazanç eşiğin altında.
+    const man = { ...PL, x: 450, y: 951, width: 298, height: 595 };
+    const box = { ...PL, x: 1000, y: 902, width: 126, height: 53 };
+    const isMan = (pl: { height: number }) => pl.height === 595;
+    const cam = { zoomFrom: 1.1, zoomTo: 1.3, panX: 0, focusX: 960, focusY: 600 };
+    const out = fillWide(cam, [man, box], isMan)!;
+    expect(out.centre).toBe(true);
+    expect(out.cam).toMatchObject({ zoomFrom: 1.1, zoomTo: 1.3, panX: 0, focusX: (301 + 1063) / 2 });
+    // Kafa üst kenara, cihaz altyazı bandına değmez.
+    expect(540 + (951 - 595 - out.cam.focusY!) * 1.3).toBeGreaterThanOrEqual(0.08 * 1080 - 0.5);
+    expect(540 + (902 - out.cam.focusY!) * 1.3).toBeLessThanOrEqual(0.8 * 1080 + 0.5);
+    // Zaten ortadaysa, kamera kayıyorsa ya da odaksız kamerada içerik ortadaysa dokunulmaz.
+    expect(fillWide({ ...cam, focusX: 682 }, [man, box], isMan)).toBeUndefined();
+    expect(fillWide({ ...cam, panX: 0.3 }, [man, box], isMan)).toBeUndefined();
+    expect(fillWide({ zoomFrom: 1.1, zoomTo: 1.3, panX: 0 }, [{ ...man, x: 820 }, { ...box, x: 1100 }], isMan)).toBeUndefined();
+  });
+
   it("sahnede boş geniş çekim yaklaşır; sahneye yürüyen biri varsa yaklaşmaz", () => {
     const zoomOf = (layers: object[]) => {
       const c = scene({ layers, camera: { zoomFrom: 1.1, zoomTo: 1.1, panX: 0, focusX: 960, focusY: 540 } }, { frame: 150 });
