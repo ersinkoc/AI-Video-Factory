@@ -17,7 +17,7 @@ vi.mock("../src/Globe3D.tsx", () => ({
   Globe3D: ({ globe, p, seed }: { globe: { lon: number }; p: number; seed: string }) => <div data-globe={`${globe.lon}|${p}|${seed}`} />,
 }));
 
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, heldFraming, fillWide, wrapTorso, mouthOpen } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, heldFraming, fillWide, wrapTorso, mouthOpen, stageFit, tagBounds } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -1008,6 +1008,24 @@ describe("vektör sahne: yazılar", () => {
     // Uzun yazı iki satıra sığana dek küçülür.
     const [long] = layoutTexts([t({ text: "x".repeat(200), style: "title" })]);
     expect(long!.size).toBeLessThan(64);
+  });
+
+  it("dikey videoda kişi etiketi tuvalin görünen kısmında ve sağdaki platform düğmelerinin solunda kalır", () => {
+    // 9:16: sahne 0,73125 ölçekle, x -162'den başlar; görünen tuval ~221..1698, düğme şeridi tuvalde ~1493'ten sonra.
+    expect(stageFit(1080, 1920)).toBeCloseTo(0.73125);
+    expect(stageFit(1920, 1080)).toBe(1);
+    const b = tagBounds(1080, 1920);
+    expect(b.left).toBeCloseTo(162 / 0.73125);
+    expect(b.right).toBeCloseTo((1080 - 150 + 162) / 0.73125);
+    expect(tagBounds(1920, 1080)).toEqual({ left: 0, right: 1920 });
+    expect(tagBounds(1080, 1080)).toEqual({ left: 0, right: 1920 });
+    const t = VectorShot.shape.texts.parse([{ text: "Bill Gates", x: 1650, y: 400 }])[0]!;
+    const [wide] = layoutTexts([t]);
+    const [tall] = layoutTexts([t], true, undefined, b);
+    expect(wide!.x).toBe(1650);
+    expect(tall!.x).toBeLessThan(b.right - 100);
+    const [left] = layoutTexts([{ ...t, x: 100 }], true, undefined, b);
+    expect(left!.x).toBeGreaterThan(b.left + 100);
   });
 });
 

@@ -22,6 +22,7 @@ import {
   type WordTiming,
   STAGE,
   TEXT_RULES,
+  VERTICAL_SAFE,
 } from "@ys/core";
 import { useMemo, type CSSProperties } from "react";
 import { AbsoluteFill, Easing, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
@@ -974,6 +975,25 @@ interface PlacedText {
   card: boolean;
 }
 
+/**
+ * Sahnenin (1920×1080 tuval) videoya ölçeği: aynı oranda 1; dikeyde tam sığdırma sahneyi çok küçültür, 1,3 kat yakın
+ * çekim (kenarlardan ~%12 kırpılır); yatay/kareye yakın oranlarda büyütme yok.
+ */
+export function stageFit(width: number, height: number): number {
+  return Math.min(height / H, (width / W) * (width < height ? 1.3 : 1));
+}
+
+/**
+ * Kişi etiketlerinin tuvaldeki yatay aralığı: dikey videoda tuvalin ekranda görünen kısmı, sağda platformun düğmelerinin
+ * altında kalan şerit hariç (VERTICAL_SAFE); öteki oranlarda bütün tuval.
+ */
+export function tagBounds(width: number, height: number): { left: number; right: number } {
+  if (height <= width) return { left: 0, right: W };
+  const fit = stageFit(width, height);
+  const offset = (width - W * fit) / 2;
+  return { left: Math.max(0, -offset / fit), right: Math.min(W, (width - VERTICAL_SAFE.right - offset) / fit) };
+}
+
 /** Satır sayısının kaba tahmini (ortalama harf genişliği ~0,55 em); en fazla iki satıra sığana dek küçülür. */
 function fit(text: string, size: number, width: number): { size: number; lines: number } {
   const lines = (s: number) => Math.max(1, Math.ceil((text.length * s * 0.55) / width));
@@ -986,7 +1006,12 @@ function fit(text: string, size: number, width: number): { size: number; lines: 
  * üstüne sıkıştırılır; yatayda örtüştüğü kartın ya da etiketin altına iner, birbirine binmez). En fazla iki yazı. vertical: 9:16'da kart kırpılan
  * kenardan içeri alınır.
  */
-export function layoutTexts(texts: VectorText[], vertical = false, anchor: (text: VectorText) => TagAnchor | undefined = (text) => ({ x: text.x, y: text.y })): PlacedText[] {
+export function layoutTexts(
+  texts: VectorText[],
+  vertical = false,
+  anchor: (text: VectorText) => TagAnchor | undefined = (text) => ({ x: text.x, y: text.y }),
+  bounds: { left: number; right: number } = { left: 0, right: W },
+): PlacedText[] {
   // Dayanağı olmayan etiket (adı geçen kişi bu çekimde yok) gösterilmez ve sınırdan yer kapmaz: ayıklama sınırdan önce.
   const anchors = new Map(texts.filter((text) => text.style === "label").map((text) => [text, anchor(text)]));
   const shown = texts.filter((text) => text.style !== "label" || anchors.get(text)).slice(0, MAX_TEXTS);
@@ -1010,7 +1035,7 @@ export function layoutTexts(texts: VectorText[], vertical = false, anchor: (text
       const y = at.head ? at.y - height / 2 - TAG_LIFT : at.y;
       // Kenar sınırı yazının kendi genişliğiyle: kenardaki kişinin etiketi ondan uzağa itilmesin.
       const half = plateWidth(text.text, size, TAG_WIDTH) / 2;
-      return { text, x: Math.min(W - half - 24, Math.max(half + 24, at.x)), y: Math.min(TEXT_BOTTOM, Math.max(TEXT_TOP, y)), size, height, half, card: false };
+      return { text, x: Math.min(bounds.right - half - 24, Math.max(bounds.left + half + 24, at.x)), y: Math.min(TEXT_BOTTOM, Math.max(TEXT_TOP, y)), size, height, half, card: false };
     })
     .sort((a, b) => a.y - b.y);
   // Etiket yalnız yatayda örtüştüğü karta ya da etikete binmesin diye onun altına iner: yan yana iki kişinin etiketi
@@ -1281,7 +1306,7 @@ export function VectorScene({
     // üst kenarına yapışıyordu (Apple s6-sh6, 1 Kas).
     if (near && !faceOnScreen([x, y], cameraPoint(cam, k, centre, near.foot))) return undefined;
     return { x, y, head: near !== undefined };
-  });
+  }, tagBounds(width, height));
   const [c0 = "#1d2433", c1 = "#3a4a66", accent = "#ffd84d"] = palette;
 
   const stage = (
@@ -1372,7 +1397,7 @@ export function VectorScene({
   // arka planın bulanık, büyütülmüş kopyası doldurur. Yerleşim, yazı ve harita koordinatları değişmez.
   // Dikeyde tam sığdırma sahneyi çok küçültür: 1,3 kat yakın çekim (kenarlardan ~%12 kırpılır). İçerik zaten orta
   // bantta (x 420–1500, arka plan kuralı) yerleşir; yatay/kareye yakın oranlarda büyütme yapılmaz.
-  const fit = Math.min(height / H, (width / W) * (width < height ? 1.3 : 1));
+  const fit = stageFit(width, height);
   return (
     <AbsoluteFill style={{ overflow: "hidden", background: `linear-gradient(160deg, ${c0}, ${c1})` }}>
       {bg && (

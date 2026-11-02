@@ -1,5 +1,5 @@
 import { createTikTokStyleCaptions, type Caption } from "@remotion/captions";
-import { MATH_BOARD, type Timeline } from "@ys/core";
+import { MATH_BOARD, VERTICAL_SAFE, type Timeline } from "@ys/core";
 import { useMemo, type ReactNode } from "react";
 import {
   AbsoluteFill,
@@ -14,7 +14,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { Ambience } from "./Ambience.tsx";
-import { VectorScene } from "./Vector.tsx";
+import { stageFit, VectorScene } from "./Vector.tsx";
 
 export type EpisodeProps = { timeline: Timeline };
 
@@ -69,22 +69,25 @@ function Clip({ visual }: { visual: Visual }) {
 
 /**
  * Manim tahtası: koyu yarı saydam panelde saydam klip (formül/grafik). Ekrana sabittir (kamera hareketi uygulanmaz),
- * yatayda ortada, bilgi kartının altında ve altyazı bandının üstünde; dikey videoda genişliğe sığar.
+ * yatayda ortada, bilgi kartının altında ve altyazı bandının üstünde; dikey videoda sahneyle birlikte ölçeklenir.
  */
 function MathBoard({ url }: { url: string }) {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
   const k = interpolate(frame, [0, 10], [0, 1], { extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
-  const w = Math.min(MATH_BOARD.width, width - 80);
+  // Tahta sahne tuvalinde (1920×1080) tanımlı; sahne gibi ölçeklenip ortalanır (dikeyde sahneyle hizalı kalır).
+  const fit = stageFit(width, height);
+  const ox = (width - 1920 * fit) / 2;
+  const oy = (height - 1080 * fit) / 2;
   return (
     <div
       data-board=""
       style={{
         position: "absolute",
-        left: (width - w) / 2,
-        top: (MATH_BOARD.y / 1080) * height,
-        width: w,
-        height: (w * MATH_BOARD.height) / MATH_BOARD.width,
+        left: ox + MATH_BOARD.x * fit,
+        top: oy + MATH_BOARD.y * fit,
+        width: MATH_BOARD.width * fit,
+        height: MATH_BOARD.height * fit,
         borderRadius: 18,
         background: "rgba(14,18,26,0.93)",
         border: "1px solid rgba(255,255,255,0.08)",
@@ -110,7 +113,7 @@ function FadeIn({ children, first }: { children: ReactNode; first: boolean }) {
 
 function Captions({ captions }: { captions: Timeline["captions"] }) {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
   const nowMs = (frame / fps) * 1000;
 
   const pages = useMemo(() => {
@@ -126,12 +129,14 @@ function Captions({ captions }: { captions: Timeline["captions"] }) {
 
   const page = pages.find((p) => nowMs >= p.startMs && nowMs < p.startMs + p.durationMs);
   if (!page) return null;
+  // Dikeyde altyazı platformun alt arayüzünün üstünde ve sağdaki düğmelerden uzakta (ortalı, iki yandan eşit pay).
+  const tall = height > width;
 
   return (
-    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: 90 }}>
+    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: tall ? VERTICAL_SAFE.bottom + 20 : 90 }}>
       <div
         style={{
-          maxWidth: "80%",
+          maxWidth: tall ? width - 2 * (VERTICAL_SAFE.right + 10) : "80%",
           textAlign: "center",
           fontFamily: "Inter, 'Noto Sans', 'Segoe UI', sans-serif",
           fontSize: 54,

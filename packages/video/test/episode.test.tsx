@@ -289,8 +289,11 @@ describe("bölüm kompozisyonu", () => {
     cleanup();
     Object.assign(clock, { width: 1080, height: 1920 });
     const tall = board(20).el;
-    expect([tall.style.left, tall.style.width]).toEqual(["40px", "1000px"]);
-    expect(parseFloat(tall.style.top)).toBeCloseTo(444.44, 1);
+    // Dikeyde sahne 0,73125 ölçekle ortalanır (x -162, y 565,1); tahta onunla hizalı ve sağdaki düğme şeridinin solunda.
+    expect(parseFloat(tall.style.left)).toBeCloseTo(-162 + 440 * 0.73125, 2);
+    expect(parseFloat(tall.style.top)).toBeCloseTo(565.125 + 250 * 0.73125, 2);
+    expect(parseFloat(tall.style.width)).toBeCloseTo(1040 * 0.73125, 2);
+    expect(parseFloat(tall.style.left) + parseFloat(tall.style.width)).toBeLessThan(1080 - 150);
     Object.assign(clock, { width: 1920, height: 1080 });
   });
 
@@ -339,6 +342,20 @@ describe("bölüm kompozisyonu", () => {
       [" dünya", "#FFD84D"],
     ]);
     expect(at(61)).toEqual([]); // konuşma bitti
+  });
+
+  it("dikey videoda altyazı platformun alt arayüzünün üstünde ve sağdaki düğmelerden uzakta", () => {
+    const captions = [{ text: "Merhaba", startMs: 0, endMs: 2000 }];
+    const box = () => {
+      const span = draw(<Episode timeline={timeline({ captions })} />, 10).querySelector("span")!;
+      const r = { pad: (span.parentElement!.parentElement as HTMLElement).style.paddingBottom, width: (span.parentElement as HTMLElement).style.maxWidth };
+      cleanup();
+      return r;
+    };
+    expect(box()).toEqual({ pad: "90px", width: "80%" });
+    Object.assign(clock, { width: 1080, height: 1920 });
+    expect(box()).toEqual({ pad: "440px", width: "760px" });
+    Object.assign(clock, { width: 1920, height: 1080 });
   });
 
   it("altyazı yoksa altyazı katmanı da yoktur", () => {

@@ -41,6 +41,12 @@ export const DRAFT_REVIEW = {
 export const TEXT_RULES = { maxTexts: 2, top: 60, bottom: 800 } as const;
 
 /**
+ * Dikey videoda (Shorts, Reels, TikTok; 1080×1920) platform arayüzünün kapladığı kenarlar, px: üstte başlık/arama,
+ * altta açıklama ve müzik satırı, sağda beğeni/yorum düğmeleri. Altyazı ve etiketler bunların dışına konur.
+ */
+export const VERTICAL_SAFE = { top: 250, bottom: 420, right: 150 } as const;
+
+/**
  * Hikâye nesnesinin okunabilir en kısa "en uzun kenarı" (m, derinlik ölçeğiyle çarpılır). Fiziksel olarak doğru ama
  * ekranda 15 px kalan not, kitap, çip görünmez (30 Eki denemesi); çizgi filmdeki gibi abartılır.
  */
