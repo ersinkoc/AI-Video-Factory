@@ -138,6 +138,7 @@ export function assetPlanner(
 Art style: ${style.artStyle}. Palette: ${style.palette.join(", ")}.
 This asset is ${KIND_LIMITS[brief.kind]}
 Anything in the description that does not fit these limits goes to "moved", and the subject is rewritten without it (e.g. "rider galloping on a horse" as a character → subject "a young 1860s rider standing, mail pouch strap across the chest", moved ["the horse: separate prop"]).
+Never change WHAT the asset is: the subject stays the same kind of thing as the description's main noun. A flat thing that carries a picture (magazine or book cover, poster, screen, painting, banknote, sign) is ONE object: keep its format (page proportions, border, masthead band, frame or bezel) and draw the depicted picture inside it; never replace the magazine with what is on its cover. When the description says "no text", keep text-like bands as plain bars instead of dropping them.
 Be concrete and countable: real proportions, number of legs/wheels/windows, which colours where. Prefer the few big features a viewer recognises over small detail.${refs.length ? `
 The ${refs.length} attached image(s) are real references found online; take shapes, proportions and colours from those that show the subject and ignore any that do not. If none of them shows the subject, say so (referencesMatch false) and give a better search query.` : ""}`,
       prompt: `${brief.kind === "character" ? "Character" : brief.kind === "background" ? "Location" : "Object"}: ${brief.name}
@@ -164,13 +165,18 @@ export function planBlock(plan: AssetPlan): string {
   return lines.filter(Boolean).join("\n");
 }
 
-/** Kapının denetlediği tarif: plan varsa uydurulmuş özne ve tanınma ipuçları (çizilemeyecek şeyler aranmaz). */
+/**
+ * Kapının denetlediği tarif: plan varsa uydurulmuş özne ve tanınma ipuçları (çizilemeyecek şeyler aranmaz). Asıl istek
+ * de yanında gider: plan nesnenin türünü değiştirirse (dergi kapağı → kapaktaki bilgisayar) kapı bunu yakalasın; eskiden
+ * yalnız plana bakıyor, "dergi" diye Altair panelini geçiriyordu (1 Kas).
+ */
 export function gateDescription(description: string, plan?: AssetPlan): string {
   if (!plan) return description;
   return [
     plan.subject,
     plan.cues.length && `Must show: ${plan.cues.join("; ")}`,
     plan.moved.length && `Deliberately NOT in this asset (do not penalise their absence): ${plan.moved.join("; ")}`,
+    `Original request (the drawing must still be this kind of thing): ${description}`,
   ]
     .filter(Boolean)
     .join("\n");

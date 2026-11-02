@@ -27,7 +27,7 @@ describe("çizim planı", () => {
 
   it("kapı planın öznesine bakar, ayrılanların yokluğunu cezalandırmaz; plan yoksa tarif aynen gider", () => {
     expect(gateDescription("rider galloping on a horse", plan)).toBe(
-      "a young 1860s rider standing, mail pouch strap across the chest\nMust show: mail pouch strap; flat-brimmed hat\nDeliberately NOT in this asset (do not penalise their absence): the horse: separate prop",
+      "a young 1860s rider standing, mail pouch strap across the chest\nMust show: mail pouch strap; flat-brimmed hat\nDeliberately NOT in this asset (do not penalise their absence): the horse: separate prop\nOriginal request (the drawing must still be this kind of thing): rider galloping on a horse",
     );
     expect(gateDescription("rider galloping on a horse")).toBe("rider galloping on a horse");
   });
