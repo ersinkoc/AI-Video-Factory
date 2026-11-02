@@ -252,7 +252,7 @@ ${brief.description}${brief.plan ? `\n\n${planBlock(brief.plan)}` : ""}${brief.v
 const VectorPlannedShot = z.object({
   startWord: z.number().int().nonnegative().describe("Index of the narration word where this shot starts"),
   description: z.string().describe("One short English sentence: what the viewer sees"),
-  ambience: z.enum(["none", "rain", "snow", "fog", "dust", "embers", "flicker", "rays"]),
+  ambience: z.enum(["none", "rain", "snow", "fog", "dust", "embers", "flicker", "rays", "confetti"]),
   spec: VectorShot,
 });
 
@@ -358,7 +358,7 @@ ${
 `
           : ""
       }- mood sets the colour grade: day, warm (nostalgia, success), cool (tension, technology), night, dramatic (twist, crisis), neutral. Follow the emotional arc.
-- ambience must fit the place: rain/snow outdoors, dust in old rooms, flicker for lamp light, rays for sunlight, fog for night or mystery, else none.
+- ambience must fit the place: rain/snow outdoors, dust in old rooms, flicker for lamp light, rays for sunlight, fog for night or mystery, embers near fire, confetti only for a celebration moment (a launch, a win, a record), else none.
 Visual style: ${style.artStyle}.${lessonsBlock(input.lessons)}`,
       prompt: `Assets:
 ${assets}

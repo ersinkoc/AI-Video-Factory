@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { Timeline, VectorAsset, type Ambience as AmbienceKind } from "@ys/core";
 import type { ReactNode } from "react";
 import { random } from "remotion";
@@ -33,12 +33,46 @@ vi.mock("remotion", async (orig) => ({
   },
 }));
 
+// PixiJS (WebGL) yerine kayıt tutan sahte uygulama ve kalem: happy-dom'da WebGL yok.
+const pixi = vi.hoisted(() => ({ fail: false, apps: [] as { render: () => void; destroy: () => void }[], pens: [] as { calls: string[]; blendMode: string }[] }));
+vi.mock("pixi.js", () => {
+  class Graphics {
+    calls: string[] = [];
+    blendMode = "normal";
+    constructor() {
+      pixi.pens.push(this);
+    }
+  }
+  for (const m of ["clear", "moveTo", "lineTo", "circle", "ellipse", "poly", "fill", "stroke"])
+    Object.defineProperty(Graphics.prototype, m, {
+      value(this: Graphics) {
+        this.calls.push(m);
+        return this;
+      },
+    });
+  class Application {
+    stage = { addChild: vi.fn() };
+    render = vi.fn();
+    destroy = vi.fn();
+    constructor() {
+      pixi.apps.push(this);
+    }
+    init() {
+      return pixi.fail ? Promise.reject(new Error("WebGL yok")) : Promise.resolve();
+    }
+  }
+  return { Application, Graphics };
+});
+
 const { Episode } = await import("../src/index.ts");
 const { Ambience } = await import("../src/Ambience.tsx");
 
 afterEach(() => {
   cleanup();
   clock.frame = 0;
+  pixi.fail = false;
+  pixi.apps.length = 0;
+  pixi.pens.length = 0;
 });
 
 const draw = (node: ReactNode, frame = 0) => {
@@ -53,39 +87,43 @@ describe("atmosfer katmanları", () => {
     expect(amb("none").innerHTML).toBe("");
   });
 
-  it("yağmur 140 eğik damla çizer, damlalar zamanla düşer", () => {
+  it("parçacıklı atmosfer Pixi tuvaline çizilir: her karede yeniden çizilip elle render edilir", async () => {
     const c = amb("rain", 0);
-    const lines = [...c.querySelectorAll("line")];
-    expect(lines).toHaveLength(140);
-    for (const l of lines.slice(0, 10)) {
-      const dx = Number(l.getAttribute("x2")) - Number(l.getAttribute("x1"));
-      const dy = Number(l.getAttribute("y2")) - Number(l.getAttribute("y1"));
-      expect(dx / dy).toBeCloseTo(0.18); // rüzgâr eğimi
-      expect(dy).toBeGreaterThanOrEqual(28);
-      expect(dy).toBeLessThanOrEqual(74);
-    }
-    const y0 = Number(lines[0]!.getAttribute("y1"));
+    await act(async () => {});
+    expect(c.querySelector("canvas")).toBeTruthy();
+    expect((c.firstElementChild as HTMLElement).style.background).toContain("rgba(20, 30, 45, 0.18)");
+    const [app] = pixi.apps;
+    const [pen] = pixi.pens;
+    expect(app!.render).toHaveBeenCalledTimes(1);
+    expect(pen!.calls.filter((m) => m === "stroke")).toHaveLength(550 + 70);
+    expect(pen!.blendMode).toBe("normal");
     cleanup();
-    const y1 = Number(amb("rain", 3).querySelector("line")!.getAttribute("y1"));
-    expect(y1).not.toBe(y0);
+    expect(app!.destroy).toHaveBeenCalled();
   });
 
-  it("aynı tohum aynı kareyi verir (paralel render sekmeleri tutarlı)", () => {
-    const a = amb("snow", 42, "x").innerHTML;
-    cleanup();
-    expect(amb("snow", 42, "x").innerHTML).toBe(a);
-    cleanup();
-    expect(amb("snow", 42, "y").innerHTML).not.toBe(a);
+  it("toz ve kıvılcım ekleyerek karışır; kar ve konfeti düz", async () => {
+    for (const kind of ["dust", "embers", "snow", "confetti"] as const) {
+      const c = amb(kind);
+      await act(async () => {});
+      expect(pixi.pens.at(-1)!.blendMode).toBe(kind === "dust" || kind === "embers" ? "add" : "normal");
+      expect((c.firstElementChild as HTMLElement).style.mixBlendMode).toBe(kind === "dust" || kind === "embers" ? "screen" : "");
+      cleanup();
+    }
   });
 
-  it("kar 110 beyaz tane çizer", () => {
-    const circles = [...amb("snow").querySelectorAll("circle")];
-    expect(circles).toHaveLength(110);
-    for (const c of circles) {
-      expect(c.getAttribute("fill")).toBe("white");
-      expect(Number(c.getAttribute("r"))).toBeGreaterThanOrEqual(1.5);
-      expect(Number(c.getAttribute("r"))).toBeLessThanOrEqual(5.5);
-    }
+  it("Pixi hazır olmadan kapanan katman uygulamayı sonradan yok eder; WebGL açılamazsa katman boş kalır", async () => {
+    amb("snow");
+    cleanup();
+    await act(async () => {});
+    expect(pixi.apps[0]!.destroy).toHaveBeenCalled();
+    expect(pixi.pens).toHaveLength(0);
+    pixi.fail = true;
+    const c = amb("snow");
+    await act(async () => {});
+    expect(c.querySelector("canvas")).toBeTruthy();
+    expect(pixi.pens).toHaveLength(0);
+    cleanup();
+    expect(pixi.apps[1]!.destroy).not.toHaveBeenCalled();
   });
 
   it("sis iki katman zıt yönlerde kayar", () => {
@@ -96,24 +134,6 @@ describe("atmosfer katmanları", () => {
     const offset = random("f-fog") * 100;
     expect(parseFloat(layers[0]!.style.transform.slice("translateX(".length))).toBeCloseTo(Math.sin((t + offset) * 0.07) * 12);
     expect(parseFloat(layers[1]!.style.transform.slice("translateX(".length))).toBeCloseTo(Math.sin((t + offset) * -0.05) * 12);
-  });
-
-  it("toz sıcak renkte 110 zerre, kıvılcım turuncu 90 zerre ve tepede söner", () => {
-    const dust = [...amb("dust").querySelectorAll("circle")];
-    expect(dust).toHaveLength(110);
-    expect(dust[0]!.getAttribute("fill")).toBe("rgb(255,226,175)");
-    expect(dust[0]!.getAttribute("filter")).toBe("url(#glow-a1)");
-    cleanup();
-    const c = amb("embers", 30);
-    expect(c.querySelector("feGaussianBlur, fegaussianblur")!.getAttribute("stdDeviation") ?? c.querySelector("fegaussianblur")!.getAttribute("stddeviation")).toBe("2");
-    const embers = [...c.querySelectorAll("circle")];
-    expect(embers).toHaveLength(90);
-    expect(embers[0]!.getAttribute("fill")).toBe("rgb(255,160,70)");
-    // Tepenin yakınındaki kıvılcımın opaklığı yüksekliğiyle orantılı söner.
-    for (const e of embers) {
-      const y = Number(e.getAttribute("cy"));
-      expect(Number(e.getAttribute("opacity"))).toBeLessThanOrEqual(Math.min(1, y / (1080 * 0.6)) + 1e-9);
-    }
   });
 
   it("titreme ışığı ve gölgeyi zıt yönde oynatır", () => {
@@ -223,7 +243,7 @@ describe("bölüm kompozisyonu", () => {
 
   it("durağan kareye atmosfer katmanı eklenir", () => {
     const c = draw(<Episode timeline={timeline({ visuals: [shot("a", "still_motion", { ambience: "rain" })] })} />);
-    expect(c.querySelectorAll("line")).toHaveLength(140);
+    expect(c.querySelector("canvas")).toBeTruthy();
   });
 
   it("video klip sessiz ve hızıyla oynatılır; http adresi olduğu gibi kullanılır", () => {
@@ -246,7 +266,7 @@ describe("bölüm kompozisyonu", () => {
     );
     const [v, w] = [...c.querySelectorAll("section")];
     expect(v!.querySelector('[id="v-0-box"]')).toBeTruthy();
-    expect(v!.querySelectorAll("circle")).toHaveLength(110);
+    expect(v!.querySelector("canvas")).toBeTruthy();
     expect(v!.querySelector("video")).toBeNull();
     expect(w!.querySelector("video")!.getAttribute("src")).toBe("/public/w.png");
   });

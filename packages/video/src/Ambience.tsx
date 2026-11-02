@@ -1,23 +1,35 @@
 import type { Ambience as AmbienceKind } from "@ys/core";
 import { useMemo } from "react";
 import { AbsoluteFill, random, useCurrentFrame, useVideoConfig } from "remotion";
+import { PixiParticles } from "./PixiParticles.tsx";
 
 /**
  * Durağan karelere canlılık veren prosedürel atmosfer katmanları. API maliyeti yok; her kare
- * `random(seed)` ile deterministik çizilir, böylece paralel render sekmeleri aynı sonucu verir.
+ * `random(seed)` ile deterministik çizilir, böylece paralel render sekmeleri aynı sonucu verir. Parçacıklılar
+ * (yağmur, kar, toz, kıvılcım, konfeti) PixiJS/WebGL'de (`PixiParticles`), ışık ve sis CSS gradyanıyla.
  */
 export function Ambience({ kind, seed }: { kind: AmbienceKind; seed: string }) {
   switch (kind) {
     case "rain":
-      return <Rain seed={seed} />;
+      // Yağmurda sahne hafifçe kararır; damlalar ve sıçramalar Pixi'de.
+      return (
+        <AbsoluteFill style={{ background: "rgba(20,30,45,0.18)" }}>
+          <PixiParticles kind="rain" seed={seed} />
+        </AbsoluteFill>
+      );
     case "snow":
-      return <Snow seed={seed} />;
+    case "confetti":
+      return <PixiParticles kind={kind} seed={seed} />;
     case "fog":
       return <Fog seed={seed} />;
     case "dust":
-      return <Motes seed={seed} variant="dust" />;
     case "embers":
-      return <Motes seed={seed} variant="embers" />;
+      // Işık saçan zerreler ekranın üstüne eklenerek karışır.
+      return (
+        <AbsoluteFill style={{ mixBlendMode: "screen" }}>
+          <PixiParticles kind={kind} seed={seed} />
+        </AbsoluteFill>
+      );
     case "flicker":
       return <Flicker seed={seed} />;
     case "rays":
@@ -25,81 +37,6 @@ export function Ambience({ kind, seed }: { kind: AmbienceKind; seed: string }) {
     default:
       return null;
   }
-}
-
-interface Particle {
-  x: number;
-  y: number;
-  speed: number;
-  size: number;
-  phase: number;
-}
-
-function useParticles(seed: string, count: number): Particle[] {
-  return useMemo(
-    () =>
-      Array.from({ length: count }, (_, i) => ({
-        x: random(`${seed}-x-${i}`),
-        y: random(`${seed}-y-${i}`),
-        speed: random(`${seed}-s-${i}`),
-        size: random(`${seed}-z-${i}`),
-        phase: random(`${seed}-p-${i}`) * Math.PI * 2,
-      })),
-    [seed, count],
-  );
-}
-
-/** 0..1 aralığında sarmalayan konum. */
-const wrap = (v: number) => ((v % 1) + 1) % 1;
-
-function Rain({ seed }: { seed: string }) {
-  const frame = useCurrentFrame();
-  const { width, height, fps } = useVideoConfig();
-  const drops = useParticles(seed, 140);
-  const t = frame / fps;
-  const slant = 0.18; // rüzgâr: düşerken sağa kayma oranı
-  return (
-    <AbsoluteFill style={{ background: "rgba(20,30,45,0.18)" }}>
-      <svg width={width} height={height} style={{ position: "absolute", inset: 0 }}>
-        {drops.map((d, i) => {
-          const len = 28 + d.size * 46;
-          const y = wrap(d.y + t * (1.1 + d.speed * 0.9)) * (height + len) - len;
-          const x = wrap(d.x + (y / height) * slant * 0.3) * width;
-          return (
-            <line
-              key={i}
-              x1={x}
-              y1={y}
-              x2={x + len * slant}
-              y2={y + len}
-              stroke="rgba(210,225,255,0.45)"
-              strokeWidth={1 + d.size * 1.4}
-              strokeLinecap="round"
-            />
-          );
-        })}
-      </svg>
-    </AbsoluteFill>
-  );
-}
-
-function Snow({ seed }: { seed: string }) {
-  const frame = useCurrentFrame();
-  const { width, height, fps } = useVideoConfig();
-  const flakes = useParticles(seed, 110);
-  const t = frame / fps;
-  return (
-    <AbsoluteFill>
-      <svg width={width} height={height} style={{ position: "absolute", inset: 0 }}>
-        {flakes.map((f, i) => {
-          const r = 1.5 + f.size * 4;
-          const y = wrap(f.y + t * (0.05 + f.speed * 0.08)) * (height + 2 * r) - r;
-          const x = (f.x + Math.sin(t * (0.6 + f.speed) + f.phase) * 0.012) * width;
-          return <circle key={i} cx={x} cy={y} r={r} fill="white" opacity={0.45 + f.size * 0.45} />;
-        })}
-      </svg>
-    </AbsoluteFill>
-  );
 }
 
 function Fog({ seed }: { seed: string }) {
@@ -124,47 +61,6 @@ function Fog({ seed }: { seed: string }) {
       <AbsoluteFill style={{ background: "linear-gradient(to top, rgba(220,226,235,0.35), rgba(220,226,235,0.08) 70%)" }} />
       <div style={layer(0.07, "30%", 0.55)} />
       <div style={layer(-0.05, "50%", 0.45)} />
-    </AbsoluteFill>
-  );
-}
-
-/** Havada süzülen toz (sıcak, yavaş) ya da yukarı uçan kıvılcım (turuncu, parlak). */
-function Motes({ seed, variant }: { seed: string; variant: "dust" | "embers" }) {
-  const frame = useCurrentFrame();
-  const { width, height, fps } = useVideoConfig();
-  const embers = variant === "embers";
-  const motes = useParticles(seed, embers ? 90 : 110);
-  const t = frame / fps;
-  return (
-    <AbsoluteFill style={{ mixBlendMode: "screen" }}>
-      <svg width={width} height={height} style={{ position: "absolute", inset: 0 }}>
-        <defs>
-          <filter id={`glow-${seed}`}>
-            <feGaussianBlur stdDeviation={embers ? 2 : 1.2} />
-          </filter>
-        </defs>
-        {motes.map((m, i) => {
-          const rise = embers ? 0.06 + m.speed * 0.1 : 0.004 + m.speed * 0.01;
-          const y = embers ? (1 - wrap(m.y + t * rise)) * height : wrap(m.y - t * rise) * height;
-          const sway = embers ? 0.02 : 0.03;
-          const x = (m.x + Math.sin(t * (0.3 + m.speed * 0.5) + m.phase) * sway) * width;
-          const twinkle = 0.5 + 0.5 * Math.sin(t * (1.5 + m.speed * 2) + m.phase);
-          const r = embers ? 2 + m.size * 4 : 1.5 + m.size * 3.5;
-          // Kıvılcım tepeye yaklaştıkça söner.
-          const fade = embers ? Math.min(1, y / (height * 0.6)) : 1;
-          return (
-            <circle
-              key={i}
-              cx={x}
-              cy={y}
-              r={r}
-              fill={embers ? "rgb(255,160,70)" : "rgb(255,226,175)"}
-              opacity={(embers ? 0.6 + twinkle * 0.4 : 0.35 + twinkle * 0.55) * fade}
-              filter={`url(#glow-${seed})`}
-            />
-          );
-        })}
-      </svg>
     </AbsoluteFill>
   );
 }
@@ -205,7 +101,16 @@ function Rays({ seed }: { seed: string }) {
   const { fps } = useVideoConfig();
   const t = frame / fps;
   const fromLeft = random(`${seed}-rays`) < 0.5;
-  const beams = useParticles(`${seed}-beams`, 6);
+  const beams = useMemo(
+    () =>
+      Array.from({ length: 6 }, (_, i) => ({
+        x: random(`${seed}-beams-x-${i}`),
+        speed: random(`${seed}-beams-s-${i}`),
+        size: random(`${seed}-beams-z-${i}`),
+        phase: random(`${seed}-beams-p-${i}`) * Math.PI * 2,
+      })),
+    [seed],
+  );
   // Işık kaynağı kadrajın üst köşesinin dışında; huzmeler aşağı doğru yelpaze gibi açılır.
   const origin = fromLeft ? "-10% -15%" : "110% -15%";
   const start = fromLeft ? 100 : 170; // derece; konik gradyan tepeden saat yönünde

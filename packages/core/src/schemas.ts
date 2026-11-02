@@ -123,7 +123,7 @@ export type Shot = z.infer<typeof Shot>;
 // ---------- Timeline (= Remotion inputProps) ----------
 
 /** Durağan karelerin üstüne Remotion'da çizilen, API maliyeti olmayan atmosfer katmanı. */
-export const Ambience = z.enum(["none", "rain", "snow", "fog", "dust", "embers", "flicker", "rays"]);
+export const Ambience = z.enum(["none", "rain", "snow", "fog", "dust", "embers", "flicker", "rays", "confetti"]);
 export type Ambience = z.infer<typeof Ambience>;
 
 export const TimelineVisual = z.object({

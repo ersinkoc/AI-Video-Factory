@@ -261,7 +261,7 @@ Rules:
 ${MOTION_RULES[opts.motionMode ?? "mixed"](opts.aiClipRatio)}
 - imagePrompt: one concrete frame, describe action, composition, framing. The style prefix and the cast/location reference images are added automatically — refer to cast members by name, do not redescribe their looks. Never ask for text in the image.
 - characterIds/locationId: tag every shot with the cast ids that appear in it, so reference images can be attached.
-- ambience: a subtle animated overlay that makes still_motion shots feel alive. It must match what is in the frame: "rain"/"snow" only outdoors in that weather, "fog" for night, mist or mystery, "dust" for old rooms, workshops, attics, "embers" near fire or forges, "flicker" for candle/lamp/screen light, "rays" for sunlight through windows or trees. Use "none" when nothing fits; keep the same ambience across shots of one location and moment.
+- ambience: a subtle animated overlay that makes still_motion shots feel alive. It must match what is in the frame: "rain"/"snow" only outdoors in that weather, "fog" for night, mist or mystery, "dust" for old rooms, workshops, attics, "embers" near fire or forges, "flicker" for candle/lamp/screen light, "rays" for sunlight through windows or trees, "confetti" only for a celebration moment (a launch, a win, a record). Use "none" when nothing fits; keep the same ambience across shots of one location and moment.
 Visual style for reference: ${style.artStyle}.`,
       prompt: cast + scenes,
     },
