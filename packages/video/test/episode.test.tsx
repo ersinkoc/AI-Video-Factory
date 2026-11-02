@@ -394,22 +394,28 @@ describe("Remotion kökü", () => {
 describe("küçük resim", () => {
   const thumb = (props: Partial<ThumbnailProps> & { timeline: Timeline }) => draw(<Thumbnail shotId="v" side="left" title="Google nasıl doğdu" {...props} />, 80);
 
-  it("vektör çekim arka planda, kendi yazıları olmadan; başlık dilin büyük harfiyle, kişinin karşı yanında", () => {
+  it("vektör çekim arka planda, kendi yazıları olmadan; başlık yazıldığı gibi (büyük harfe çevrilmez), kişinin karşı yanında", () => {
     const vector = { layers: [{ asset: "hero", x: 1400, y: 500, height: 200 }], texts: [{ text: "Bilgi kartı", x: 100, y: 100 }] };
     const c = thumb({ timeline: timeline({ vectorAssets: { hero }, palette: ["#111111", "#222222", "#7bd389"], visuals: [shot("v", "motion_graphic", { vector })] }) });
     expect(c.querySelector('[id="v-0-box"]')).toBeTruthy();
     expect(c.textContent).not.toContain("Bilgi kartı");
     const title = c.querySelector("[data-title]") as HTMLElement;
-    expect(title.textContent).toBe("GOOGLE NASIL DOĞDU");
+    expect(title.textContent).toBe("Google nasıl doğdu");
     expect([title.style.left, title.style.textAlign]).toEqual(["56px", "left"]);
     expect((title.lastElementChild as HTMLElement).style.background).toBe("#7bd389");
     cleanup();
-    // Türkçe büyük harf (i → İ); sağdaki başlıkta vurgu çizgisi sağa yaslı; vurgu rengi yoksa sarı.
-    const right = thumb({ side: "right", title: "bilgisayar", timeline: timeline({ vectorAssets: { hero }, visuals: [shot("v", "motion_graphic", { vector: {} })] }) });
+    // Sağdaki başlıkta vurgu çizgisi sağa yaslı; vurgu rengi yoksa sarı.
+    const right = thumb({ side: "right", title: "Microsoft", timeline: timeline({ vectorAssets: { hero }, visuals: [shot("v", "motion_graphic", { vector: {} })] }) });
     const t2 = right.querySelector("[data-title]") as HTMLElement;
-    expect(t2.textContent).toBe("BİLGİSAYAR");
+    expect(t2.textContent).toBe("Microsoft");
     expect([t2.style.right, t2.style.textAlign, (t2.lastElementChild as HTMLElement).style.marginLeft]).toEqual(["56px", "right", "auto"]);
     expect((t2.lastElementChild as HTMLElement).style.background).toBe("#ffd84d");
+    cleanup();
+    // Alt orta: iki yandan pay, ortalı yazı ve ortalı çizgi.
+    const low = thumb({ side: "bottom", timeline: timeline({ vectorAssets: { hero }, visuals: [shot("v", "motion_graphic", { vector: {} })] }) });
+    const t3 = low.querySelector("[data-title]") as HTMLElement;
+    expect([t3.style.left, t3.style.right, t3.style.bottom, t3.style.textAlign]).toEqual(["56px", "56px", "48px", "center"]);
+    expect([(t3.lastElementChild as HTMLElement).style.marginLeft, (t3.lastElementChild as HTMLElement).style.marginRight]).toEqual(["auto", "auto"]);
   });
 
   it("durağan kare görsel olarak çizilir; çekim yoksa yalnız başlık", () => {

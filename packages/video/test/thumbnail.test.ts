@@ -26,6 +26,9 @@ describe("küçük resim çekimi", () => {
     expect(pick).toEqual({ shotId: "dolu", side: "left" });
     // Kişi solda: başlık sağa; aynı kişinin kopyası iki kez sayılmaz.
     expect(thumbnailShot(tl([shot("a", 0, [{ asset: "hero", x: 400 }, { asset: "hero", x: 500 }])]))).toEqual({ shotId: "a", side: "right" });
+    // Kişiler iki yana dağılmışsa başlık alta.
+    expect(thumbnailShot(tl([shot("a", 0, [{ asset: "hero", x: 400 }, { asset: "ada", x: 1500 }])]))!.side).toBe("bottom");
+    expect(thumbnailShot(tl([shot("a", 0, [{ asset: "hero", x: 900 }, { asset: "ada", x: 1150 }])]))!.side).toBe("left");
     // Kişisiz sahnede başlık sağda (ortadan hesap).
     expect(thumbnailShot(tl([shot("a", 0, [{ asset: "cup", x: 400 }])]))!.side).toBe("right");
   });

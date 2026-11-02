@@ -3,10 +3,12 @@ import type { Timeline } from "@ys/core";
 /** YouTube küçük resmi (16:9, önerilen boy). */
 export const THUMB = { width: 1280, height: 720 } as const;
 
+export type ThumbnailSide = "left" | "right" | "bottom";
+
 export interface ThumbnailPick {
   shotId: string;
-  /** Başlığın yazılacağı yan: ana karakterin karşı tarafı (yüz başlığın altında kalmasın). */
-  side: "left" | "right";
+  /** Başlığın yeri: kişilerin karşı yanı (yüz başlığın altında kalmasın); kişiler iki yana dağılmışsa alt orta. */
+  side: ThumbnailSide;
 }
 
 /**
@@ -30,7 +32,10 @@ export function thumbnailShot(timeline: Timeline): ThumbnailPick | undefined {
     };
     const best = vectors.reduce((a, b) => (score(b) > score(a) || (score(b) === score(a) && near(b) > near(a)) ? b : a));
     const people = best.vector!.layers.filter((l) => kind(l.asset) === "character");
-    const x = people.length ? people.reduce((s, l) => s + l.x, 0) / people.length : 960;
+    const xs = people.map((l) => l.x);
+    // İki yanda da kişi var: yan başlık birinin üstüne düşer; yüzler üst yarıda, başlık alta.
+    if (xs.some((x) => x < 760) && xs.some((x) => x > 1160)) return { shotId: best.shotId, side: "bottom" };
+    const x = xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : 960;
     return { shotId: best.shotId, side: x > 960 ? "left" : "right" };
   }
   const stills = timeline.visuals.filter((v) => v.kind === "still_motion" && v.assetUrl);

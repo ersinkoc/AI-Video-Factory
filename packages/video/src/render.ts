@@ -9,6 +9,7 @@ import type { Timeline } from "@ys/core";
 import { runMediaTool } from "./tools.ts";
 
 export { THUMB, thumbnailShot, thumbnailTitle } from "./thumbnail.ts";
+import type { ThumbnailSide } from "./thumbnail.ts";
 
 export const ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "entry.ts");
 
@@ -239,7 +240,7 @@ export interface ThumbnailOptions {
   timeline: Timeline;
   publicDir: string;
   shotId: string;
-  side: "left" | "right";
+  side: ThumbnailSide;
   title: string;
   /** JPEG yolu. */
   output: string;
