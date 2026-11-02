@@ -264,6 +264,12 @@ describe("OverviewTab", () => {
     expect(container.querySelector("video")!.getAttribute("poster")).toBeNull();
     rerender(<OverviewTab data={makeData(makeState({ render: { path: "p", at: "t" }, shots: [shot] }))} />);
     expect(container.querySelector("video")!.getAttribute("poster")).toBeNull();
+    expect(screen.queryByText(tr("video.thumbnail"))).toBeNull();
+    // Küçük resim varsa kapak o ve indirme bağlantısı çıkar.
+    const thumb = makeState({ id: "k", render: { path: "p", at: "t", thumbnail: "p.jpg" }, shots: [shot], stills: { a: { key: "st/a.png", mimeType: "image/png" } } });
+    rerender(<OverviewTab data={makeData(thumb)} />);
+    expect(container.querySelector("video")!.getAttribute("poster")).toBe("/api/episodes/k/video?v=t&thumb");
+    expect(screen.getByText(tr("video.thumbnail")).closest("a")!.getAttribute("href")).toBe("/api/episodes/k/video?v=t&thumb&download");
   });
 
   it("vektör modunda çizgi stili: kullanıcı seçimi, paketinki ya da varsayılan (İngilizce)", () => {

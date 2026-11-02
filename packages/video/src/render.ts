@@ -8,6 +8,8 @@ import { openBrowser, renderMedia, renderStill, selectComposition } from "@remot
 import type { Timeline } from "@ys/core";
 import { runMediaTool } from "./tools.ts";
 
+export { THUMB, thumbnailShot, thumbnailTitle } from "./thumbnail.ts";
+
 export const ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "entry.ts");
 
 export interface RenderOptions {
@@ -232,4 +234,35 @@ async function stillsOnce(opts: StillsOptions): Promise<Record<string, string>> 
   } finally {
     await browser.close({ silent: true }).catch(() => {});
   }
+}
+export interface ThumbnailOptions {
+  timeline: Timeline;
+  publicDir: string;
+  shotId: string;
+  side: "left" | "right";
+  title: string;
+  /** JPEG yolu. */
+  output: string;
+  onWait?: (holderPid: number) => void;
+}
+
+/** Bölümün küçük resmi (1280×720 JPEG): "Thumbnail" kompozisyonundan tek kare, render kilidinin içinde. */
+export function renderThumbnail(opts: ThumbnailOptions): Promise<string> {
+  return withRenderLock(async () => {
+    const serveUrl = await bundle({ entryPoint: ENTRY, publicDir: resolve(opts.publicDir) });
+    const inputProps = { timeline: opts.timeline, shotId: opts.shotId, side: opts.side, title: opts.title };
+    const composition = await selectComposition({ serveUrl, id: "Thumbnail", inputProps, timeoutInMilliseconds: BROWSER_TIMEOUT_MS });
+    await renderStill({
+      serveUrl,
+      composition,
+      inputProps,
+      // Çekimin %80'i: giriş animasyonları bitmiş, kamera yaklaşmış.
+      frame: Math.floor((composition.durationInFrames - 1) * 0.8),
+      output: opts.output,
+      imageFormat: "jpeg",
+      jpegQuality: 92,
+      timeoutInMilliseconds: BROWSER_TIMEOUT_MS,
+    });
+    return opts.output;
+  }, opts.onWait);
 }

@@ -7,7 +7,7 @@ import { CAST, CHARACTER_SVG, harness, makeState, SCRIPT, STYLE, voiceOf, vshot,
 vi.mock("@ys/agents", async (orig) => (await import("./pipeline-fakes.ts")).mockAgents(await orig()));
 vi.mock("@ys/video/render", async () => {
   const f = await import("./pipeline-fakes.ts");
-  return { renderEpisode: (o: any) => f.render.episode(o), renderStills: (o: any) => f.render.stills(o) };
+  return f.renderModule();
 });
 vi.mock("../src/reference.ts", async (orig) => {
   const f = await import("./pipeline-fakes.ts");

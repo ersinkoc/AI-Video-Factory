@@ -60,6 +60,7 @@ const tr = {
 
   "form.title": "Yeni bölüm",
   "video.srt": "Altyazı (.srt)",
+  "video.thumbnail": "Küçük resim",
   "video.captions": "Altyazı videoda",
   "video.sfx": "Efekt sesleri",
   "video.rerender": "Yeniden render et",
@@ -578,6 +579,7 @@ const en: Record<MessageKey, string> = {
 
   "form.title": "New episode",
   "video.srt": "Subtitles (.srt)",
+  "video.thumbnail": "Thumbnail",
   "video.captions": "Subtitles in the video",
   "video.sfx": "Sound effects",
   "video.rerender": "Render again",

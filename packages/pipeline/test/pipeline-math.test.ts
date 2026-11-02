@@ -8,7 +8,7 @@ import { harness, makeState, SCRIPT, STYLE, voiceOf, vshot } from "./pipeline-ha
 vi.mock("@ys/agents", async (orig) => (await import("./pipeline-fakes.ts")).mockAgents(await orig()));
 vi.mock("@ys/video/render", async () => {
   const f = await import("./pipeline-fakes.ts");
-  return { renderEpisode: (o: any) => f.render.episode(o), renderStills: (o: any) => f.render.stills(o) };
+  return f.renderModule();
 });
 const board = vi.hoisted(() => ({ render: vi.fn() }));
 vi.mock("../src/manim.ts", async (orig) => ({ ...(await orig<object>()), renderBoard: (...a: unknown[]) => board.render(...a) }));

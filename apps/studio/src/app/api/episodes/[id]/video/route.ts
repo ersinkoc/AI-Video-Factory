@@ -37,6 +37,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       headers: { "content-type": "application/x-subrip; charset=utf-8", "content-disposition": `attachment; filename="${id}.srt"` },
     });
   }
+  // "?thumb": küçük resim (render'ın yanındaki JPEG); "&download" ile indirme.
+  if (new URL(req.url).searchParams.has("thumb")) {
+    const jpg = state.render.thumbnail ? await readFile(state.render.thumbnail).catch(() => undefined) : undefined;
+    if (!jpg) return textResponse(req, msg("api.noThumbnail"), 404);
+    return new Response(new Uint8Array(jpg), {
+      headers: {
+        "content-type": "image/jpeg",
+        ...(new URL(req.url).searchParams.has("download") ? { "content-disposition": `attachment; filename="${id}.jpg"` } : {}),
+      },
+    });
+  }
   const path = state.render.path;
   const info = await stat(path).catch(() => undefined);
   if (!info) return textResponse(req, msg("api.noVideoFile"), 404);

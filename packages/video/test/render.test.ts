@@ -37,7 +37,7 @@ const DIR = mkdtempSync(join(tmpdir(), "ys-render-"));
 const LOCK = join(DIR, "render.lock");
 process.env.YS_RENDER_LOCK = LOCK;
 const mod = await import("../src/render.ts");
-const { renderEpisode, renderStills, withRenderLock, isTransientRenderFailure, normalizeLoudness, ENTRY } = mod;
+const { renderEpisode, renderStills, renderThumbnail, withRenderLock, isTransientRenderFailure, normalizeLoudness, ENTRY } = mod;
 
 const timeline = { episodeId: "e1" } as Timeline;
 const browser = { close: vi.fn() };
@@ -224,6 +224,20 @@ describe("renderStills", () => {
     browser.close.mockRejectedValue(new Error("zaten kapalı"));
     await expect(renderStills({ timeline, publicDir: DIR, frames: { a: 10 }, outDir: DIR })).rejects.toThrow("kare alınamadı");
     expect(browser.close).toHaveBeenCalled();
+    expect(existsSync(LOCK)).toBe(false);
+  });
+});
+
+describe("renderThumbnail", () => {
+  it("Thumbnail kompozisyonundan çekimin %80'indeki kareyi tam boy JPEG olarak alır, kilidi bırakır", async () => {
+    remotion.selectComposition.mockResolvedValue({ id: "Thumbnail", durationInFrames: 101 });
+    const output = join(DIR, "e1.jpg");
+    const out = await renderThumbnail({ timeline, publicDir: "pub", shotId: "s1", side: "right", title: "Başlık", output });
+    expect(out).toBe(output);
+    const inputProps = { timeline, shotId: "s1", side: "right", title: "Başlık" };
+    expect(remotion.selectComposition).toHaveBeenCalledWith({ serveUrl: "http://bundle", id: "Thumbnail", inputProps, timeoutInMilliseconds: 120_000 });
+    expect(remotion.renderStill).toHaveBeenCalledWith(expect.objectContaining({ inputProps, frame: 80, output, imageFormat: "jpeg", jpegQuality: 92 }));
+    expect(remotion.renderStill.mock.calls[0]![0]).not.toHaveProperty("scale");
     expect(existsSync(LOCK)).toBe(false);
   });
 });

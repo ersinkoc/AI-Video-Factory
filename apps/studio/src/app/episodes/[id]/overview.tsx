@@ -1,6 +1,6 @@
 "use client";
 
-import { Captions, Download, Film, GraduationCap, RefreshCw, Stethoscope } from "lucide-react";
+import { Captions, Download, Film, GraduationCap, Image as ImageIcon, RefreshCw, Stethoscope } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { stylePackOf } from "@ys/core/styles";
 import type { MessageKey } from "../../../lib/i18n";
@@ -26,7 +26,8 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
         {src ? (
           <video
             src={src}
-            poster={poster ? asset(poster) : undefined}
+            // Küçük resim varsa oynatıcının kapağı o (YouTube'daki gibi); yoksa ilk çekimin karesi.
+            poster={state.render?.thumbnail ? `${src}&thumb` : poster ? asset(poster) : undefined}
             controls
             className="aspect-video w-full rounded-xl border border-line bg-black"
           />
@@ -52,6 +53,11 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
             <a className="btn-ghost" href={`${src}&srt`}>
               <Captions size={16} /> {t("video.srt")}
             </a>
+            {state.render?.thumbnail && (
+              <a className="btn-ghost" href={`${src}&thumb&download`}>
+                <ImageIcon size={16} /> {t("video.thumbnail")}
+              </a>
+            )}
             {act && (
               <label className="flex items-center gap-2 text-sm" title={t("form.captions.hint")}>
                 <input

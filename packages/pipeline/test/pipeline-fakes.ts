@@ -71,7 +71,24 @@ export const render = {
     return out;
   }),
   episode: loose(async (opts: { outputPath: string }) => opts.outputPath),
+  thumbnail: loose(async (opts: { output: string; onWait?: (pid: number) => void }) => {
+    opts.onWait?.(4242);
+    await writeFile(opts.output, "jpeg:thumb");
+    return opts.output;
+  }),
 };
+
+/** @ys/video/render yerine: Remotion çağrıları sahte, küçük resim seçimi ve başlık kısaltma gerçek (saf fonksiyonlar). */
+export async function renderModule() {
+  const real = await import("../../video/src/thumbnail.ts");
+  return {
+    renderEpisode: (o: any) => render.episode(o),
+    renderStills: (o: any) => render.stills(o),
+    renderThumbnail: (o: any) => render.thumbnail(o),
+    thumbnailShot: real.thumbnailShot,
+    thumbnailTitle: real.thumbnailTitle,
+  };
+}
 
 export const media = {
   probe: loose(async () => 2000),

@@ -253,7 +253,8 @@ export interface EpisodeState {
   qa?: Record<string, FrameQa>;
   clips?: Record<string, AssetRef & { durationSec: number }>;
   timeline?: Timeline;
-  render?: { path: string; at: string };
+  /** thumbnail: videonun yanındaki küçük resim (1280×720 JPEG), üretilebildiyse. */
+  render?: { path: string; at: string; thumbnail?: string };
 }
 
 /** Bu aşamaya geçmek için gereken onay (varsa). */

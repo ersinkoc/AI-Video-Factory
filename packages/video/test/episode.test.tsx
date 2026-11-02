@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // Remotion bağlamı yerine kare ve video ayarı testten verilir; medya öğeleri ve Sequence düz elemana çevrilir
 // (gerçek tarayıcı/ffmpeg yok). Easing, interpolate, random gerçek.
 const clock = vi.hoisted(() => ({ frame: 0, fps: 30, width: 1920, height: 1080 }));
-const registered = vi.hoisted(() => ({ root: undefined as unknown, composition: undefined as Record<string, unknown> | undefined }));
+const registered = vi.hoisted(() => ({ root: undefined as unknown, compositions: {} as Record<string, Record<string, unknown>> }));
 vi.mock("remotion", async (orig) => ({
   ...(await orig<typeof import("remotion")>()),
   useCurrentFrame: () => clock.frame,
@@ -25,7 +25,7 @@ vi.mock("remotion", async (orig) => ({
   ),
   Audio: (p: { src: string; volume: number }) => <audio data-kind="audio" src={p.src} data-volume={p.volume} />,
   Composition: (p: Record<string, unknown>) => {
-    registered.composition = p;
+    registered.compositions[p.id as string] = p;
     return null;
   },
   registerRoot: (root: unknown) => {
@@ -66,6 +66,8 @@ vi.mock("pixi.js", () => {
 
 const { Episode } = await import("../src/index.ts");
 const { Ambience } = await import("../src/Ambience.tsx");
+const { Thumbnail } = await import("../src/Thumbnail.tsx");
+type ThumbnailProps = import("../src/Thumbnail.tsx").ThumbnailProps;
 
 afterEach(() => {
   cleanup();
@@ -370,7 +372,7 @@ describe("Remotion kökü", () => {
     const { Root } = await import("../src/Root.tsx");
     expect(registered.root).toBe(Root);
     render(<Root />);
-    const comp = registered.composition!;
+    const comp = registered.compositions.Episode!;
     expect(comp.id).toBe("Episode");
     expect(comp.component).toBe(Episode);
     expect([comp.durationInFrames, comp.fps, comp.width, comp.height]).toEqual([90, 30, 1920, 1080]);
@@ -379,5 +381,43 @@ describe("Remotion kökü", () => {
       props: { timeline: timeline({ fps: 24, width: 1080, height: 1920, durationInFrames: 1234 }) },
     });
     expect(meta).toEqual({ durationInFrames: 1234, fps: 24, width: 1080, height: 1920 });
+    // Küçük resim kompozisyonu: 1280×720, süre seçilen çekimin süresi (bilinmeyen çekimde 1 kare).
+    const thumb = registered.compositions.Thumbnail!;
+    expect([thumb.width, thumb.height, thumb.durationInFrames]).toEqual([1280, 720, 1]);
+    const thumbMeta = thumb.calculateMetadata as (a: { props: { timeline: Timeline; shotId: string } }) => object;
+    const tl = timeline({ fps: 25, visuals: [shot("a", "still_motion", { durationInFrames: 77 })] });
+    expect(thumbMeta({ props: { timeline: tl, shotId: "a" } })).toEqual({ durationInFrames: 77, fps: 25, width: 1280, height: 720 });
+    expect(thumbMeta({ props: { timeline: tl, shotId: "yok" } })).toMatchObject({ durationInFrames: 1 });
+  });
+});
+
+describe("küçük resim", () => {
+  const thumb = (props: Partial<ThumbnailProps> & { timeline: Timeline }) => draw(<Thumbnail shotId="v" side="left" title="Google nasıl doğdu" {...props} />, 80);
+
+  it("vektör çekim arka planda, kendi yazıları olmadan; başlık dilin büyük harfiyle, kişinin karşı yanında", () => {
+    const vector = { layers: [{ asset: "hero", x: 1400, y: 500, height: 200 }], texts: [{ text: "Bilgi kartı", x: 100, y: 100 }] };
+    const c = thumb({ timeline: timeline({ vectorAssets: { hero }, palette: ["#111111", "#222222", "#7bd389"], visuals: [shot("v", "motion_graphic", { vector })] }) });
+    expect(c.querySelector('[id="v-0-box"]')).toBeTruthy();
+    expect(c.textContent).not.toContain("Bilgi kartı");
+    const title = c.querySelector("[data-title]") as HTMLElement;
+    expect(title.textContent).toBe("GOOGLE NASIL DOĞDU");
+    expect([title.style.left, title.style.textAlign]).toEqual(["56px", "left"]);
+    expect((title.lastElementChild as HTMLElement).style.background).toBe("#7bd389");
+    cleanup();
+    // Türkçe büyük harf (i → İ); sağdaki başlıkta vurgu çizgisi sağa yaslı; vurgu rengi yoksa sarı.
+    const right = thumb({ side: "right", title: "bilgisayar", timeline: timeline({ vectorAssets: { hero }, visuals: [shot("v", "motion_graphic", { vector: {} })] }) });
+    const t2 = right.querySelector("[data-title]") as HTMLElement;
+    expect(t2.textContent).toBe("BİLGİSAYAR");
+    expect([t2.style.right, t2.style.textAlign, (t2.lastElementChild as HTMLElement).style.marginLeft]).toEqual(["56px", "right", "auto"]);
+    expect((t2.lastElementChild as HTMLElement).style.background).toBe("#ffd84d");
+  });
+
+  it("durağan kare görsel olarak çizilir; çekim yoksa yalnız başlık", () => {
+    const c = thumb({ shotId: "a", timeline: timeline({ visuals: [shot("a", "still_motion")] }) });
+    expect(c.querySelector("img")!.getAttribute("src")).toBe("/public/a.png");
+    cleanup();
+    const none = thumb({ shotId: "yok", timeline: timeline() });
+    expect(none.querySelector("img")).toBeNull();
+    expect(none.querySelector("[data-title]")).toBeTruthy();
   });
 });

@@ -478,6 +478,20 @@ describe("GET /api/episodes/[id]/video", () => {
     expect(await res.text()).toContain("Merhaba");
   });
 
+  it("?thumb küçük resmi gösterir, &download ile indirtir; küçük resim yoksa ya da dosya silinmişse 404", async () => {
+    expect(await (await get("v-var", TR, "?thumb")).text()).toBe("Küçük resim yok (bölümü yeniden render et)");
+    const jpg = join(root, "video.jpg");
+    await saveEpisode("v-kucuk", { render: { path: join(root, "video.mp4"), at: "t", thumbnail: jpg } });
+    expect((await get("v-kucuk", TR, "?thumb")).status).toBe(404);
+    writeFileSync(jpg, "jpeg");
+    const res = await get("v-kucuk", TR, "?thumb");
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(res.headers.get("content-disposition")).toBeNull();
+    expect(await res.text()).toBe("jpeg");
+    const dl = await get("v-kucuk", TR, "?thumb&download");
+    expect(dl.headers.get("content-disposition")).toBe('attachment; filename="v-kucuk.jpg"');
+  });
+
   it("Range: baştan, açık uçlu, sondan ve boyutu aşan son", async () => {
     const cases: [string, number, number][] = [
       ["bytes=0-99", 0, 99],

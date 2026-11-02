@@ -9,7 +9,7 @@ import { CAST, harness, makeState, scene, SCRIPT, STYLE, voiceOf } from "./pipel
 vi.mock("@ys/agents", async (orig) => (await import("./pipeline-fakes.ts")).mockAgents(await orig()));
 vi.mock("@ys/video/render", async () => {
   const f = await import("./pipeline-fakes.ts");
-  return { renderEpisode: (o: any) => f.render.episode(o), renderStills: (o: any) => f.render.stills(o) };
+  return f.renderModule();
 });
 vi.mock("../src/media.ts", async (orig) => {
   const f = await import("./pipeline-fakes.ts");
@@ -821,6 +821,41 @@ describe("timeline, render ve inceleme", () => {
     expect(readFileSync(srtPath, "utf8")).toMatch(/^1\n00:00:00,000 --> /);
     expect(h.logs).toContain(`  altyazı dosyası: ${srtPath}`);
     expect(render.episode.mock.calls.at(-1)![0].timeline.captions.length).toBeGreaterThan(0);
+  });
+
+  it("render: küçük resim videonun yanına yazılır; çıkarılamazsa video yine hazır; yalnız klipte küçük resim yok", async () => {
+    const h = harness();
+    const id = await ready(h);
+    await h.pipeline.run(id, { only: "timeline" });
+    const state = await h.pipeline.run(id, { only: "render" });
+    const jpg = state.render!.path.replace(/\.mp4$/, ".jpg");
+    expect(state.render!.thumbnail).toBe(jpg);
+    expect(readFileSync(jpg, "utf8")).toBe("jpeg:thumb");
+    const call = render.thumbnail.mock.calls.at(-1)![0];
+    // Hikâye yoksa konu başlık olur; durağan karelerde başlık solda.
+    expect(call).toMatchObject({ title: state.input.topic, side: "left", output: jpg });
+    expect(state.timeline!.visuals.some((v) => v.shotId === call.shotId && v.kind === "still_motion")).toBe(true);
+    expect(h.logs).toContain(`  küçük resim: ${jpg}`);
+
+    // Hikâye başlığı kısaltılarak; küçük resim düşerse video yine hazır.
+    const s = await h.pipeline.load(id);
+    s.story = { title: "Uzun Bir Açılış Cümlesi Burada: Kısa Başlık", logline: "", premise: "", hook: "", beats: [] };
+    await h.pipeline.save(s);
+    render.thumbnail.mockRejectedValueOnce(new Error("chrome yok"));
+    const failed = await h.pipeline.run(id, { only: "render" });
+    expect(render.thumbnail.mock.calls.at(-1)![0].title).toBe("Kısa Başlık");
+    expect(failed.render!.path).toMatch(/\.mp4$/);
+    expect(failed.render!.thumbnail).toBeUndefined();
+    expect(h.logs).toContain("⚠ küçük resim çıkarılamadı (video hazır): chrome yok");
+
+    // Yalnız klip: arka plan olacak kare yok, küçük resim denenmez.
+    const clips = await h.pipeline.load(id);
+    clips.timeline!.visuals = clips.timeline!.visuals.filter((v) => v.kind === "ai_clip");
+    await h.pipeline.save(clips);
+    render.thumbnail.mockClear();
+    const plain = await h.pipeline.run(id, { only: "render" });
+    expect(render.thumbnail).not.toHaveBeenCalled();
+    expect(plain.render!.thumbnail).toBeUndefined();
   });
 
   it("render: altyazı kapalıysa videoya gömülmez ama .srt yine yazılır; kelime yoksa .srt yok", async () => {

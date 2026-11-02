@@ -73,7 +73,7 @@ import type {
   RunOptions,
 } from "@ys/media-gateway";
 import { getJson, putJson, type AssetStore } from "@ys/storage";
-import { renderEpisode, renderStills } from "@ys/video/render";
+import { renderEpisode, renderStills, renderThumbnail, thumbnailShot, thumbnailTitle } from "@ys/video/render";
 import { readFile } from "node:fs/promises";
 import { curateLessons } from "./curate.ts";
 import { loadModelSettings } from "./settings.ts";
@@ -2137,6 +2137,19 @@ export class EpisodePipeline {
       });
       state.render = { path: outputPath, at: new Date().toISOString() };
       this.log(msg("log.render.done", { path: outputPath }));
+      // Küçük resim (yerel, ücretsiz): çıkarılamazsa video yine hazırdır.
+      const pick = thumbnailShot(timeline);
+      if (pick) {
+        try {
+          const output = join(dir, `${state.id}.jpg`);
+          const title = thumbnailTitle(state.story?.title ?? state.input.topic);
+          await renderThumbnail({ timeline, publicDir, ...pick, title, output, onWait: (pid) => this.log(msg("log.render.wait", { pid })) });
+          state.render.thumbnail = output;
+          this.log(msg("log.thumbnail.done", { path: output }));
+        } catch (e) {
+          this.log(msg("log.thumbnail.failed", { error: errorText(e) }));
+        }
+      }
     },
 
     review: async (state) => {
