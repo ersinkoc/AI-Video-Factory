@@ -815,6 +815,30 @@ describe("vektör sahne: yazılar", () => {
     expect(textAt({ text: "abcdefgh", anims: [{ type: "typewriter" }] }, 300).shown).toBe("abcdefgh");
   });
 
+  it("kinetic (GSAP): plaka soldan açılır, kelimeler maskenin altından sırayla yükselir, sonunda özgün hal", () => {
+    const at = (frame: number, anims: object[] = [{ type: "kinetic", start: 0.1, end: 0.5 }], text = "Altair 8800 doğdu") => {
+      const c = scene({ texts: [{ x: 960, y: 300, text, style: "title", anims }] }, { frame });
+      const plate = c.querySelector("[data-text] > span") as HTMLElement | null;
+      const words = [...(plate?.querySelectorAll<HTMLElement>("[data-word] > span") ?? [])];
+      const r = { clip: plate?.style.clipPath, text: plate?.textContent, opacity: words.map((w) => w.style.opacity), masks: plate?.querySelectorAll("[data-word]").length };
+      cleanup();
+      return r;
+    };
+    // Pencereden önce plaka kapalı, kelimeler görünmez; metin bozulmadan kelimelere bölünür.
+    expect(at(0)).toEqual({ clip: "inset(0% 100% 0% 0%)", text: "Altair 8800 doğdu", opacity: ["0", "0", "0"], masks: 3 });
+    // Ortada plaka açık, ilk kelime son kelimeden önde.
+    const mid = at(90);
+    expect(mid.clip).toBe("inset(0% 0% 0% 0%)");
+    expect(Number(mid.opacity[0])).toBeGreaterThan(Number(mid.opacity[2]));
+    expect(at(300)).toMatchObject({ clip: "inset(0% 0% 0% 0%)", opacity: ["1", "1", "1"] });
+    // Kinetik olmayan yazı bölünmez, plakasına dokunulmaz.
+    expect(at(0, [])).toEqual({ clip: "", text: "Altair 8800 doğdu", opacity: [], masks: 0 });
+    // Daktiloyla birlikte: yazı boşken plaka yok, harfler geldikçe kurulur.
+    const typed = [{ type: "typewriter", start: 0, end: 0.5 }, { type: "kinetic", start: 0, end: 0.5 }];
+    expect(at(0, typed).text).toBeUndefined();
+    expect(at(300, typed)).toMatchObject({ text: "Altair 8800 doğdu", opacity: ["1", "1", "1"] });
+  });
+
   it("count_up sayıyı biçimini koruyarak sıfırdan sayar", () => {
     const up = (text: string, frame = 150) => textAt({ text, anims: [{ type: "count_up" }] }, frame).shown;
     // Kare 150: ease-out(0,5) = 0,875

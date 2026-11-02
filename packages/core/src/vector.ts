@@ -233,6 +233,8 @@ export const VectorAnimType = z.enum([
   // yazı
   "typewriter",
   "count_up",
+  // plaka silinerek açılır, kelimeler sırayla yükselir (GSAP)
+  "kinetic",
 ]);
 export type VectorAnimType = z.infer<typeof VectorAnimType>;
 

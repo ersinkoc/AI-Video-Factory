@@ -27,6 +27,7 @@ import { useMemo, type CSSProperties } from "react";
 import { AbsoluteFill, Easing, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
 import { Globe3D } from "./Globe3D.tsx";
+import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
 import { FOREARM_LAG, gaitOf, gestureWeight, hop, paceWalks, physicalAnims, type Gait } from "./motion.ts";
 
@@ -1066,6 +1067,9 @@ function Text({ placed, p, t, seed, accent }: { placed: PlacedText; p: number; t
     if (a.type === "typewriter") shown = shown.slice(0, Math.round(shown.length * local(p, a)));
     if (a.type === "count_up") shown = countUp(shown, Easing.out(Easing.cubic)(local(p, a)));
   }
+  const kinetic = text.anims.find((a) => a.type === "kinetic");
+  const q = kinetic && local(p, kinetic);
+  const plate = useKinetic(q, wordCount(shown));
   const bar = readable(accent) ?? "#ffd84d";
   const primary = text.style === "title" || text.style === "number";
   return (
@@ -1093,6 +1097,7 @@ function Text({ placed, p, t, seed, accent }: { placed: PlacedText; p: number; t
       {shown && (
         // Yarı saydam plaka: yazı dolu bir duvarın üstüne düşse de okunur. Kartta solda vurgu çizgisi.
         <span
+          ref={plate}
           style={{
             display: "inline-block",
             padding: "0.14em 0.5em 0.16em",
@@ -1102,7 +1107,7 @@ function Text({ placed, p, t, seed, accent }: { placed: PlacedText; p: number; t
             ...(card ? { borderLeft: `6px solid ${bar}`, borderTopLeftRadius: 2, borderBottomLeftRadius: 2 } : {}),
           }}
         >
-          {shown}
+          {q === undefined ? shown : splitWords(shown)}
         </span>
       )}
     </div>
