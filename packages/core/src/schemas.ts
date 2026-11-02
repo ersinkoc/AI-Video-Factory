@@ -145,6 +145,8 @@ export const TimelineVisual = z.object({
   ambience: Ambience.default("none"),
   /** kind = "motion_graphic": vektör sahne tarifi (assetUrl kullanılmaz). */
   vector: VectorShot.optional(),
+  /** Vektör sahnenin üstünde oynayan saydam klip (Manim tahtası; render klasöründeki yol). */
+  overlay: z.string().optional(),
   playbackRate: z.number().min(0.5).max(2).default(1),
 });
 

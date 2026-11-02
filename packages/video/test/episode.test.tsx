@@ -271,6 +271,28 @@ describe("bölüm kompozisyonu", () => {
     expect(w!.querySelector("video")!.getAttribute("src")).toBe("/public/w.png");
   });
 
+  it("Manim tahtası vektör sahnenin üstünde, ortada bir panelde oynar; dikey videoda genişliğe sığar", () => {
+    const board = (frame: number) => {
+      const c = draw(<Episode timeline={timeline({ vectorAssets: { hero }, visuals: [shot("v", "motion_graphic", { vector: {}, overlay: "library/math/b.webm" })] })} />, frame);
+      const el = c.querySelector("[data-board]") as HTMLElement;
+      const r = { el, video: el.querySelector("video")!.getAttribute("src"), opacity: el.style.opacity };
+      cleanup();
+      return r;
+    };
+    expect(board(0)).toMatchObject({ video: "/public/library/math/b.webm", opacity: "0" });
+    const shown = board(20);
+    expect(shown.opacity).toBe("1");
+    expect([shown.el.style.left, shown.el.style.top, shown.el.style.width, shown.el.style.height]).toEqual(["440px", "250px", "1040px", "560px"]);
+    // Tahtasız vektör çekimde panel yok.
+    expect(draw(<Episode timeline={timeline({ vectorAssets: { hero }, visuals: [shot("v", "motion_graphic", { vector: {} })] })} />).querySelector("[data-board]")).toBeNull();
+    cleanup();
+    Object.assign(clock, { width: 1080, height: 1920 });
+    const tall = board(20).el;
+    expect([tall.style.left, tall.style.width]).toEqual(["40px", "1000px"]);
+    expect(parseFloat(tall.style.top)).toBeCloseTo(444.44, 1);
+    Object.assign(clock, { width: 1920, height: 1080 });
+  });
+
   it("ses parçaları rolüne göre sıralanır ve sesi ayarlanır", () => {
     const c = draw(
       <Episode

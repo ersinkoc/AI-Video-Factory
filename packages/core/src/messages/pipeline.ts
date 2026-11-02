@@ -147,6 +147,10 @@ export const PIPELINE_MESSAGES = {
   },
   "log.geo.fromLibrary": { tr: "  {id}: kütüphaneden (gerçek veri)", en: "  {id}: from the library (real data)" },
   "log.geo.map": { tr: "  {id}: harita gerçek veriden üretildi ({kb} KB)", en: "  {id}: map generated from real data ({kb} KB)" },
+  "log.math.done": { tr: "  {shot}: Manim tahtası üretildi ({sec} sn)", en: "  {shot}: Manim board rendered ({sec}s)" },
+  "log.math.fromLibrary": { tr: "  {shot}: Manim tahtası kütüphaneden", en: "  {shot}: Manim board from library" },
+  "log.math.skipped": { tr: "  {shot}: Manim tahtası atlandı: {error}", en: "  {shot}: Manim board skipped: {error}" },
+  "log.math.unsafe": { tr: "  {shot}: izin dışı LaTeX adımı atlandı: {step}", en: "  {shot}: disallowed LaTeX step dropped: {step}" },
   "log.geo.flag": { tr: "  {id}: bayrak gerçek veriden üretildi ({kb} KB)", en: "  {id}: flag generated from real data ({kb} KB)" },
   "log.preview.trial": { tr: "  deneme {scene} ✓ ({provider})", en: "  trial {scene} ✓ ({provider})" },
 
@@ -224,6 +228,9 @@ export const PIPELINE_MESSAGES = {
     tr: "{tool} bulunamadı: FFmpeg'i kur ve PATH'e ekle; Stüdyo'yu yeni açılmış bir terminalden başlat",
     en: "{tool} was not found: install FFmpeg and add it to PATH; start the Studio from a newly opened terminal",
   },
+  "err.math.unavailable": { tr: "Manim bulunamadı ({path}); kurulum: README → Manim tahtaları", en: "Manim not found ({path}); setup: README → Manim boards" },
+  "err.math.failed": { tr: "Manim render hatası (çıkış {code}): {detail}", en: "Manim render failed (exit {code}): {detail}" },
+  "err.math.empty": { tr: "Manim tarifi boş (formül ya da grafik yok)", en: "Manim spec is empty (no formula or graph)" },
   "err.flag.unknownCode": { tr: "bilinmeyen bayrak kodu: {code}", en: "unknown flag code: {code}" },
   "err.flag.notFound": { tr: "bayrak bulunamadı: {code}", en: "flag not found: {code}" },
 

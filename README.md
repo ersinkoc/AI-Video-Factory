@@ -41,6 +41,7 @@ Architecture, provider choices and the roadmap are in [docs/PROJE_PLANI.md](docs
 - FFmpeg (for the local render test and video clips; if `ffmpeg`/`ffprobe` is not on PATH, voice-over durations and loudness use the copy bundled with Remotion)
 - Claude: either a signed-in Claude Code installation (subscription) or `ANTHROPIC_API_KEY`
 - Optional API keys: fal, Gemini, ElevenLabs. Providers without a key are disabled.
+- Optional: Manim 0.22 and LaTeX for formula and graph boards (see below); without them shots simply have no board.
 
 ## Setup
 
@@ -61,6 +62,23 @@ pnpm db:migrate
 pnpm test:integration
 # .env: STORE=s3, LEDGER=db
 ```
+
+### Manim boards (optional)
+
+In vector episodes the director can put a formula or a real data graph on a board in the middle of a shot. The code
+turns that recipe into a Manim scene and renders it locally into a transparent clip (no API, no model-written code;
+LaTeX is limited to math commands). Setup on Windows:
+
+```bash
+python -m venv .data/tools/manim-venv
+.data/tools/manim-venv/Scripts/python -m pip install manim==0.22.1
+winget install --id MiKTeX.MiKTeX --scope user
+# let MiKTeX fetch missing LaTeX packages on its own:
+"%LOCALAPPDATA%/Programs/MiKTeX/miktex/bin/x64/initexmf" --set-config-value=[MPM]AutoInstall=1
+```
+
+Other locations: `YS_MANIM` (path to the `manim` executable) and `YS_LATEX_BIN` (LaTeX bin folder). Boards are cached
+under `library/math`.
 
 ## Studio (recommended)
 
@@ -177,7 +195,7 @@ Third-party parts keep their own terms. In particular, [Remotion](https://github
 | `packages/media-gateway` | Every paid generation call: cost and quality router, cache, budget cap, fallback |
 | `packages/agents` | Claude Agent SDK agents with JSON-schema output |
 | `packages/pipeline` | Episode state machine and stages, references, map and flag generation, estimates |
-| `packages/video` | Remotion compositions, including the vector scene renderer, PixiJS (WebGL) particle atmospheres, a three.js 3D globe for planet-scale maps, paper.js-measured draw-on reveals and GSAP kinetic text |
+| `packages/video` | Remotion compositions, including the vector scene renderer, PixiJS (WebGL) particle atmospheres, a three.js 3D globe for planet-scale maps, paper.js-measured draw-on reveals, GSAP kinetic text and Manim formula/graph boards |
 | `packages/storage`, `packages/db` | Local or S3 asset store; Postgres cost ledger |
 | `apps/studio` | Next.js Studio |
 | `apps/cli` | `pnpm ys` |

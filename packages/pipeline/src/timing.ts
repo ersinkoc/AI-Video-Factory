@@ -145,6 +145,7 @@ export function buildTimeline(
           durationInFrames: Math.max(1, toFrame(shot.endMs) - fromFrame),
           ambience: shot.ambience ?? "none",
           vector: shot.vector,
+          ...(state.mathBoards?.[shot.id] ? { overlay: assetPath(state.mathBoards[shot.id]!) } : {}),
           playbackRate: 1,
         },
       ];

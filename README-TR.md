@@ -41,6 +41,7 @@ Mimari, sağlayıcı seçimi ve yol haritası: [docs/PROJE_PLANI.md](docs/PROJE_
 - FFmpeg (yerel render testi ve video klipleri için; `ffmpeg`/`ffprobe` PATH'te yoksa seslendirme süresi ve ses düzeyi Remotion'un kendi kopyasıyla ölçülür)
 - Claude: oturum açılmış bir Claude Code kurulumu (abonelik) ya da `ANTHROPIC_API_KEY`
 - İsteğe bağlı API anahtarları: fal, Gemini, ElevenLabs. Anahtarı olmayan sağlayıcı devre dışı kalır.
+- İsteğe bağlı: formül ve grafik tahtaları için Manim 0.22 ve LaTeX (aşağıda); yoksa çekimler tahtasız çizilir.
 
 ## Kurulum
 
@@ -61,6 +62,23 @@ pnpm db:migrate
 pnpm test:integration
 # .env: STORE=s3, LEDGER=db
 ```
+
+### Manim tahtaları (isteğe bağlı)
+
+Vektör bölümlerde yönetmen bir çekimin ortasındaki tahtaya formül ya da gerçek veriden grafik koyabilir. Kod bu tarifi
+Manim sahnesine çevirir ve yerelde saydam klip olarak render eder (API yok, modelin yazdığı kod çalışmaz; LaTeX
+matematik komutlarıyla sınırlı). Windows'ta kurulum:
+
+```bash
+python -m venv .data/tools/manim-venv
+.data/tools/manim-venv/Scripts/python -m pip install manim==0.22.1
+winget install --id MiKTeX.MiKTeX --scope user
+# eksik LaTeX paketlerini MiKTeX kendisi indirsin:
+"%LOCALAPPDATA%/Programs/MiKTeX/miktex/bin/x64/initexmf" --set-config-value=[MPM]AutoInstall=1
+```
+
+Başka konumlar: `YS_MANIM` (`manim` çalıştırılabilirinin yolu) ve `YS_LATEX_BIN` (LaTeX bin klasörü). Tahtalar
+`library/math` altında önbelleğe alınır.
 
 ## Stüdyo (önerilen)
 
@@ -177,7 +195,7 @@ Release betiği yalnız `main` dalında, commit edilmemiş değişiklik yokken, 
 | `packages/media-gateway` | Her ücretli üretim çağrısı: maliyet ve kalite router'ı, önbellek, bütçe tavanı, yedek sağlayıcı |
 | `packages/agents` | JSON şema çıktılı Claude Agent SDK ajanları |
 | `packages/pipeline` | Bölüm durum makinesi ve aşamalar, referanslar, harita ve bayrak üretimi, tahminler |
-| `packages/video` | Remotion kompozisyonları; vektör sahne çizicisi, PixiJS (WebGL) parçacık atmosferleri, gezegen ölçekli haritalar için three.js 3D küre, paper.js ile ölçülen çizerek belirme ve GSAP kinetik yazı dahil |
+| `packages/video` | Remotion kompozisyonları; vektör sahne çizicisi, PixiJS (WebGL) parçacık atmosferleri, gezegen ölçekli haritalar için three.js 3D küre, paper.js ile ölçülen çizerek belirme, GSAP kinetik yazı ve Manim formül/grafik tahtaları dahil |
 | `packages/storage`, `packages/db` | Yerel ya da S3 varlık deposu; Postgres maliyet defteri |
 | `apps/studio` | Next.js Stüdyo |
 | `apps/cli` | `pnpm ys` |

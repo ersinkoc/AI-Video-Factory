@@ -1,5 +1,5 @@
 import { createTikTokStyleCaptions, type Caption } from "@remotion/captions";
-import type { Timeline } from "@ys/core";
+import { MATH_BOARD, type Timeline } from "@ys/core";
 import { useMemo, type ReactNode } from "react";
 import {
   AbsoluteFill,
@@ -64,6 +64,37 @@ function Clip({ visual }: { visual: Visual }) {
         style={{ width: "100%", height: "100%", objectFit: "cover" }}
       />
     </AbsoluteFill>
+  );
+}
+
+/**
+ * Manim tahtası: koyu yarı saydam panelde saydam klip (formül/grafik). Ekrana sabittir (kamera hareketi uygulanmaz),
+ * yatayda ortada, bilgi kartının altında ve altyazı bandının üstünde; dikey videoda genişliğe sığar.
+ */
+function MathBoard({ url }: { url: string }) {
+  const frame = useCurrentFrame();
+  const { width, height } = useVideoConfig();
+  const k = interpolate(frame, [0, 10], [0, 1], { extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+  const w = Math.min(MATH_BOARD.width, width - 80);
+  return (
+    <div
+      data-board=""
+      style={{
+        position: "absolute",
+        left: (width - w) / 2,
+        top: (MATH_BOARD.y / 1080) * height,
+        width: w,
+        height: (w * MATH_BOARD.height) / MATH_BOARD.width,
+        borderRadius: 18,
+        background: "rgba(14,18,26,0.93)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+        opacity: k,
+        transform: `scale(${0.96 + 0.04 * k})`,
+      }}
+    >
+      <OffthreadVideo src={src(url)} transparent muted style={{ width: "100%", height: "100%" }} />
+    </div>
   );
 }
 
@@ -133,6 +164,7 @@ export function Episode({ timeline }: EpisodeProps) {
               {v.kind === "motion_graphic" && v.vector ? (
                 <AbsoluteFill>
                   <VectorScene visual={v} assets={timeline.vectorAssets} palette={timeline.palette} lineStyle={timeline.lineStyle} speech={timeline.speech} />
+                  {v.overlay && <MathBoard url={v.overlay} />}
                   <Ambience kind={v.ambience} seed={v.shotId} />
                 </AbsoluteFill>
               ) : v.kind === "still_motion" ? (

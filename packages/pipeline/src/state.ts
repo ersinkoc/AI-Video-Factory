@@ -213,6 +213,8 @@ export interface EpisodeState {
   keyframes?: Record<string, AssetRef>;
   /** İnceleme aşamasının çekim kareleri (stüdyo küçük resmi de bunlar). */
   stills?: Record<string, AssetRef>;
+  /** Manim tahtaları: çekim → saydam WebM'in depo anahtarı (timeline aşamasında üretilir). */
+  mathBoards?: Record<string, string>;
   /** Render sonrası inceleme sonucu. */
   review?: EpisodeReview;
   /** Render öncesi taslak kontrolü: ortalama puan ve yeniden planlanan sahneler. */

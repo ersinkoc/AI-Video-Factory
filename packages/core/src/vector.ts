@@ -304,6 +304,30 @@ export type LineStyle = z.infer<typeof LineStyle>;
 export const VectorMood = z.enum(["neutral", "day", "warm", "cool", "night", "dramatic"]);
 export type VectorMood = z.infer<typeof VectorMood>;
 
+/**
+ * Manim tahtası: bilim/matematik anı için formül ve grafik. Model Python yazmaz; bu tarifi kod Manim sahnesine çevirir
+ * ve yerelde render eder (saydam klip, sahnenin ortasındaki tahtada oynar). LaTeX izinli komutlarla sınırlıdır.
+ */
+export const MathSpec = z.object({
+  steps: z
+    .array(z.string().max(160))
+    .max(4)
+    .default([])
+    .describe("LaTeX math only (no words, ASCII only), shown in turn; each step morphs into the next, e.g. [\"a^2 + b^2 = c^2\", \"c = \\sqrt{a^2 + b^2}\"]"),
+  graph: z
+    .object({
+      kind: z.enum(["line", "bar"]).default("line"),
+      points: z.array(z.tuple([z.number(), z.number()])).min(2).max(40).describe("Real data points [x, y] from the narration, x ascending"),
+      xLabel: z.string().max(30).optional().describe("Axis label in the episode language"),
+      yLabel: z.string().max(30).optional(),
+    })
+    .optional(),
+});
+export type MathSpec = z.infer<typeof MathSpec>;
+
+/** Manim tahtasının yeri (1920×1080 tuvalde; render dikey videoda ortalar) ve klibin piksel boyu. */
+export const MATH_BOARD = { x: 440, y: 250, width: 1040, height: 560 } as const;
+
 export const VectorShot = z.object({
   /** Arka plan varlığı; yoksa paletten degrade. */
   background: z.string().optional(),
@@ -320,6 +344,8 @@ export const VectorShot = z.object({
       focusY: z.number().optional(),
     })
     .default({ zoomFrom: 1, zoomTo: 1.06, panX: 0 }),
+  /** Manim tahtası (formül/grafik); tahta sahnenin ortasında, karakterler yanlarında durur. */
+  math: MathSpec.optional(),
 });
 export type VectorShot = z.infer<typeof VectorShot>;
 

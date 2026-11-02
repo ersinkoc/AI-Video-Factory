@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -86,6 +87,7 @@ import { invalidateFrom, missingSelections, newEpisodeState } from "./actions.ts
 import { mapLimit, normalizeClip, probeDurationMs } from "./media.ts";
 import { anonymizeNames, castAliases } from "./names.ts";
 import { generateFlag, generateMap } from "./geo.ts";
+import { boardAccent, cleanMath, renderBoard } from "./manim.ts";
 import { findReferences, findVectorSources, rasterizeSvg, searchQuery, type References } from "./reference.ts";
 import { frameRank, judgeFrame, QA_MAX_BYTES, redrawPrompt } from "./qa.ts";
 import {
@@ -119,6 +121,8 @@ export const levelOf = (message: string): ActivityEntry["level"] =>
 type AssetBrief = VectorAssetBrief & { reference?: string; /** Kadro ya da nesne kimliği. */ id?: string };
 
 /** Harita/bayrak üreticisinin sürümü (kütüphane anahtarının parçası). */
+/** Manim tahtası betiği değişince eski klipler yeniden üretilsin. */
+const MATH_VERSION = "math1";
 // geo2: küre haritası 3D doku ve izdüşüm bilgisiyle (three.js küresi).
 const GEO_VERSION = "geo2";
 
@@ -1181,6 +1185,14 @@ export class EpisodePipeline {
     );
     const outDir = join(dir, "stills");
     await mkdir(outDir, { recursive: true });
+    // Manim tahtaları render klasöründe yoksa (taslak) kare çıkarmadan önce yazılır.
+    for (const v of timeline.visuals) {
+      if (!v.overlay) continue;
+      const target = join(dir, "public", ...v.overlay.split("/"));
+      if (existsSync(target)) continue;
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, await this.bytes(v.overlay));
+    }
     return renderStills({
       timeline,
       publicDir: join(dir, "public"),
@@ -1562,6 +1574,38 @@ export class EpisodePipeline {
     await this.deps.store.put(key, new TextEncoder().encode(svg), "image/svg+xml");
     this.log(msg(p.map ? "log.geo.map" : "log.geo.flag", { id, kb: (svg.length / 1024).toFixed(0) }));
     return key;
+  }
+
+  /**
+   * Manim tahtaları (yerel, ücretsiz): tarif + süre + renkten türeyen anahtarla kütüphanede tutulur. İzinsiz LaTeX adımı
+   * atılır; Manim yoksa ya da render düşerse çekim tahtasız sürer (bölüm durmaz).
+   */
+  private async mathBoards(state: EpisodeState): Promise<void> {
+    const boards: Record<string, string> = {};
+    /* v8 ignore next -- timeline aşaması stil ve çekimlerden sonra gelir */
+    const accent = boardAccent(state.style?.palette ?? []);
+    for (const shot of state.shots ?? []) {
+      if (!shot.vector?.math) continue;
+      const { spec, dropped } = cleanMath(shot.vector.math);
+      for (const step of dropped) this.log(msg("log.math.unsafe", { shot: shot.id, step: step.slice(0, 80) }));
+      const sec = (shot.endMs - shot.startMs) / 1000;
+      const hash = createHash("sha256").update(JSON.stringify({ v: MATH_VERSION, spec, sec: sec.toFixed(2), accent })).digest("hex").slice(0, 32);
+      const key = `library/math/${hash}.webm`;
+      if (await this.deps.store.get(key)) {
+        boards[shot.id] = key;
+        this.log(msg("log.math.fromLibrary", { shot: shot.id }));
+        continue;
+      }
+      try {
+        const bytes = await renderBoard(spec, sec, accent, resolve(this.deps.workDir, state.id, "manim", shot.id));
+        await this.deps.store.put(key, bytes, "video/webm");
+        boards[shot.id] = key;
+        this.log(msg("log.math.done", { shot: shot.id, sec: sec.toFixed(1) }));
+      } catch (e) {
+        this.log(msg("log.math.skipped", { shot: shot.id, error: errorText(e) }));
+      }
+    }
+    state.mathBoards = boards;
   }
 
   /** Timeline'a gömülecek SVG'ler: seçili karakter/mekân varlıkları ve çizilmiş nesneler. */
@@ -2019,6 +2063,7 @@ export class EpisodePipeline {
 
     timeline: async (state) => {
       const vector = motionModeOf(state.input) === "vector" ? await this.vectorAssets(state) : {};
+      if (motionModeOf(state.input) === "vector") await this.mathBoards(state);
       state.timeline = buildTimeline(state, (key) => key, vector);
       const sec = state.timeline.durationInFrames / state.timeline.fps;
       this.log(msg("log.timeline.done", { min: (sec / 60).toFixed(1), visuals: state.timeline.visuals.length }));
@@ -2033,7 +2078,7 @@ export class EpisodePipeline {
       // Depodaki (yerel veya S3) varlıkları render klasörüne indir; klipleri render formatına çevir.
       const files = timeline.visuals.filter((v) => v.assetUrl);
       const clipKeys = new Set(files.filter((v) => v.kind !== "still_motion").map((v) => v.assetUrl));
-      const keys = new Set([...files.map((v) => v.assetUrl), ...timeline.audio.map((a) => a.assetUrl)]);
+      const keys = new Set([...files.map((v) => v.assetUrl), ...timeline.visuals.flatMap((v) => (v.overlay ? [v.overlay] : [])), ...timeline.audio.map((a) => a.assetUrl)]);
       for (const key of keys) {
         const target = join(publicDir, ...key.split("/"));
         await mkdir(dirname(target), { recursive: true });
