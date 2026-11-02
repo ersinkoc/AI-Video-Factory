@@ -1200,6 +1200,20 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     expect(fillWide(cam, [{ ...PL, x: 960, y: 1080, width: 1920, height: 1080 }], isMan)).toBeUndefined();
   });
 
+  it("üstünde bir şey duran masa kişi gibi alttan kesilebilir: masa başındaki kişiye yaklaşılır (Bilgisayarlar s4-sh4)", () => {
+    const ada = { ...PL, index: 0, x: 960, y: 936, width: 264, height: 528 };
+    const desk = { ...PL, index: 1, x: 960, y: 978, width: 327, height: 298 };
+    const article = { ...PL, index: 2, x: 1000, y: 695, width: 78, height: 105, on: 1 };
+    const isAda = (pl: { index: number }) => pl.index === 0;
+    const cam = { zoomFrom: 1, zoomTo: 1.25, panX: 0, focusX: 960, focusY: 600 };
+    const out = fillWide(cam, [ada, desk, article], isAda)!;
+    expect(out.cam.zoomTo).toBeGreaterThan(1.25 * 1.1);
+    // Masanın üst yarısı kadrajda; tabanı kesilebilir.
+    expect(540 + (978 - 298 * 0.5 - out.cam.focusY!) * out.cam.zoomTo).toBeLessThanOrEqual(1080 + 0.5);
+    // Üstünde bir şey yoksa masa küçük nesne gibi bütün kalmalı: yaklaşma değmez.
+    expect(fillWide(cam, [ada, desk], isAda)).toBeUndefined();
+  });
+
   it("yaklaşmaya değmeyen ama bir yana yığılmış içerik yönetmenin zoom'uyla ortalanır (Microsoft s8-sh5)", () => {
     // Soldaki kişi ve ortadaki küçük cihaz: yaklaşma 1,3 → ~1,42, kazanç eşiğin altında.
     const man = { ...PL, x: 450, y: 951, width: 298, height: 595 };
@@ -1241,6 +1255,23 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     expect(zoomOf([{ asset: "hero", x: 1880, depth: 0.3 }])).not.toBe(plain);
     expect(zoomOf([{ asset: "hero", x: 960, depth: 0.3 }, { asset: "hero", x: 1880, depth: 0.3, anims: [{ type: "walk", toX: 1200 }] }])).toBe(plain);
     expect(zoomOf([{ asset: "hero", x: 960, depth: 0.3 }, { asset: "longtable", x: 1700, depth: 0.3 }])).toBe(plain);
+  });
+
+  it("masadaki nesneye yakın çekimde masasındaki kişinin başı da kadrajda kalır; uzaktaki kişi değil (Bilgisayarlar s4-sh5)", () => {
+    const desk = { ...PL, index: 0, x: 960, y: 978, width: 327, height: 298, grounded: true };
+    const article = { ...PL, index: 1, x: 1050, y: 695, width: 78, height: 105, grounded: true, on: 0 };
+    const ada = { ...PL, index: 2, x: 900, y: 936, width: 264, height: 528, grounded: true, on: 4 };
+    const steam = { ...PL, index: 3, x: 1450, y: 680, width: 230, height: 192, grounded: false };
+    const person = (pl: { index: number }) => pl.index !== 2 && pl.index !== 5;
+    const cam = { zoomFrom: 1.2, zoomTo: 1.5, panX: 0, focusX: 1000, focusY: 600 };
+    const out = closeUpCamera(cam, [desk, article, ada, steam], false, person);
+    // Kişinin başı (900 ± 66) kadrajın içinde: grup soldan onun başıyla başlar.
+    expect(out.cam.focusX).toBeCloseTo((900 - 66 + 1450 + 115) / 2);
+    const left = out.cam.focusX! - 1920 / 2 / out.cam.zoomTo;
+    expect(left).toBeLessThanOrEqual(900 - 66);
+    // Uzaktaki kişi (masanın yanında değil) kadrajı genişletmez.
+    const far = { ...ada, index: 5, x: 200 };
+    expect(closeUpCamera(cam, [desk, article, far, steam], false, person).cam.focusX).toBeCloseTo((1011 + 1565) / 2);
   });
 
   it("yakın çekimde özne çok küçükse zoom büyür ve özne ortalanır; büyük özne ve harita çekimi olduğu gibi", () => {

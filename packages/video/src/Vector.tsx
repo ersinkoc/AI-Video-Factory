@@ -539,9 +539,14 @@ export function closeUpCamera(
   // incelemesi, 1 Kas: "Microsoft logosunun ikiye bölünmesi yok", "dergi kapağı görünmüyor").
   const extra = placed.filter((pl) => !group.includes(pl) && !surfaces.has(pl.index) && whole(pl) && seen(pl));
   // Nesneyi tutan kişinin başı da kadraja girer: kamera yalnız elindeki iPad'e ortalayınca yüz göz hizasından
-  // kesiliyordu (Microsoft s9-sh3, 2 Kas). Baş, boyun üst beşte biri.
+  // kesiliyordu (Microsoft s9-sh3, 2 Kas). Nesnenin yanında (masasında) duran kişi de: masadaki makaleye ve havadaki
+  // düşünce balonuna yaklaşan kamera düşünen kişiyi kenarda yarım bırakıyordu (Bilgisayarlar s4-sh5, 2 Kas). Baş, boyun
+  // üst beşte biri.
+  const gl = Math.min(...group.map((g) => g.x - g.width / 2));
+  const gr = Math.max(...group.map((g) => g.x + g.width / 2));
+  const beside = (h: PlacedLayer) => !whole(h) && !surfaces.has(h.index) && !group.includes(h) && h.x + h.width >= gl && h.x - h.width <= gr;
   const heads = placed
-    .filter((h) => group.some((g) => g.heldBy === h.index) && seen(h))
+    .filter((h) => (group.some((g) => g.heldBy === h.index) || beside(h)) && seen(h))
     .map((h) => ({ ...h, width: h.width * 0.5, height: h.height * 0.2, y: h.y - h.height * 0.8 }));
   const framed = [...group, ...extra, ...heads];
   if (side * z >= small * H) {
@@ -634,7 +639,12 @@ export function fillWide(
   const right = Math.min(W, Math.max(...content.map((pl) => pl.x + pl.width / 2)));
   const top = Math.max(0, Math.min(...content.map((pl) => pl.y - pl.height)));
   // Ekranda y = H/2 + (nokta - odak) × zoom. Her alt çizgi (nesnenin tabanı ya da kişinin dizi) kendi sınırının üstünde.
-  const lines = content.map((pl) => (person(pl) ? { y: pl.y - pl.height * FILL.knee, max: 1 } : { y: Math.min(H, pl.y), max: FILL.props }));
+  // Üstünde bir şey duran ya da birinin oturduğu mobilya kişi gibi alttan kesilebilir (üst yarısı kalır): masa başındaki
+  // kişinin orta planı böyledir; masanın ayağını altyazı bandının üstünde tutmak yaklaşmayı engelliyordu (Bilgisayarlar s4-sh4).
+  const surfaces = new Set(content.map((pl) => pl.on));
+  const lines = content.map((pl) =>
+    person(pl) ? { y: pl.y - pl.height * FILL.knee, max: 1 } : surfaces.has(pl.index) ? { y: pl.y - pl.height * 0.5, max: 1 } : { y: Math.min(H, pl.y), max: FILL.props },
+  );
   const most = Math.min(FILL.most, W / FILL.margin / (right - left), ...lines.map((l) => ((l.max - FILL.top) * H) / (l.y - top)));
   // Yaklaşmaya değmiyorsa yönetmenin zoom'u kalır; ama içerik kadrajın bir yanına yığılıp öbür yarısı boşsa (Microsoft
   // s8-sh5, 2 Kas: kişi solda, sağ yarı boş duvar) o zoom'la ortalanır. Kayan kamera bilerek kaydırır, ona dokunulmaz.
