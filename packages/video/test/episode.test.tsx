@@ -213,14 +213,15 @@ describe("bölüm kompozisyonu", () => {
     expect((c.firstElementChild as HTMLElement).style.backgroundColor).toBe("black");
   });
 
-  it("çekim geçişte yumuşakça belirir", () => {
-    const fade = (frame: number) => {
-      const c = draw(<Episode timeline={timeline({ visuals: [shot("a", "still_motion")] })} />, frame);
-      const el = c.querySelector("section")!.firstElementChild as HTMLElement;
+  it("çekim geçişte yumuşakça belirir; ilk çekim solmaz, video siyahtan açılmaz", () => {
+    const fade = (frame: number, nth = 1) => {
+      const c = draw(<Episode timeline={timeline({ visuals: [shot("a", "still_motion"), shot("b", "still_motion", { fromFrame: 100 })] })} />, frame);
+      const el = c.querySelectorAll("section")[nth]!.firstElementChild as HTMLElement;
       const o = el.style.opacity;
       cleanup();
       return Number(o);
     };
+    expect(fade(0, 0)).toBe(1);
     expect(fade(0)).toBe(0);
     expect(fade(4)).toBeCloseTo(0.5);
     expect(fade(20)).toBe(1);

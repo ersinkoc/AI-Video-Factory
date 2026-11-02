@@ -98,9 +98,13 @@ function MathBoard({ url }: { url: string }) {
   );
 }
 
-function FadeIn({ children }: { children: ReactNode }) {
+/**
+ * Çekim bir öncekinin üstüne solarak biner. İlk çekim solmaz: video siyahtan açılmasın, ilk kare dolu olsun (Shorts/Reels
+ * küçük resmi ve otomatik oynatma ilk kareyi gösterir).
+ */
+function FadeIn({ children, first }: { children: ReactNode; first: boolean }) {
   const frame = useCurrentFrame();
-  const opacity = interpolate(frame, [0, CROSSFADE], [0, 1], { extrapolateRight: "clamp" });
+  const opacity = first ? 1 : interpolate(frame, [0, CROSSFADE], [0, 1], { extrapolateRight: "clamp" });
   return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
 }
 
@@ -160,7 +164,7 @@ export function Episode({ timeline }: EpisodeProps) {
         const duration = v.durationInFrames + overlap;
         return (
           <Sequence key={v.shotId} from={v.fromFrame} durationInFrames={duration} name={v.shotId}>
-            <FadeIn>
+            <FadeIn first={i === 0}>
               {v.kind === "motion_graphic" && v.vector ? (
                 <AbsoluteFill>
                   <VectorScene visual={v} assets={timeline.vectorAssets} palette={timeline.palette} lineStyle={timeline.lineStyle} speech={timeline.speech} />
