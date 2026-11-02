@@ -232,7 +232,7 @@ export function NewEpisodeForm({
               <p className="mt-1 text-xs text-muted">
                 {stylePackOf(pack)
                   ? t("form.stylePack.line", { line: t(`line.${stylePackOf(pack)!.lineStyle}` as MessageKey) })
-                  : t(pack === STYLE_CUSTOM ? "form.stylePack.customHint" : "form.stylePack.autoHint")}
+                  : t(pack === STYLE_CUSTOM ? "form.stylePack.customHint" : "form.stylePack.autoHint", { n: STYLE_PACKS.length })}
               </p>
             </div>
             <div>

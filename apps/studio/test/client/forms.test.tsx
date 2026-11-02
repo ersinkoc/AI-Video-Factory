@@ -9,6 +9,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => router }));
 import { msg } from "@ys/core/messages";
 import { MODEL_CHOICES } from "@ys/core/models";
 import { ModelsForm } from "../../src/app/models/models-form.tsx";
+import { STYLE_PACKS } from "@ys/core/styles";
 import { NewEpisodeForm } from "../../src/app/new-episode-form.tsx";
 import { VOICES } from "../../src/lib/voices.ts";
 import { en, fmtTr, json, makeEstimate, makeEstimates, renderIn, row, tr } from "./fixtures.tsx";
@@ -77,7 +78,7 @@ describe("NewEpisodeForm", () => {
     const api = mockApi({ estimate: () => json(estimates) });
     renderIn(<NewEpisodeForm />);
     expect(screen.getByText(tr("series.hint"))).toBeTruthy();
-    expect(screen.getByText(tr("form.stylePack.autoHint"))).toBeTruthy();
+    expect(screen.getByText(tr("form.stylePack.autoHint", { n: STYLE_PACKS.length }))).toBeTruthy();
     await tick(399);
     expect(api.estimates).toHaveLength(0);
     await tick(1);
@@ -151,7 +152,7 @@ describe("NewEpisodeForm", () => {
     };
     renderIn(<NewEpisodeForm samples={samples} />);
     expect(screen.getByText(tr("form.gallery"))).toBeTruthy();
-    expect(screen.getByText(tr("form.gallery.hint", { n: 3, total: 24 }))).toBeTruthy();
+    expect(screen.getByText(tr("form.gallery.hint", { n: 3, total: STYLE_PACKS.length }))).toBeTruthy();
     const thumbs = screen.getAllByRole("button", { pressed: false }).filter((b) => b.querySelector("img"));
     expect(thumbs).toHaveLength(3);
     // "Otomatik" seçiliyken büyük önizleme yok: her resim bir küçük resimde.

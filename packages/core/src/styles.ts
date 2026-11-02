@@ -365,6 +365,68 @@ export const STYLE_PACKS: readonly StylePack[] = [
     texture: "scanlines",
     designNotes: "Build every shape from axis-aligned squares on a coarse grid (e.g. 10 px cells; use <rect> elements or stepped paths), no curves, no anti-aliased diagonals, one shadow tone, dark 1-cell outline.",
   },
+  // 3D görünüm (kullanıcı isteği, 3 Kas: gerçekçi olmayan ama özel 3D karakterler). Vektör modunda hacim SVG
+  // degradeleriyle sahte 3D; görsel/video modlarında promptPrefix gerçek 3D render ister.
+  {
+    id: "soft-3d",
+    name: { tr: "Yumuşak 3D", en: "Soft 3D" },
+    suits: "psychology, self-help, emotions, relationships, everyday life lessons, motivation",
+    artStyle: "stylised soft 3D animated character render",
+    palette: ["#f4f1ea", "#ffd6a5", "#ffadad", "#9bb1ff", "#5e6ad2", "#2d3047"],
+    lighting: "soft studio key light from the upper left, gentle rim light, soft ambient occlusion",
+    lensLanguage: "eye-level medium shots, shallow depth of field, clean uncluttered sets",
+    promptPrefix: "stylised 3D animated render, soft global illumination, smooth matte materials, rounded friendly shapes, subtle depth of field,",
+    negativeRules: [...NO_TEXT, "photorealism", "flat 2D shading", "outlines"],
+    lineStyle: "flat",
+    texture: "none",
+    designNotes:
+      "Fake 3D: shade every body part, garment and object with gradients, never a flat fill. Heads and hands use a radialGradient (highlight off-centre towards the upper left, darker towards the lower right edge); torso, arms and legs use a linearGradient across their width (light, mid, dark) so they read as rounded volumes; add soft white highlight ellipses (opacity 0.25–0.4) on the forehead, cheeks, shoulders and shoes, and a darker crescent where parts meet (ambient occlusion). No outlines. Slightly enlarged head and hands, big glossy eyes with two highlights, smooth simple hair masses. Backgrounds: simple rounded set pieces, soft gradient walls and floor.",
+  },
+  {
+    id: "clay",
+    name: { tr: "Kil animasyon", en: "Claymation" },
+    suits: "humour, everyday life, food, family stories, quirky history, children",
+    artStyle: "handmade plasticine claymation look",
+    palette: ["#f2cc8f", "#e07a5f", "#81b29a", "#3d405b", "#f4f1de", "#c9ada7"],
+    lighting: "warm soft key light with gentle shadows, miniature set lighting",
+    lensLanguage: "miniature set framing, eye-level, slight tilt",
+    promptPrefix: "handmade plasticine claymation, stop-motion miniature set, matte clay texture with fingerprints, soft warm lighting,",
+    negativeRules: [...NO_TEXT, "glossy plastic", "photorealistic humans", "outlines"],
+    lineStyle: "flat",
+    texture: "grain",
+    designNotes:
+      "Chunky rounded forms as if modelled from plasticine: slightly uneven, bulging contours (no perfectly straight edges), thick limbs, simple bead eyes, short rounded fingers. Shade with soft matte radial and linear gradients (no sharp specular highlights), a darker rim along the edge of each shape and a few small lighter smudges as thumbprints. Saturated earthy clay colours. No outlines.",
+  },
+  {
+    id: "vinyl-toy",
+    name: { tr: "Oyuncak figür", en: "Vinyl toy" },
+    suits: "technology, products, startups, games, pop culture, quick explainers",
+    artStyle: "glossy designer vinyl toy 3D look",
+    palette: ["#ff595e", "#ffca3a", "#8ac926", "#1982c4", "#6a4c93", "#f7f7ff"],
+    lighting: "bright studio lighting with crisp specular highlights",
+    lensLanguage: "product-shot framing, centred hero subjects, clean backdrops",
+    promptPrefix: "glossy designer vinyl toy figure, 3D render, smooth plastic, crisp specular highlights, bright studio backdrop,",
+    negativeRules: [...NO_TEXT, "realistic skin", "outlines", "grunge"],
+    lineStyle: "flat",
+    texture: "none",
+    designNotes:
+      "Characters look like glossy collectible toy figures: a large rounded head (somewhat bigger than normal), simple geometric body and limbs, simple rounded hands with a separate thumb, dot eyes. Shade with strong gradients, a crisp white specular highlight (small rounded shape at opacity 0.8) on the head, shoulders and shoes, and a soft reflected light on the shadow side. Bright saturated plastic colours, no outlines; the floor is glossy with a soft reflection.",
+  },
+  {
+    id: "low-poly",
+    name: { tr: "Low-poly 3D", en: "Low-poly 3D" },
+    suits: "geography, nature, science, technology, games, abstract ideas",
+    artStyle: "faceted low-poly 3D illustration",
+    palette: ["#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51", "#f1faee"],
+    lighting: "directional light from the upper left on flat-shaded facets",
+    lensLanguage: "slightly elevated views, clean geometric sets",
+    promptPrefix: "low-poly 3D render, faceted geometry, flat-shaded triangles, soft directional light,",
+    negativeRules: [...NO_TEXT, "smooth gradients", "outlines", "photorealism"],
+    lineStyle: "flat",
+    texture: "none",
+    designNotes:
+      "Build every form from triangles and quads like a low-poly 3D model: each facet is one flat fill, lighter on the side facing the upper-left light and darker away from it (3–5 values per colour), so the form reads as 3D. No curves except the eyes, no gradients, no outlines. Faces: simple faceted planes with small dark eyes. Backgrounds: faceted walls, floor and windows.",
+  },
 ];
 
 export const STYLE_PACK_IDS = STYLE_PACKS.map((p) => p.id);
