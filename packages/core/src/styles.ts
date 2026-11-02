@@ -1,3 +1,4 @@
+import type { FigureSpec } from "./figure.ts";
 import type { Texture } from "./texture.ts";
 import type { LineStyle } from "./vector.ts";
 
@@ -24,6 +25,11 @@ export interface StylePack {
   /** Render'da sahnenin üstüne binen doku (core/texture.ts): paketleri palet dışında da ayırır. */
   texture: Texture;
   designNotes: string;
+  /**
+   * 3D görünümlü paketlerde karakterler koddan kurulan 3D figürdür (core/figure.ts), yüzeyi bu. SVG çizim yine yapılır
+   * (kalite kapısı, figürün dayanağı, WebGL yedeği); mekân ve nesneler SVG kalır.
+   */
+  figure?: FigureSpec["finish"];
 }
 
 const NO_TEXT = ["text, letters, captions or watermarks in the image", "borders, frames, panels or page edges"];
@@ -379,6 +385,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     negativeRules: [...NO_TEXT, "photorealism", "flat 2D shading", "outlines"],
     lineStyle: "flat",
     texture: "none",
+    figure: "matte",
     designNotes:
       "Fake 3D: shade every body part, garment and object with gradients, never a flat fill. Heads and hands use a radialGradient (highlight off-centre towards the upper left, darker towards the lower right edge); torso, arms and legs use a linearGradient across their width (light, mid, dark) so they read as rounded volumes; add soft white highlight ellipses (opacity 0.25–0.4) on the forehead, cheeks, shoulders and shoes, and a darker crescent where parts meet (ambient occlusion). No outlines. Slightly enlarged head and hands, big glossy eyes with two highlights, smooth simple hair masses. Backgrounds: simple rounded set pieces, soft gradient walls and floor.",
   },
@@ -394,6 +401,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     negativeRules: [...NO_TEXT, "glossy plastic", "photorealistic humans", "outlines"],
     lineStyle: "flat",
     texture: "grain",
+    figure: "clay",
     designNotes:
       "Chunky rounded forms as if modelled from plasticine: slightly uneven, bulging contours (no perfectly straight edges), thick limbs, simple bead eyes, short rounded fingers. Shade with soft matte radial and linear gradients (no sharp specular highlights), a darker rim along the edge of each shape and a few small lighter smudges as thumbprints. Saturated earthy clay colours. No outlines.",
   },
@@ -409,6 +417,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     negativeRules: [...NO_TEXT, "realistic skin", "outlines", "grunge"],
     lineStyle: "flat",
     texture: "none",
+    figure: "glossy",
     designNotes:
       "Characters look like glossy collectible toy figures: a large rounded head (somewhat bigger than normal), simple geometric body and limbs, simple rounded hands with a separate thumb, dot eyes. Shade with strong gradients, a crisp white specular highlight (small rounded shape at opacity 0.8) on the head, shoulders and shoes, and a soft reflected light on the shadow side. Bright saturated plastic colours, no outlines; the floor is glossy with a soft reflection.",
   },
@@ -424,6 +433,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     negativeRules: [...NO_TEXT, "smooth gradients", "outlines", "photorealism"],
     lineStyle: "flat",
     texture: "none",
+    figure: "faceted",
     designNotes:
       "Build every form from triangles and quads like a low-poly 3D model: each facet is one flat fill, lighter on the side facing the upper-left light and darker away from it (3–5 values per colour), so the form reads as 3D. No curves except the eyes, no gradients, no outlines. Faces: simple faceted planes with small dark eyes. Backgrounds: faceted walls, floor and windows.",
   },

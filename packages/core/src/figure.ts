@@ -24,7 +24,7 @@ export const FigureSpec = z.object({
   bottom: z.object({ style: z.enum(["trousers", "shorts", "skirt"]), color: Hex }),
   shoes: Hex,
   build: z.enum(["slim", "average", "broad"]).default("average"),
-  /** Yüzey: mat (yumuşak 3D), kil (çok mat), parlak (oyuncak). */
-  finish: z.enum(["matte", "clay", "glossy"]).default("matte"),
+  /** Yüzey: mat (yumuşak 3D), kil (çok mat), parlak (oyuncak), köşeli (low-poly: az yüzlü, düz gölgeli). */
+  finish: z.enum(["matte", "clay", "glossy", "faceted"]).default("matte"),
 });
 export type FigureSpec = z.infer<typeof FigureSpec>;

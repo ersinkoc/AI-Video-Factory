@@ -19,6 +19,7 @@ import {
   gateDescription,
   assetGuess,
   chapterLines,
+  figureDesigner,
   fullDescription,
   packager,
   type AgentImage,
@@ -36,6 +37,7 @@ import { createHash } from "node:crypto";
 import {
   AssetPlan,
   betterGate,
+  FigureSpec,
   STYLE_CUSTOM,
   STYLE_PACKS,
   styleFromPack,
@@ -993,7 +995,42 @@ export class EpisodePipeline {
       const sel = concept.selected[c.id];
       if (sel) await noteCharacterUse(this.deps.store, sel.key, state.id);
     }
+    await this.figures(state, "concept");
   }
+
+  /**
+   * 3D görünümlü paketlerde seçili karakterlerin 3D figür tarifi (3 Kas): onaylı SVG çizim (ve gerçek kişinin
+   * referansları) ucuz bir ajana gösterilir, figür parametreleri kütüphanedeki varlık bilgisine yazılır; render karakteri
+   * three.js figürü olarak çizer. Tarif bir kez hazırlanır (aynı stildeki her bölüm kullanır). Hazırlanamazsa SVG çizim
+   * kullanılır, bölüm durmaz. Stüdyo'da seçim değişmiş olabilir: kare ve timeline aşamaları da eksikleri tamamlar.
+   */
+  private async figures(state: EpisodeState, stage: Stage): Promise<void> {
+    const finish = stylePackOf(state.style?.pack)?.figure;
+    if (!finish) return;
+    // Figürlü pakette konsept aşaması ve sonrası: kadro ve seçimler var.
+    const selected = state.concept!.selected;
+    for (const c of state.cast!.characters.filter((x) => selected[x.id])) {
+      const key = selected[c.id]!.key;
+      try {
+        // Seçili karakterin bilgisi ve kapı kaydı hep vardır; yoksa (bozuk kayıt) figür atlanır, SVG kullanılır.
+        const meta = VectorAssetMeta.parse(await getJson(this.deps.store, `${key}.json`));
+        if (meta.figure?.finish === finish) continue;
+        const drawing = await rasterizeSvg(new TextDecoder().decode(await this.bytes(key)));
+        const references: AgentImage[] = [];
+        for (const ref of meta.check!.refs.slice(0, 2)) {
+          const data = await this.deps.store.get(ref);
+          if (data) references.push({ data, mimeType: "image/jpeg" });
+        }
+        const out = await this.agent(state, stage, figureDesigner({ name: c.name, description: c.visualDescription, drawing, references }, this.agentDeps));
+        const figure = FigureSpec.parse({ ...out, finish });
+        await putJson(this.deps.store, `${key}.json`, { ...meta, figure });
+        this.log(msg("log.figure.done", { name: c.name, hair: figure.hair.style, top: figure.top.style }));
+      } catch (e) {
+        this.log(msg("log.figure.failed", { name: c.name, error: errorText(e) }));
+      }
+    }
+  }
+
 
   /**
    * Karakter bankası: bölüm açılırken seçilen sunucu ve karakterler ile serinin maskotları. Bölümün stilinde
@@ -1286,7 +1323,7 @@ export class EpisodePipeline {
   private async vectorPreviews(state: EpisodeState, only?: Set<string>): Promise<boolean> {
     try {
       const dir = await this.draftDir(state);
-      const timeline = buildTimeline(state, (key) => key, await this.vectorAssets(state));
+      const timeline = buildTimeline(state, (key) => key, await this.vectorAssets(state, "keyframes"));
       await this.storeStills(state, await this.renderShotStills(state, timeline, dir, only));
       /* v8 ignore next -- çekim yoksa buildTimeline daha önce fırlatır */
       const n = only?.size ?? state.shots?.length ?? 0;
@@ -1307,7 +1344,7 @@ export class EpisodePipeline {
     const { script, voice } = state;
     if (!script || !voice || !state.shots) return;
     const dir = await this.draftDir(state);
-    const assets = await this.vectorAssets(state);
+    const assets = await this.vectorAssets(state, "keyframes");
     const timeline = buildTimeline(state, (key) => key, assets);
     const book = await loadLessons(this.deps.store);
     // Taslak denetimi bir kalite adımıdır: kareler çıkarılamazsa (tarayıcı açılamadı vb.) aşama durmaz, denetimsiz sürer.
@@ -1690,8 +1727,9 @@ export class EpisodePipeline {
     this.log(msg("log.music.done", { n: sections.length, moods: sections.map((s) => s.mood).join(" → "), kb: Math.round(bytes.length / 1024) }));
   }
 
-  /** Timeline'a gömülecek SVG'ler: seçili karakter/mekân varlıkları ve çizilmiş nesneler. */
-  private async vectorAssets(state: EpisodeState): Promise<Record<string, VectorAsset>> {
+  /** Timeline'a gömülecek SVG'ler: seçili karakter/mekân varlıkları ve çizilmiş nesneler (eksik 3D figürler tamamlanır). */
+  private async vectorAssets(state: EpisodeState, stage: Stage): Promise<Record<string, VectorAsset>> {
+    await this.figures(state, stage);
     const out: Record<string, VectorAsset> = {};
     const add = async (id: string, kind: VectorAsset["kind"], key: string) => {
       const clean = sanitizeSvg(new TextDecoder().decode(await this.bytes(key)));
@@ -2144,7 +2182,7 @@ export class EpisodePipeline {
     },
 
     timeline: async (state) => {
-      const vector = motionModeOf(state.input) === "vector" ? await this.vectorAssets(state) : {};
+      const vector = motionModeOf(state.input) === "vector" ? await this.vectorAssets(state, "timeline") : {};
       if (motionModeOf(state.input) === "vector") await this.mathBoards(state);
       state.timeline = buildTimeline(state, (key) => key, vector);
       if (motionModeOf(state.input) === "vector" && state.input.sfx !== false) await this.soundEffects(state, state.timeline);

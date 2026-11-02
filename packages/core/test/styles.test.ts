@@ -32,6 +32,15 @@ describe("stil paketleri", () => {
     expect(textureLayer("paper")!.svg).toContain('id="ys-tex-fib"');
   });
 
+  it("3D görünümlü paketlerde karakterler 3D figürdür; yüzey paketin görünümüne uyar", () => {
+    expect(STYLE_PACKS.filter((p) => p.figure).map((p) => [p.id, p.figure])).toEqual([
+      ["soft-3d", "matte"],
+      ["clay", "clay"],
+      ["vinyl-toy", "glossy"],
+      ["low-poly", "faceted"],
+    ]);
+  });
+
   it("paketin stil kitabı paket kimliğini ve tasarımcı notlarını taşır", () => {
     const style = styleFromPack(stylePackOf("noir")!);
     expect(style).toMatchObject({ pack: "noir", artStyle: "film noir illustration in high contrast" });

@@ -35,6 +35,7 @@ export const AGENT_ROLES = {
   "prop-physics": "cheap",
   "asset-guess": "cheap",
   "asset-gate": "cheap",
+  "figure-designer": "cheap",
   "scene-critic": "cheap",
   "lesson-curator": "cheap",
   packager: "fast",

@@ -697,8 +697,12 @@ export function cameraPoint(cam: VectorShot["camera"], k: number, centre: boolea
 interface Motion {
   tr: Transform;
   pose?: Partial<Record<PosePart, PartPose>>;
-  /** Yürürken çizilen yan görünüş (varsa); iskelet RIG_SIDE'a göre pozlanır. */
+  /** Yürürken çizilen yan görünüş (varsa). */
   side?: VectorAsset;
+  /** Yandan yürüyor: iskelet RIG_SIDE'a göre pozlanır (SVG yan çizimi ya da yana dönmüş 3D figür). */
+  profile?: boolean;
+  /** 3D figürün yana dönüşü (−1…1, 90°'nin kesri; artı: katmanın kendi sağına). */
+  turn?: number;
   /** Çizim aynalı mı: yan görünüşte gidiş yönünden gelir (çizim sağa bakar). */
   flip: boolean;
   /** Önden yana dönüşte yatay daralma (1 = yok): karakter dönüyormuş gibi görünür. */
@@ -737,17 +741,23 @@ function motionOf(
   if (asset.kind !== "character") return { tr, flip: layer.flip, squash: 1 };
   tr.rotate += gait.dir * 2.5 * gait.amount;
   // Yan görünüş: adım genliği yarıyı geçince yan çizime geçilir; geçişin çevresinde çizim yatayda daralıp açılır (dönüş).
+  // 3D figür yan çizim istemez: gidiş yönüne gerçekten döner (yarıda tam profil), daralma yok.
   let squash = 1;
-  if (sideAsset && !placed.sitting && gait.amount > 0.2) {
-    squash = 0.6 + 0.4 * Math.min(1, Math.abs(gait.amount - 0.5) / 0.3);
+  let turn: number | undefined;
+  const mirror = layer.flip ? -1 : 1;
+  const figure = asset.meta.figure;
+  if ((sideAsset || figure) && !placed.sitting && gait.amount > 0.2) {
     if (gait.amount >= 0.5) {
       const flip = gait.dir ? gait.dir < 0 : layer.flip;
-      return { tr, flip, squash, side: sideAsset, pose: rigPose(anims, p, t, prefix, false, layer.expression, gait, flip, {}, dur, true) };
+      const pose = rigPose(anims, p, t, prefix, false, layer.expression, gait, flip, {}, dur, true);
+      return { tr, flip, squash: figure ? 1 : 0.6 + 0.4 * Math.min(1, (gait.amount - 0.5) / 0.3), side: sideAsset, profile: true, turn: figure && 1, pose };
     }
+    // Kısmi genlik yalnız hedefe yürürken olur (yerinde yürüyüş hemen tam genlikte): yön hep vardır.
+    if (figure) turn = ((gait.amount - 0.2) / 0.3) * gait.dir * mirror;
+    else squash = 0.6 + 0.4 * Math.min(1, (0.5 - gait.amount) / 0.3);
   }
   // Ayakta dururken ağırlık aktarma: tüm gövde ayak hizasından hafifçe salınır (yürürken adım bunun yerini alır).
   // Aynalanan karakterde salınım da aynalanır (iskelet pozu gibi).
-  const mirror = layer.flip ? -1 : 1;
   if (!placed.sitting) tr.rotate += Math.sin(t * 0.7 + random(prefix) * 6) * 0.9 * (1 - gait.amount) * mirror;
   else tr.y += SIT_DROP * (placed.height / RIG.height);
   // Tuval noktası → iskelet tuvali (katmanın o anki kayması dahil, aynalama geri alınır).
@@ -762,7 +772,7 @@ function motionOf(
     holding: focus.holding,
     voice,
   };
-  return { tr, flip: layer.flip, squash, pose: rigPose(anims, p, t, prefix, placed.sitting, layer.expression, gait, layer.flip, attention, dur) };
+  return { tr, flip: layer.flip, squash, turn, pose: rigPose(anims, p, t, prefix, placed.sitting, layer.expression, gait, layer.flip, attention, dur) };
 }
 
 /**
@@ -841,8 +851,8 @@ function handPoint(placed: PlacedLayer, layer: VectorLayer, m: Motion): [number,
   const a = m.pose?.["arm-r"]?.rotate ?? 0;
   /* v8 ignore next */
   const f = m.pose?.["forearm-r"]?.rotate ?? 0;
-  const [sx, sy] = (m.side ? RIG_SIDE : RIG).pivots["arm-r"];
-  const [ex, ey] = (m.side ? RIG_SIDE : RIG).pivots["forearm-r"];
+  const [sx, sy] = (m.profile ? RIG_SIDE : RIG).pivots["arm-r"];
+  const [ex, ey] = (m.profile ? RIG_SIDE : RIG).pivots["forearm-r"];
   const elbow = rot([ex - sx, ey - sy], a);
   const hand = rot([0, 112], a + f);
   let rx = sx + elbow[0] + hand[0];
@@ -850,7 +860,7 @@ function handPoint(placed: PlacedLayer, layer: VectorLayer, m: Motion): [number,
   // Üst gövde eğildiyse el de onunla gider (CSS: kalçadan çevir, ölçekle, kaydır).
   const tp = m.pose?.torso;
   if (tp) {
-    const [hx, hy] = (m.side ? RIG_SIDE : RIG).pivots.body;
+    const [hx, hy] = (m.profile ? RIG_SIDE : RIG).pivots.body;
     const [qx, qy] = rot([(rx - hx) * tp.sx, (ry - hy) * tp.sy], tp.rotate);
     rx = hx + tp.tx + qx;
     ry = hy + tp.ty + qy;
@@ -900,9 +910,9 @@ function Layer({
 }) {
   const { width: w, height: h } = placed;
   const { tr, pose } = motion;
-  // 3D figür: SVG yerine three.js kuklası (yan görünüş çizimi varsa yürürken o kullanılır). WebGL açılamazsa SVG
-  // pozuyla birlikte yedek olarak gösterilir.
-  const figure = motion.side ? undefined : asset.meta.figure;
+  // 3D figür: SVG yerine three.js kuklası (yürürken kendisi yana döner). WebGL açılamazsa SVG pozuyla birlikte yedek
+  // olarak gösterilir.
+  const figure = asset.meta.figure;
   const raw = prefixSvgIds(fitSvg((motion.side ?? asset).svg, "meet"), prefix);
   const shaped = pose?.torso ? wrapTorso(raw, prefix) : raw;
   // Elle çizim: öğeler bir kez işaretlenir (paper.js uzunlukları), her karede yalnız CSS değişir.
@@ -942,7 +952,7 @@ function Layer({
         <>
           {/* Temas gölgesi: 3D figür zemine bassın (oturan karakterde yok). */}
           {!placed.sitting && <div data-contact style={CONTACT_SHADOW} />}
-          <Figure3D spec={figure} pose={pose} fallback={drawn} />
+          <Figure3D spec={figure} pose={pose} view={{ turn: motion.turn, profile: motion.profile }} fallback={drawn} />
         </>
       ) : (
         drawn

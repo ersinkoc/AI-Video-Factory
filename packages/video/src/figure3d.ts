@@ -64,19 +64,27 @@ export function faceDepth(x: number, y: number): number {
   return Math.sqrt(Math.max(0, HEAD.r * HEAD.r - x * x - dy * dy)) * HEAD.sz;
 }
 
-/** Yüzey türleri: mat (yumuşak plastik, kumaşta hafif parlama), kil (tamamen mat), parlak (oyuncak verniği). */
+/**
+ * Yüzey türleri: mat (yumuşak plastik, kumaşta hafif parlama), kil (tamamen mat), parlak (oyuncak verniği), köşeli
+ * (low-poly: az yüzlü geometri, her yüz tek renk).
+ */
 const FINISH = {
-  matte: { roughness: 0.62, sheen: 0.35, clearcoat: 0 },
-  clay: { roughness: 0.92, sheen: 0, clearcoat: 0 },
-  glossy: { roughness: 0.34, sheen: 0, clearcoat: 1 },
+  matte: { roughness: 0.62, sheen: 0.35, clearcoat: 0, flatShading: false },
+  clay: { roughness: 0.92, sheen: 0, clearcoat: 0, flatShading: false },
+  glossy: { roughness: 0.34, sheen: 0, clearcoat: 1, flatShading: false },
+  faceted: { roughness: 0.75, sheen: 0, clearcoat: 0, flatShading: true },
 } as const;
 
+/** Geometri bölüm sayısı: köşeli yüzeyde üçte biri (en az 4), yüzler seçilir. */
+const segments = (spec: FigureSpec) => (n: number) => (spec.finish === "faceted" ? Math.max(4, Math.round(n / 3)) : n);
+
 /** Profil noktalarından yumuşak eğri (gövde, etek): köşeli silüet olmasın. */
-const smooth = (points: readonly (readonly [number, number])[], k: number) => new SplineCurve(points.map(([r, y]) => new Vector2(r * k, y))).getPoints(36);
+const smooth = (points: readonly (readonly [number, number])[], k: number, n: number) => new SplineCurve(points.map(([r, y]) => new Vector2(r * k, y))).getPoints(n);
 
 export function buildFigure(input: FigureSpec): Figure {
   // Timeline props'u şemadan geçmeden gelebilir (Remotion girdisi): varsayılanlar burada da doldurulur.
   const spec = FigureSpec.parse(input);
+  const q = segments(spec);
   const geos: BufferGeometry[] = [];
   const mats = new Map<string, Material>();
   const mat = (color: string, finish: FigureSpec["finish"] = spec.finish, open = false) => {
@@ -84,7 +92,17 @@ export function buildFigure(input: FigureSpec): Figure {
     let m = mats.get(id);
     if (!m) {
       const f = FINISH[finish];
-      m = new MeshPhysicalMaterial({ color, metalness: 0, roughness: f.roughness, sheen: f.sheen, sheenRoughness: 0.8, clearcoat: f.clearcoat, clearcoatRoughness: 0.2, side: open ? DoubleSide : FrontSide });
+      m = new MeshPhysicalMaterial({
+        color,
+        metalness: 0,
+        roughness: f.roughness,
+        sheen: f.sheen,
+        sheenRoughness: 0.8,
+        clearcoat: f.clearcoat,
+        clearcoatRoughness: 0.2,
+        flatShading: f.flatShading,
+        side: open ? DoubleSide : FrontSide,
+      });
       mats.set(id, m);
     }
     return m;
@@ -104,7 +122,7 @@ export function buildFigure(input: FigureSpec): Figure {
     return g;
   };
   /** Yukarıdan aşağı uzuv: eklemden (0,0) aşağı `len` boyunca, yuvarlak uçlu. */
-  const limb = (r: number, len: number, color: string) => mesh(new CapsuleGeometry(r, len, 6, 18), color, [0, -len / 2, 0]);
+  const limb = (r: number, len: number, color: string) => mesh(new CapsuleGeometry(r, len, q(6), q(18)), color, [0, -len / 2, 0]);
 
   const k = BUILD[spec.build];
   const { top, bottom, skin } = spec;
@@ -117,7 +135,7 @@ export function buildFigure(input: FigureSpec): Figure {
   // --- bacaklar: kalça → diz → ayak; ayakkabı öne uzanır, tabanı zeminde
   const leg = (side: "l" | "r") => {
     const knee = rel(`shin-${side}`, `leg-${side}`);
-    const shin = group(knee, limb(25 * k, -SHOE.y - 25 * k, shinColor), mesh(new SphereGeometry(1, 28, 18), spec.shoes, [0, SHOE.y, 20], [27 * k, SHOE.h, 42]));
+    const shin = group(knee, limb(25 * k, -SHOE.y - 25 * k, shinColor), mesh(new SphereGeometry(1, q(28), q(18)), spec.shoes, [0, SHOE.y, 20], [27 * k, SHOE.h, 42]));
     const [hx, hy] = RIG.pivots[`leg-${side}`];
     return group([X(hx), Y(hy)], limb(30 * k, -knee[1], thighColor), shin);
   };
@@ -138,29 +156,29 @@ export function buildFigure(input: FigureSpec): Figure {
     [0, 258],
   ];
   const open = top.style === "vest" || top.style === "jacket";
-  const body = group([0, 0], mesh(new LatheGeometry(smooth(profile, k), 56), open ? inner : top.color, [0, 0, 0], [1, 1, 0.68]));
+  const body = group([0, 0], mesh(new LatheGeometry(smooth(profile, k, q(36)), q(56)), open ? inner : top.color, [0, 0, 0], [1, 1, 0.68]));
   if (open) {
     // Önde açık yelek/ceket: gövdeyi saran, önde boşluk bırakan kabuk; altındaki gömlek boşluktan görünür.
     const shell = profile.slice(1, -2).map(([r, y]) => [r + 3, y] as [number, number]);
-    body.add(mesh(new LatheGeometry(smooth(shell, k), 56, 0.32, Math.PI * 2 - 0.64), top.color, [0, 0, 0], [1, 1, 0.7], undefined, true));
+    body.add(mesh(new LatheGeometry(smooth(shell, k, q(36)), q(56), 0.32, Math.PI * 2 - 0.64), top.color, [0, 0, 0], [1, 1, 0.7], undefined, true));
   }
   if (top.style === "dress" || bottom.style === "skirt") {
     const color = top.style === "dress" ? top.color : bottom.color;
-    body.add(mesh(new LatheGeometry(smooth([[0, 16], [58, 16], [70, -40], [84, -100], [0, -100]], k), 56), color, [0, 0, 0], [1, 1, 0.74]));
+    body.add(mesh(new LatheGeometry(smooth([[0, 16], [58, 16], [70, -40], [84, -100], [0, -100]], k, q(36)), q(56)), color, [0, 0, 0], [1, 1, 0.74]));
   }
-  if (top.style === "hoodie") body.add(mesh(new TorusGeometry(30 * k, 12, 12, 32), inner, [0, 226, -8], [1, 0.6, 1]));
-  if (top.style === "shirt" || top.style === "jacket" || top.style === "vest") body.add(mesh(new TorusGeometry(17, 5, 8, 24), inner, [0, 232, 2], [1, 0.7, 1]));
+  if (top.style === "hoodie") body.add(mesh(new TorusGeometry(30 * k, 12, q(12), q(32)), inner, [0, 226, -8], [1, 0.6, 1]));
+  if (top.style === "shirt" || top.style === "jacket" || top.style === "vest") body.add(mesh(new TorusGeometry(17, 5, q(8), q(24)), inner, [0, 232, 2], [1, 0.7, 1]));
 
   // --- kollar: omuz topu, üst kol, ön kol, el (başparmak öne bakar)
   const arm = (side: "l" | "r") => {
     const elbow = rel(`forearm-${side}`, `arm-${side}`);
     const wrist = rel(`hand-${side}`, `forearm-${side}`);
     const out = side === "l" ? -1 : 1;
-    const hand = group(wrist, mesh(new SphereGeometry(1, 24, 16), skin, [0, -16, 2], [18, 22, 14]), mesh(new CapsuleGeometry(6, 12, 4, 8), skin, [-out * 14, -9, 10]));
+    const hand = group(wrist, mesh(new SphereGeometry(1, q(24), q(16)), skin, [0, -16, 2], [18, 22, 14]), mesh(new CapsuleGeometry(6, 12, q(4), q(8)), skin, [-out * 14, -9, 10]));
     const forearm = group(elbow, limb(19, -wrist[1] - 2, forearmColor), hand);
     // Üst kol omuz noktasının hemen üstünden başlar: gövdenin omuz hattından taşıp vatka gibi durmasın.
     const ra = 23 * k;
-    const upper = mesh(new CapsuleGeometry(ra, 8 - elbow[1] - 2 * ra, 6, 18), sleeve, [0, (8 + elbow[1]) / 2, 0]);
+    const upper = mesh(new CapsuleGeometry(ra, 8 - elbow[1] - 2 * ra, q(6), q(18)), sleeve, [0, (8 + elbow[1]) / 2, 0]);
     return { group: group(rel(`arm-${side}`, "body"), upper, forearm), forearm, hand };
   };
   const armL = arm("l");
@@ -172,14 +190,14 @@ export function buildFigure(input: FigureSpec): Figure {
   const [, browY] = rel("brows", "head");
   const [, mouthY] = rel("mouth", "head");
   const eye = (x: number): [Mesh, Mesh, Mesh] => [
-    mesh(new SphereGeometry(14.5, 24, 18), "#fbfaf7", [x, 0, faceDepth(x, eyeY) - 8], [1, 1.12, 0.62], "glossy"),
-    mesh(new SphereGeometry(9, 20, 14), "#2a1c16", [x, -1, faceDepth(x, eyeY) - 1.5], [1, 1.1, 0.5], "glossy"),
-    mesh(new SphereGeometry(3, 10, 8), "#ffffff", [x - 3.5, 3.5, faceDepth(x, eyeY) + 3], [1, 1, 1], "glossy"),
+    mesh(new SphereGeometry(14.5, q(24), q(18)), "#fbfaf7", [x, 0, faceDepth(x, eyeY) - 8], [1, 1.12, 0.62], "glossy"),
+    mesh(new SphereGeometry(9, q(20), q(14)), "#2a1c16", [x, -1, faceDepth(x, eyeY) - 1.5], [1, 1.1, 0.5], "glossy"),
+    mesh(new SphereGeometry(3, q(10), q(8)), "#ffffff", [x - 3.5, 3.5, faceDepth(x, eyeY) + 3], [1, 1, 1], "glossy"),
   ];
   const eyes = group([0, eyeY], ...eye(-27), ...eye(27));
   const browColor = spec.hair.style === "bald" ? "#5b4636" : spec.hair.color;
   const brow = (x: number, tilt: number) => {
-    const b = mesh(new CapsuleGeometry(3.6, 15, 4, 8), browColor, [x, 0, faceDepth(x, browY) + 1]);
+    const b = mesh(new CapsuleGeometry(3.6, 15, q(4), q(8)), browColor, [x, 0, faceDepth(x, browY) + 1]);
     b.rotation.z = Math.PI / 2 + tilt;
     return b;
   };
@@ -189,23 +207,29 @@ export function buildFigure(input: FigureSpec): Figure {
   const mouth = group([0, mouthY], mesh(new CircleGeometry(15, 32, Math.PI, Math.PI), "#5c1f26", [0, 7, faceDepth(0, mouthY + 4) + 0.5], [1, 0.5, 1], "matte"));
   const head = group(
     rel("head", "body"),
-    mesh(new CapsuleGeometry(21, 24, 4, 16), skin, [0, 4, -6]),
-    mesh(new SphereGeometry(r, 56, 40), skin, [0, cy, 0], [1, HEAD.sy, HEAD.sz]),
-    mesh(new SphereGeometry(13, 20, 14), skin, [-r + 1, cy - 4, -8], [0.55, 1, 0.8]),
-    mesh(new SphereGeometry(13, 20, 14), skin, [r - 1, cy - 4, -8], [0.55, 1, 0.8]),
-    mesh(new SphereGeometry(9, 20, 14), skin, [0, cy - 12, faceDepth(0, cy - 12) - 3], [1, 0.9, 1]),
+    mesh(new CapsuleGeometry(21, 24, q(4), q(16)), skin, [0, 4, -6]),
+    mesh(new SphereGeometry(r, q(56), q(40)), skin, [0, cy, 0], [1, HEAD.sy, HEAD.sz]),
+    mesh(new SphereGeometry(13, q(20), q(14)), skin, [-r + 1, cy - 4, -8], [0.55, 1, 0.8]),
+    mesh(new SphereGeometry(13, q(20), q(14)), skin, [r - 1, cy - 4, -8], [0.55, 1, 0.8]),
+    mesh(new SphereGeometry(9, q(20), q(14)), skin, [0, cy - 12, faceDepth(0, cy - 12) - 3], [1, 0.9, 1]),
     // Yanaklar: tenin biraz pembesi, yumuşak 3D karakterlerin imzası.
-    mesh(new SphereGeometry(10, 16, 12), "#f0a49a", [-38, cy - 18, faceDepth(38, cy - 18) - 6], [1, 0.7, 0.4]),
-    mesh(new SphereGeometry(10, 16, 12), "#f0a49a", [38, cy - 18, faceDepth(38, cy - 18) - 6], [1, 0.7, 0.4]),
+    mesh(new SphereGeometry(10, q(16), q(12)), "#f0a49a", [-38, cy - 18, faceDepth(38, cy - 18) - 6], [1, 0.7, 0.4]),
+    mesh(new SphereGeometry(10, q(16), q(12)), "#f0a49a", [38, cy - 18, faceDepth(38, cy - 18) - 6], [1, 0.7, 0.4]),
     eyes,
     brows,
     mouth,
   );
   hairOf(spec, head, mesh);
   if (spec.beard !== "none") {
-    // Sakal: çeneyi saran, önü ağzın altından geçen eğik alt kubbe; bıyık ağzın üstünde. Kirli sakal yarı saydam.
+    // Sakal: çeneyi ve yanakların altını saran, önü ağzın altından geçen eğik alt kubbe (yalnız ön yarı ve kulak
+    // hizası; ense açık, profilde kafanın arkası sakal olmasın); bıyık ağzın üstünde. Kirli sakal yarı saydam.
     const full = spec.beard === "full";
-    const beard = mesh(new SphereGeometry(r + (full ? 5 : 3), 48, 24, 0, Math.PI * 2, Math.PI - 1.25, 1.25), spec.hair.color, [0, cy, 0], [1, full ? 1.18 : 1.06, HEAD.sz + 0.03]);
+    const beard = mesh(
+      new SphereGeometry(r + (full ? 5 : 3), q(48), q(24), -0.2, Math.PI + 0.4, Math.PI - 1.25, 1.25),
+      spec.hair.color,
+      [0, cy, 0],
+      [1, full ? 1.18 : 1.06, HEAD.sz + 0.03],
+    );
     beard.rotation.x = 0.26;
     if (spec.beard === "stubble") {
       const m = (beard.material as MeshPhysicalMaterial).clone();
@@ -214,15 +238,15 @@ export function buildFigure(input: FigureSpec): Figure {
       mats.set("stubble", m);
       beard.material = m;
     } else {
-      const stache = mesh(new CapsuleGeometry(5, 20, 4, 8), spec.hair.color, [0, mouthY + 15, faceDepth(0, mouthY + 15) + 1]);
+      const stache = mesh(new CapsuleGeometry(5, 20, q(4), q(8)), spec.hair.color, [0, mouthY + 15, faceDepth(0, mouthY + 15) + 1]);
       stache.rotation.z = Math.PI / 2;
       head.add(stache);
     }
     head.add(beard);
   }
   if (spec.glasses) {
-    for (const x of [-27, 27]) head.add(mesh(new TorusGeometry(16, 2.4, 10, 32), "#26252c", [x, eyeY, faceDepth(x, eyeY) + 4], [1, 0.88, 1], "glossy"));
-    const bridge = mesh(new CapsuleGeometry(1.8, 12, 4, 6), "#26252c", [0, eyeY + 2, faceDepth(0, eyeY) + 4], [1, 1, 1], "glossy");
+    for (const x of [-27, 27]) head.add(mesh(new TorusGeometry(16, 2.4, q(10), q(32)), "#26252c", [x, eyeY, faceDepth(x, eyeY) + 4], [1, 0.88, 1], "glossy"));
+    const bridge = mesh(new CapsuleGeometry(1.8, 12, q(4), q(6)), "#26252c", [0, eyeY + 2, faceDepth(0, eyeY) + 4], [1, 1, 1], "glossy");
     bridge.rotation.z = Math.PI / 2;
     head.add(bridge);
   }
@@ -271,9 +295,10 @@ type MeshFn = (g: BufferGeometry, color: string, at?: readonly [number, number, 
  */
 function hairOf(spec: FigureSpec, head: Group, mesh: MeshFn): void {
   const { cy, r } = HEAD;
+  const q = segments(spec);
   const color = spec.hair.color;
   const cap = (grow: number, tilt = 0.62) => {
-    const m = mesh(new SphereGeometry(r + grow, 56, 28, 0, Math.PI * 2, 0, Math.PI / 2), color, [0, cy + 2, -2], [1, HEAD.sy, HEAD.sz + 0.04]);
+    const m = mesh(new SphereGeometry(r + grow, q(56), q(28), 0, Math.PI * 2, 0, Math.PI / 2), color, [0, cy + 2, -2], [1, HEAD.sy, HEAD.sz + 0.04]);
     m.rotation.x = -tilt;
     return m;
   };
@@ -287,37 +312,53 @@ function hairOf(spec: FigureSpec, head: Group, mesh: MeshFn): void {
       head.add(cap(5));
       return;
     case "side-part":
-      head.add(cap(6), mesh(new SphereGeometry(30, 24, 16), color, [-18, cy + 50, 38], [1.6, 0.6, 0.8]));
+      head.add(cap(6), mesh(new SphereGeometry(30, q(24), q(16)), color, [-18, cy + 50, 38], [1.6, 0.6, 0.8]));
       return;
     case "curly":
       head.add(cap(4, 0.55));
       for (let i = 0; i < 16; i++) {
         const a = (i / 16) * Math.PI * 2;
-        head.add(mesh(new SphereGeometry(20, 16, 12), color, [Math.cos(a) * (r - 14), cy + 46 + Math.sin(a) * 16, Math.sin(a) * (r - 30) - 8]));
+        head.add(mesh(new SphereGeometry(20, q(16), q(12)), color, [Math.cos(a) * (r - 14), cy + 46 + Math.sin(a) * 16, Math.sin(a) * (r - 30) - 8]));
       }
       return;
     case "long":
-      head.add(cap(6, 0.58), mesh(new CapsuleGeometry(58, 96, 8, 24), color, [0, cy - 56, -30], [1.12, 1, 0.5]));
+      head.add(cap(6, 0.58), mesh(new CapsuleGeometry(58, 96, q(8), q(24)), color, [0, cy - 56, -30], [1.12, 1, 0.5]));
       return;
     case "bun":
-      head.add(cap(4), mesh(new SphereGeometry(28, 24, 16), color, [0, cy + r + 8, -18]));
+      head.add(cap(4), mesh(new SphereGeometry(28, q(24), q(16)), color, [0, cy + r + 8, -18]));
       return;
     case "ponytail":
-      head.add(cap(4), mesh(new CapsuleGeometry(18, 74, 6, 16), color, [0, cy - 14, -r - 4]));
+      head.add(cap(4), mesh(new CapsuleGeometry(18, 74, q(6), q(16)), color, [0, cy - 14, -r - 4]));
       return;
   }
 }
 
+export interface FigureView {
+  /** Gövdenin dikey eksende dönüşü, 90°'nin kesri (1: sağa bakan profil). */
+  turn?: number;
+  /** Yan poz (RIG_SIDE): ekrandaki dönüşler profilde öne-arkaya salınımdır (yerel x ekseni), öteleme ileri. */
+  profile?: boolean;
+}
+
 /**
- * Kukla pozunu figüre uygular: dönüş derece ve ekranda saat yönü artı (three'de −z), öteleme RIG pikseli (y aşağı),
- * ölçek dönme noktasında. SVG'deki CSS dönüşümüyle aynı sıra: öteleme, dönüş, ölçek. Verilmeyen parça dinlenir.
+ * Kukla pozunu figüre uygular: dönüş derece ve ekranda saat yönü artı (önden bakışta three'de −z), öteleme RIG pikseli
+ * (y aşağı), ölçek dönme noktasında; SVG'deki CSS dönüşümüyle aynı sıra (öteleme, dönüş, ölçek). Profilde (figür sağa
+ * dönük) ekrandaki saat yönü yerel x ekseni etrafında artı dönüştür, yatay öteleme figürün önüne (+z) gider. Verilmeyen
+ * parça dinlenir.
  */
-export function poseFigure(figure: Figure, pose: Partial<Record<FigurePart, PartPose>>): void {
+export function poseFigure(figure: Figure, pose: Partial<Record<FigurePart, PartPose>>, view: FigureView = {}): void {
+  figure.root.rotation.y = ((view.turn ?? 0) * Math.PI) / 2;
   for (const [name, part] of Object.entries(figure.parts)) {
     const v = pose[name as FigurePart] ?? { rotate: 0, sx: 1, sy: 1, tx: 0, ty: 0 };
     const [x, y] = part.userData.rest as [number, number];
-    part.position.set(x + v.tx, y - v.ty, 0);
-    part.rotation.z = (-v.rotate * Math.PI) / 180;
+    const a = (v.rotate * Math.PI) / 180;
+    if (view.profile) {
+      part.position.set(x, y - v.ty, v.tx);
+      part.rotation.set(a, 0, 0);
+    } else {
+      part.position.set(x + v.tx, y - v.ty, 0);
+      part.rotation.set(0, 0, -a);
+    }
     part.scale.set(v.sx, v.sy, 1);
   }
 }

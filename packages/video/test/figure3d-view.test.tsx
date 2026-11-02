@@ -69,6 +69,9 @@ describe("3D figür (three.js)", () => {
     // Pozsuz figür dinlenme duruşunda çizilir.
     rerender(<Figure3D spec={SPEC} />);
     expect(gl.renders).toHaveLength(3);
+    // Yürürken yana dönüş de yeniden çizdirir.
+    rerender(<Figure3D spec={SPEC} view={{ turn: 1, profile: true }} />);
+    expect(gl.renders).toHaveLength(4);
   });
 
   it("WebGL açılamazsa SVG yedeği gösterilir ve render beklemez", () => {

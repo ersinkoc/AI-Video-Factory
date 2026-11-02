@@ -21,8 +21,8 @@ vi.mock("../src/Globe3D.tsx", () => ({
 
 // 3D figür ayrı testte (figure3d-view.test.tsx); burada yalnız katmana hangi tarif, poz ve SVG yedeğiyle konduğu.
 vi.mock("../src/Figure3D.tsx", () => ({
-  Figure3D: ({ spec, pose, fallback }: { spec: { skin: string }; pose?: Record<string, { rotate: number }>; fallback: unknown }) => (
-    <div data-figure={spec.skin} data-arm={pose?.["arm-r"]?.rotate}>
+  Figure3D: ({ spec, pose, view, fallback }: { spec: { skin: string }; pose?: Record<string, { rotate: number }>; view: { turn?: number; profile?: boolean }; fallback: unknown }) => (
+    <div data-figure={spec.skin} data-arm={pose?.["arm-r"]?.rotate} data-turn={view.turn ?? 0} data-profile={String(Boolean(view.profile))}>
       {fallback as never}
     </div>
   ),
@@ -694,14 +694,46 @@ describe("vektör sahne: 3D figür", () => {
     expect(pose(c, "arm-r").rotate).toBeCloseTo(Number(fig.getAttribute("data-arm")), 1);
   });
 
-  it("oturan figürde temas gölgesi yok; yürürken yan görünüş çizimi varsa o gösterilir", () => {
+  it("oturan figürde temas gölgesi yok", () => {
     const sitting = scene({ layers: [{ asset: "chair", x: 960, depth: 0 }, { asset: "toy", x: 960, on: 0 }] }, { frame: 10 });
     expect(sitting.querySelector("[data-figure]")).not.toBeNull();
     expect(sitting.querySelector("[data-contact]")).toBeNull();
+  });
+
+  /** Figürün bu karedeki dönüşü, yan pozu, katmanın aynalaması ve yedek SVG'si. */
+  const toyAt = (frame: number, layer: object, asset = "toy") => {
+    const c = scene({ layers: [{ asset, x: 600, depth: 0, ...layer }] }, { frame });
+    const fig = c.querySelector("[data-figure]")!;
+    const box = fig.parentElement as HTMLElement;
+    const r = { turn: Number(fig.getAttribute("data-turn")), profile: fig.getAttribute("data-profile") === "true", sx: transformOf(box).sx, side: fig.innerHTML.includes("#0000aa") };
     cleanup();
-    const walking = scene({ layers: [{ asset: "toy", x: 600, depth: 0, anims: [{ type: "walk", toX: 1500 }] }] }, { frame: 25 });
-    expect(walking.querySelector("[data-figure]")).toBeNull();
-    expect(layerBox(walking, "body").innerHTML).toContain("#0000aa");
+    return r;
+  };
+
+  it("yürüyen figür yan çizim istemeden gidiş yönüne döner: önce kısmen, yarı genlikte tam profil ve yan poz; daralma yok", () => {
+    const walk = { anims: [{ type: "walk", toX: 1500 }] };
+    const frames = Array.from({ length: 30 }, (_, f) => toyAt(f, walk));
+    const partial = frames.find((r) => r.turn > 0 && r.turn < 1)!;
+    expect(partial.profile).toBe(false);
+    expect(partial.sx).toBe(1);
+    expect(toyAt(25, walk)).toEqual({ turn: 1, profile: true, sx: 1, side: true });
+    // Sola yürürken: geçişte sola döner, profilde katman aynalanır (figür sağa bakan profilin aynası).
+    const left = Array.from({ length: 30 }, (_, f) => toyAt(f, { anims: [{ type: "walk", toX: 0 }] }));
+    expect(left.some((r) => r.turn < 0 && r.turn > -1)).toBe(true);
+    expect(left.at(-1)).toMatchObject({ turn: 1, profile: true, sx: -1 });
+    // Aynalanmış katman sağa yürürken geçişte katmanın kendi soluna döner (ekranda sağa).
+    expect(Array.from({ length: 30 }, (_, f) => toyAt(f, { ...walk, flip: true })).some((r) => r.turn < 0 && r.turn > -1)).toBe(true);
+    // Yerinde yürüyüşte yön yok: katmanın baktığı yana döner (aynalı katman aynalı kalır).
+    expect(toyAt(60, { anims: [{ type: "walk", start: 0, end: 1 }], flip: true })).toMatchObject({ turn: 1, profile: true, sx: -1 });
+  });
+
+  it("yan çizimi olmayan figür de döner; yedek SVG ön çizimdir", () => {
+    (ASSETS as Record<string, VectorAsset>).toy2 = asset("toy2", "character", ASSETS.toy.svg, 400, 800, ASSETS.toy.meta);
+    try {
+      expect(toyAt(25, { anims: [{ type: "walk", toX: 1500 }] }, "toy2")).toEqual({ turn: 1, profile: true, sx: 1, side: false });
+    } finally {
+      delete (ASSETS as Record<string, unknown>).toy2;
+    }
   });
 });
 

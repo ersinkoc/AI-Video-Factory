@@ -78,6 +78,8 @@ export const PIPELINE_MESSAGES = {
     en: "  ✗ REJECTED {name}: failed the quality gate in {draws} attempts ({score}): {defects}",
   },
   "log.asset.drawn": { tr: "  {name}: çizildi ({kb} KB, {draws} deneme)", en: "  {name}: drawn ({kb} KB, {draws} attempts)" },
+  "log.figure.done": { tr: "  {name}: 3D figür hazır ({hair} saç, {top})", en: "  {name}: 3D figure ready ({hair} hair, {top})" },
+  "log.figure.failed": { tr: "  {name}: 3D figür hazırlanamadı, SVG çizim kullanılacak: {error}", en: "  {name}: 3D figure could not be prepared, the SVG drawing will be used: {error}" },
   "log.side.name": { tr: "{name} (yan görünüş)", en: "{name} (side view)" },
   "log.side.fallback": {
     tr: "  {name}: yan görünüş kalite kapısından geçemedi; karakter önden yürüyecek",

@@ -99,6 +99,15 @@ describe("3D figür: tarif", () => {
     expect((stubble.material as Material).opacity).toBe(0.4);
   });
 
+  it("köşeli yüzey (low-poly): az yüzlü geometri ve düz gölge", () => {
+    const vertices = (f: ReturnType<typeof buildFigure>) => meshes(f).reduce((n, m) => n + m.geometry.getAttribute("position").count, 0);
+    const smoothFig = buildFigure(BASE);
+    const faceted = buildFigure(spec({ finish: "faceted" }));
+    expect(vertices(faceted)).toBeLessThan(vertices(smoothFig) / 4);
+    expect((meshes(faceted)[0]!.material as MeshPhysicalMaterial).flatShading).toBe(true);
+    expect((meshes(smoothFig)[0]!.material as MeshPhysicalMaterial).flatShading).toBe(false);
+  });
+
   it("yapı: geniş yapılı figür daha geniş", () => {
     const width = (build: FigureSpec["build"]) => {
       const box = new Box3().setFromObject(buildFigure(spec({ build })).parts.body);
@@ -134,8 +143,25 @@ describe("3D figür: poz", () => {
     const shoulder = f.parts["arm-r"].getWorldPosition(new Vector3());
     expect(hand.x).toBeLessThan(shoulder.x);
     poseFigure(f, {});
+    expect(f.root.rotation.y).toBe(0);
     expect(f.parts["arm-r"].rotation.z).toBeCloseTo(0);
     expect([f.parts["arm-r"].position.x, f.parts["arm-r"].position.y]).toEqual([hx, hy]);
     expect(f.parts.mouth.scale.y).toBe(1);
+  });
+
+  it("profil: figür sağa döner, ekranda saat yönü öne-arkaya salınımdır (ayak geriye, sola gider), yatay öteleme ileri", () => {
+    const f = buildFigure(BASE);
+    const at = (o: { getWorldPosition: (v: Vector3) => Vector3 }) => o.getWorldPosition(new Vector3());
+    poseFigure(f, { "leg-r": { rotate: 30, sx: 1, sy: 1, tx: 0, ty: 0 }, head: { rotate: 0, sx: 1, sy: 1, tx: 12, ty: 0 } }, { turn: 1, profile: true });
+    f.root.updateMatrixWorld(true);
+    // Yüz sağda (boynun önünde).
+    expect(at(f.parts.eyes.children[0]!).x).toBeGreaterThan(at(f.parts.head).x + 40);
+    expect(at(f.parts["shin-r"]).x).toBeLessThan(at(f.parts["leg-r"]).x - 30);
+    expect(at(f.parts.head).x).toBeCloseTo(12);
+    // Kısmi dönüş: yalnız gövde döner, poz önden bakıştaki gibi uygulanır.
+    poseFigure(f, { "leg-r": { rotate: 30, sx: 1, sy: 1, tx: 0, ty: 0 } }, { turn: -0.5 });
+    expect(f.root.rotation.y).toBeCloseTo(-Math.PI / 4);
+    expect(f.parts["leg-r"].rotation.x).toBe(0);
+    expect(f.parts["leg-r"].rotation.z).toBeCloseTo(-Math.PI / 6);
   });
 });

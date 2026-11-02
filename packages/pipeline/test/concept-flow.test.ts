@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { QueryFn } from "@ys/agents";
 import { styleFromPack, stylePackOf, VectorAssetMeta } from "@ys/core";
 import { InMemoryLedger, MediaGateway } from "@ys/media-gateway";
-import { FsAssetStore, getJson, type AssetStore } from "@ys/storage";
+import { FsAssetStore, getJson, putJson, type AssetStore } from "@ys/storage";
 import { acceptAsset, EpisodePipeline, newEpisodeState, rejectAsset, type EpisodeInput, type EpisodeState } from "../src/index.ts";
 
 /**
@@ -22,6 +22,28 @@ interface Calls {
   designer: string[];
   planner: number;
   gate: number;
+  /** 3D figür ajanına gelen her istekteki görsel sayısı. */
+  figure: number[];
+  /** true: figür ajanı geçersiz renk döndürür (tarif kurulamaz). */
+  figureBroken?: boolean;
+}
+
+const FIGURE = {
+  skin: "#e0b08c",
+  hair: { style: "short", color: "#3a2a20" },
+  beard: "none",
+  glasses: true,
+  top: { style: "vest", color: "#c9694a", inner: "#f4efe4" },
+  bottom: { style: "trousers", color: "#4a5a78" },
+  shoes: "#5a3a26",
+  build: "slim",
+};
+
+/** Görselli isteğin (async iterable) içindeki görsel sayısı. */
+async function imagesIn(prompt: unknown): Promise<number> {
+  let n = 0;
+  for await (const m of prompt as AsyncIterable<{ message: { content: { type: string }[] } }>) n += m.message.content.filter((c) => c.type === "image").length;
+  return n;
 }
 
 function fakeClaude(score: () => number, calls: Calls): QueryFn {
@@ -41,6 +63,12 @@ function fakeClaude(score: () => number, calls: Calls): QueryFn {
     } else if (props.includes("recognizable")) {
       calls.gate++;
       out = { recognizable: score(), fidelity: null, defects: ["arms too short"] };
+    } else if (props.includes("shoes")) {
+      out = calls.figureBroken ? { ...FIGURE, skin: "ten rengi" } : FIGURE;
+      return (async function* () {
+        calls.figure.push(await imagesIn(params.prompt));
+        yield { type: "result", subtype: "success", duration_ms: 10, total_cost_usd: 0.001, structured_output: out };
+      })();
     } else throw new Error(`bilinmeyen ajan: ${props.join(",")}`);
     return (async function* () {
       yield { type: "result", subtype: "success", duration_ms: 10, total_cost_usd: 0.001, structured_output: out };
@@ -61,9 +89,9 @@ const input: EpisodeInput = {
   motionMode: "vector",
 };
 
-async function setup(score: () => number) {
+async function setup(score: () => number, pack = "flat-explainer") {
   const store: AssetStore = new FsAssetStore(mkdtempSync(join(tmpdir(), "ys-concept-")));
-  const calls: Calls = { designer: [], planner: 0, gate: 0 };
+  const calls: Calls = { designer: [], planner: 0, gate: 0, figure: [] };
   const pipeline = new EpisodePipeline({
     gateway: new MediaGateway({ providers: [], store, ledger: new InMemoryLedger() }),
     store,
@@ -73,7 +101,7 @@ async function setup(score: () => number) {
   });
   const state: EpisodeState = {
     ...newEpisodeState(input),
-    style: styleFromPack(stylePackOf("flat-explainer")!),
+    style: styleFromPack(stylePackOf(pack)!),
     script: { title: "t", scenes: [] } as never,
     cast: {
       characters: [{ id: "c1", name: "Rider", kind: "person", role: "rider", visualDescription: "young rider", scenes: [] }],
@@ -97,6 +125,46 @@ describe("konsept akışı (sahte Claude)", () => {
     expect(meta.identity).toMatchObject({ name: "Rider", pack: "flat-explainer" });
     expect(calls.designer).toHaveLength(2);
     expect(calls.planner).toBe(2);
+    // Düz pakette 3D figür yok.
+    expect(meta.figure).toBeUndefined();
+    expect(calls.figure).toEqual([]);
+  });
+
+  it("3D pakette onaylı karakterin çizimi figür ajanına gider; tarif paketin yüzeyiyle kütüphaneye yazılır, bir kez", async () => {
+    const { store, calls, pipeline, id } = await setup(() => 9, "clay");
+    let state = await pipeline.run(id, { until: "concept" });
+    const key = state.concept!.selected.c1!.key;
+    const figure = VectorAssetMeta.parse(await getJson(store, `${key}.json`)).figure;
+    expect(figure).toMatchObject({ finish: "clay", glasses: true, top: { style: "vest", inner: "#f4efe4" } });
+    // Yalnız karakter (mekân figür olmaz); referans yok: yalnız çizimin kendisi.
+    expect(calls.figure).toEqual([1]);
+    expect(state.activity!.some((a) => a.msg.includes("Rider: 3D figür hazır (short saç, vest)"))).toBe(true);
+
+    // Konsept yeniden çalışınca hazır tarif yeniden istenmez.
+    delete state.done.concept;
+    await pipeline.save(state);
+    state = await pipeline.run(id, { until: "concept" });
+    expect(calls.figure).toEqual([1]);
+
+    // Tarif yoksa (ör. Stüdyo'da başka çizim seçildi) yeniden hazırlanır; gerçek kişinin kayıtlı referansları da gider
+    // (en çok iki, depoda olmayan atlanır).
+    const meta = VectorAssetMeta.parse(await getJson(store, `${key}.json`));
+    await store.put("library/refs/a.jpg", new Uint8Array([255, 216, 255]), "image/jpeg");
+    await store.put("library/refs/b.jpg", new Uint8Array([255, 216, 255]), "image/jpeg");
+    await putJson(store, `${key}.json`, { ...meta, figure: undefined, check: { ...meta.check!, refs: ["library/refs/yok.jpg", "library/refs/a.jpg", "library/refs/b.jpg"] } });
+    delete state.done.concept;
+    await pipeline.save(state);
+    await pipeline.run(id, { until: "concept" });
+    expect(calls.figure).toEqual([1, 2]);
+  });
+
+  it("figür tarifi kurulamazsa SVG çizimle sürer, bölüm durmaz", async () => {
+    const { store, calls, pipeline, id } = await setup(() => 9, "soft-3d");
+    calls.figureBroken = true;
+    const state = await pipeline.run(id, { until: "concept" });
+    expect(state.concept!.selected.c1).toBeDefined();
+    expect(VectorAssetMeta.parse(await getJson(store, `${state.concept!.selected.c1!.key}.json`)).figure).toBeUndefined();
+    expect(state.activity!.some((a) => a.msg.includes("Rider: 3D figür hazırlanamadı"))).toBe(true);
   });
 
   it("kapıyı geçemeyen karakter 3 denemeden sonra reddedilir; Stüdyo bölümü çökmez, seçim yapılmaz", async () => {

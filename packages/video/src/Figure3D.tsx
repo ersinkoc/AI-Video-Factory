@@ -11,7 +11,7 @@ import {
   SRGBColorSpace,
   WebGLRenderer,
 } from "three";
-import { buildFigure, poseFigure, type Figure, type FigurePart, type PartPose } from "./figure3d.ts";
+import { buildFigure, poseFigure, type Figure, type FigurePart, type FigureView, type PartPose } from "./figure3d.ts";
 
 /**
  * Çizim alanı: kukla tuvali (400×800) ve kol kaldırınca, eğilince taşan kısım için kenar payı. Tuval katman kutusundan
@@ -34,7 +34,18 @@ interface Stage {
  * ve kamera hesapları SVG kuklasıyla aynı kalır. three'nin kendi döngüsü yok, her Remotion karesinde elle çizilir. WebGL
  * açılamazsa karakterin SVG çizimi gösterilir (`fallback`): karakter kaybolmaz, render düşmez.
  */
-export function Figure3D({ spec, pose, fallback }: { spec: FigureSpec; pose?: Partial<Record<FigurePart, PartPose>>; fallback?: ReactNode }) {
+export function Figure3D({
+  spec,
+  pose,
+  view,
+  fallback,
+}: {
+  spec: FigureSpec;
+  pose?: Partial<Record<FigurePart, PartPose>>;
+  /** Yürürken yana dönüş ve yan poz. */
+  view?: FigureView;
+  fallback?: ReactNode;
+}) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [stage, setStage] = useState<Stage>();
   const [failed, setFailed] = useState(false);
@@ -88,10 +99,10 @@ export function Figure3D({ spec, pose, fallback }: { spec: FigureSpec; pose?: Pa
 
   useLayoutEffect(() => {
     if (!stage) return;
-    poseFigure(stage.figure, pose ?? {});
+    poseFigure(stage.figure, pose ?? {}, view);
     stage.renderer.render(stage.scene, stage.camera);
     continueRender(handle);
-  }, [stage, pose, handle]);
+  }, [stage, pose, view?.turn, view?.profile, handle]);
 
   if (failed) return fallback;
   const { padX, padTop, padBottom } = FIGURE_VIEW;
