@@ -12,6 +12,11 @@ vi.mock("remotion", async (orig) => ({
   useVideoConfig: () => ({ fps: clock.fps, width: clock.width, height: clock.height, durationInFrames: 300 }),
 }));
 
+// 3D küre ayrı testte (globe3d.test.tsx); burada yalnız sahneye hangi bilgiyle konduğu.
+vi.mock("../src/Globe3D.tsx", () => ({
+  Globe3D: ({ globe, p, seed }: { globe: { lon: number }; p: number; seed: string }) => <div data-globe={`${globe.lon}|${p}|${seed}`} />,
+}));
+
 const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, heldFraming, fillWide, wrapTorso, mouthOpen } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
@@ -47,6 +52,12 @@ const ASSETS = {
       { x: 500, y: 400, text: "İstanbul", kind: "city", order: 3 },
       { x: 700, y: 500, text: "Sefer", kind: "route", order: 1 },
     ],
+  }),
+  globe: asset("globe", "background", '<svg viewBox="0 0 1920 1080"><g id="globe-base"><rect id="sky" width="1920" height="1080"/></g><path id="route-0" d="M0 0L10 10"/></svg>', 1920, 1080, {
+    exact: true,
+    routes: 1,
+    labels: [{ x: 960, y: 480, text: "Türkiye", kind: "country" }],
+    globe: { lon: 35, lat: 39, cx: 960, cy: 480, r: 370, texture: "<svg/>" },
   }),
   flag: asset("flag", "background", '<svg viewBox="0 0 1920 1080"><rect id="red" width="1920" height="1080" fill="#e30a17"/></svg>', 1920, 1080, { exact: true }),
   broken: asset("broken", "prop", "bu bir svg değil", 100, 100),
@@ -1012,6 +1023,35 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     expect(mid.labels).toEqual(["Türkiye", "İstanbul"]);
     const end = at(300);
     expect(end).toEqual({ r0: 0, r1: 0, labels: ["Türkiye", "İstanbul", "Sefer"] });
+  });
+
+  it("küre haritası 3D çizilir: SVG tabanı gizlenir, rota ve etiketler küre durunca oynar", () => {
+    const at = (frame: number) => {
+      const c = scene({ background: "globe" }, { frame });
+      const css = [...c.querySelectorAll("style")].map((st) => st.textContent).join("");
+      const out = {
+        globe: c.querySelector("[data-globe]")!.getAttribute("data-globe"),
+        opacity: Number(bgDiv(c, "sky").style.opacity),
+        route: Number(/#s1-bg-route-0\{stroke-dashoffset:([\d.]+)\}/.exec(css)![1]),
+        hidden: css.includes("#s1-bg-globe-base{display:none}"),
+        labels: [...c.querySelectorAll("div")].filter((d) => d.style.whiteSpace === "nowrap").map((d) => d.textContent),
+      };
+      cleanup();
+      return out;
+    };
+    // p = 0,2: küre hâlâ dönüyor; harita katmanı görünmez.
+    expect(at(60)).toEqual({ globe: "35|0.2|s1", opacity: 0, route: 1, hidden: true, labels: [] });
+    // p = 0,5: küre durdu; katman görünür, rota çiziliyor, ülke adı çıktı.
+    const mid = at(150);
+    expect(mid.opacity).toBe(1);
+    expect(mid.route).toBeGreaterThan(0);
+    expect(mid.route).toBeLessThan(1);
+    expect(mid.labels).toEqual(["Türkiye"]);
+    expect(at(300).route).toBe(0);
+    // Düz haritada 3D küre yok.
+    const flat = scene({ background: "map" });
+    expect(flat.querySelector("[data-globe]")).toBeNull();
+    expect(bgDiv(flat, "route-0").style.opacity).toBe("");
   });
 
   it("etiket türüne göre biçimlenir", () => {

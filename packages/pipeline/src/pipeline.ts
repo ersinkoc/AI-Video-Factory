@@ -119,7 +119,8 @@ export const levelOf = (message: string): ActivityEntry["level"] =>
 type AssetBrief = VectorAssetBrief & { reference?: string; /** Kadro ya da nesne kimliği. */ id?: string };
 
 /** Harita/bayrak üreticisinin sürümü (kütüphane anahtarının parçası). */
-const GEO_VERSION = "geo1";
+// geo2: küre haritası 3D doku ve izdüşüm bilgisiyle (three.js küresi).
+const GEO_VERSION = "geo2";
 
 const ASSET_VERSION: Record<VectorAssetBrief["kind"], string> = { character: "rig2", background: "shell2", prop: "meta1" };
 
@@ -1555,6 +1556,7 @@ export class EpisodePipeline {
     }
     const out = p.map ? await generateMap(p.map, state.input.lang, palette) : await generateFlag(p.flag!);
     const svg = sanitizeSvg(out.svg);
+    if (out.meta.globe) out.meta.globe.texture = sanitizeSvg(out.meta.globe.texture);
     // Önce meta: SVG var ama meta yoksa "exact" bilgisi kaybolur (deniz dikdörtgeni silinir, çizgi stili uygulanır).
     await putJson(this.deps.store, `${key}.json`, out.meta);
     await this.deps.store.put(key, new TextEncoder().encode(svg), "image/svg+xml");

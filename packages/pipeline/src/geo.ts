@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { LocalizedError, msg, type FlagSpec, type MapLabel, type MapSpec, type VectorAssetMeta } from "@ys/core";
-import { geoBounds, geoCentroid, geoMercator, geoNaturalEarth1, geoOrthographic, geoPath, geoGraticule10, type GeoProjection } from "d3-geo";
+import { geoBounds, geoCentroid, geoEquirectangular, geoMercator, geoNaturalEarth1, geoOrthographic, geoPath, geoGraticule10, type GeoPath, type GeoProjection } from "d3-geo";
 import countries from "i18n-iso-countries";
 import type { Feature, FeatureCollection, Geometry, MultiPolygon, Polygon } from "geojson";
 import { feature } from "topojson-client";
@@ -160,20 +160,14 @@ export async function generateMap(spec: MapSpec, lang: string, palette: string[]
   }
   const focusIds = new Set(pick(spec.focus).map((x) => String(x.f.id)));
 
+  const globe = spec.projection === "globe";
   const parts: string[] = [];
-  parts.push(`<rect width="${W}" height="${H}" fill="${spec.projection === "globe" ? "#1b2333" : colors.sea}"/>`);
-  if (spec.projection === "globe") parts.push(`<path d="${path({ type: "Sphere" })}" fill="${colors.sea}" stroke="#8fa3b5" stroke-width="2"/>`);
-  parts.push(`<path d="${path(geoGraticule10())}" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="1"/>`);
-  // Önce sıradan ülkeler, sonra odak/vurgulu olanlar (sınırları üstte görünsün).
-  const ordered = [...all].sort((a, b) => Number(tone.has(String(a.id)) || focusIds.has(String(a.id))) - Number(tone.has(String(b.id)) || focusIds.has(String(b.id))));
-  for (const f of ordered) {
-    const d = path(f);
-    if (!d) continue;
-    const id = String(f.id);
-    const fill = tone.get(id) ?? colors.land;
-    const strong = tone.has(id) || focusIds.has(id);
-    parts.push(`<path d="${d}" fill="${fill}" stroke="${strong ? colors.focusBorder : colors.border}" stroke-width="${strong ? 1.6 : 0.9}" stroke-linejoin="round"/>`);
-  }
+  // Kürede taban (gök, küre, ülkeler) ayrı grupta: render 3D küreyi çizerken bu grubu gizler, rotalar ve işaretler kalır.
+  if (globe) parts.push(`<g id="globe-base">`);
+  parts.push(`<rect width="${W}" height="${H}" fill="${globe ? "#1b2333" : colors.sea}"/>`);
+  if (globe) parts.push(`<path d="${path({ type: "Sphere" })}" fill="${colors.sea}" stroke="#8fa3b5" stroke-width="2"/>`);
+  parts.push(...landParts(all, path, tone, focusIds, colors, 1));
+  if (globe) parts.push(`</g>`);
 
   spec.routes.forEach((r, i) => {
     const d = path({ type: "LineString", coordinates: r.points.map((p) => [p.lon, p.lat]) });
@@ -193,12 +187,37 @@ export async function generateMap(spec: MapSpec, lang: string, palette: string[]
     labels.push({ x: at[0], y: at[1] - 34, text: m.label, kind: "city", order: spec.routes.length + i + 1 });
   });
 
-  return {
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">${parts.join("")}</svg>`,
-    width: W,
-    height: H,
-    meta: { exact: true, floorY: 900, labels: declutter(labels.map((l) => ({ ...l, text: l.text.slice(0, 60) }))), routes: spec.routes.length },
-  };
+  const meta: VectorAssetMeta = { exact: true, floorY: 900, labels: declutter(labels.map((l) => ({ ...l, text: l.text.slice(0, 60) }))), routes: spec.routes.length };
+  if (globe) {
+    const [lon, lat] = projection.rotate().map((v) => -v) as [number, number];
+    const [cx, cy] = projection.translate();
+    meta.globe = { lon, lat, cx, cy, r: projection.scale(), texture: globeTexture(all, tone, focusIds, colors) };
+  }
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">${parts.join("")}</svg>`, width: W, height: H, meta };
+}
+
+/** Enlem-boylam ağı ve ülkeler; önce sıradan ülkeler, sonra odak/vurgulu olanlar (sınırları üstte görünsün). */
+function landParts(all: Country[], path: GeoPath, tone: Map<string, string>, focusIds: Set<string>, colors: ReturnType<typeof mapColors>, line: number): string[] {
+  const parts = [`<path d="${path(geoGraticule10())}" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="${line}"/>`];
+  const ordered = [...all].sort((a, b) => Number(tone.has(String(a.id)) || focusIds.has(String(a.id))) - Number(tone.has(String(b.id)) || focusIds.has(String(b.id))));
+  for (const f of ordered) {
+    const d = path(f);
+    if (!d) continue;
+    const id = String(f.id);
+    const fill = tone.get(id) ?? colors.land;
+    const strong = tone.has(id) || focusIds.has(id);
+    parts.push(`<path d="${d}" fill="${fill}" stroke="${strong ? colors.focusBorder : colors.border}" stroke-width="${+((strong ? 1.6 : 0.9) * line).toFixed(2)}" stroke-linejoin="round"/>`);
+  }
+  return parts;
+}
+
+/** 3D kürenin dokusu: eşdikdörtgen izdüşüm (2:1). Kürenin önünde doku pikseli ekran pikselinin ~1,8 katı: çizgiler de o kadar kalın. */
+const TEX_W = 4096;
+const TEX_H = 2048;
+function globeTexture(all: Country[], tone: Map<string, string>, focusIds: Set<string>, colors: ReturnType<typeof mapColors>): string {
+  const path = geoPath(geoEquirectangular().scale(TEX_W / (2 * Math.PI)).translate([TEX_W / 2, TEX_H / 2])).digits(1);
+  const parts = [`<rect width="${TEX_W}" height="${TEX_H}" fill="${colors.sea}"/>`, ...landParts(all, path, tone, focusIds, colors, 1.8)];
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${TEX_W}" height="${TEX_H}" viewBox="0 0 ${TEX_W} ${TEX_H}">${parts.join("")}</svg>`;
 }
 
 /** Etiketin yaklaşık kutusu (render'daki yazı boyutlarıyla). */

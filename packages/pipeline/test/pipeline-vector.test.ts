@@ -387,6 +387,19 @@ describe("vektör nesneleri ve önizleme (kare denetimi kapalı)", () => {
     expect(h.logs).toContain("  b-map: kütüphaneden (gerçek veri)");
   });
 
+  it("küre haritasının 3D dokusu da temizlenerek saklanır", async () => {
+    const h = harness();
+    agents();
+    const texture = '<svg xmlns="http://www.w3.org/2000/svg" width="4096" height="2048"><script>alert(1)</script><rect width="4096" height="2048" fill="#dfe8ea"/></svg>';
+    geo.map.mockResolvedValue({ svg: '<svg viewBox="0 0 1920 1080"><g id="globe-base"><rect width="10" height="10"/></g></svg>', width: 1920, height: 1080, meta: { exact: true, globe: { lon: 35, lat: 39, cx: 960, cy: 480, r: 370, texture } } });
+    const id = await keyframeReady(h, { qa: false });
+    const state = await h.pipeline.run(id, { only: "keyframes" });
+    const meta = h.store.json(`${state.vectorProps!["b-map"]!.key}.json`) as { globe: { texture: string; r: number } };
+    expect(meta.globe.r).toBe(370);
+    expect(meta.globe.texture).toContain('fill="#dfe8ea"');
+    expect(meta.globe.texture).not.toContain("script");
+  });
+
   it("kesin sonuçlu hatalar nesneyi düşürür, diğer hatalar aşamayı durdurur", async () => {
     const h = harness();
     agents({ score: (name) => (name === "p-cup" ? 2 : 9) });

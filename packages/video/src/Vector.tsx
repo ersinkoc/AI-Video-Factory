@@ -25,6 +25,8 @@ import {
 } from "@ys/core";
 import { useMemo, type CSSProperties } from "react";
 import { AbsoluteFill, Easing, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
+import { Globe3D } from "./Globe3D.tsx";
+import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
 import { FOREARM_LAG, gaitOf, gestureWeight, hop, paceWalks, physicalAnims, type Gait } from "./motion.ts";
 
 /**
@@ -1262,18 +1264,28 @@ export function VectorScene({
           transformOrigin: "0 0",
         }}
       >
+        {bg?.meta.globe && (
+          // Küre three.js ile 3D çizilir; SVG'nin tabanı (küre, ülkeler) gizlenir, rotalar ve işaretler küre durunca belirir.
+          <>
+            <Globe3D globe={bg.meta.globe} p={p} seed={visual.shotId} />
+            <style>{`#${visual.shotId}-bg-globe-base{display:none}`}</style>
+          </>
+        )}
         {bg && (
           <AbsoluteFill
             // Arka plan geri çekilir: soluk, düşük kontrastlı ve hafif koyu; dolu duvar detayı karakterle yarışmasın.
             // Harita bilgi taşır: renkleri olduğu gibi kalır.
-            style={{ filter: bg.meta.exact ? undefined : "saturate(0.78) contrast(0.86) brightness(0.94)" }}
+            style={{
+              filter: bg.meta.exact ? undefined : "saturate(0.78) contrast(0.86) brightness(0.94)",
+              opacity: bg.meta.globe ? clamp01((p - GLOBE_SETTLE) / 0.06) : undefined,
+            }}
             dangerouslySetInnerHTML={{ __html: prefixSvgIds(fitSvg(bg.svg, "slice"), `${visual.shotId}-bg-`) }}
           />
         )}
         {bg?.meta.exact && (
           // Harita 1920×1080 üretilir: etiket koordinatları tuvalle birebir, kamerayla birlikte yakınlaşır.
           <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>
-            <MapOverlay meta={bg.meta} p={p} prefix={`${visual.shotId}-bg-`} />
+            <MapOverlay meta={bg.meta} p={bg.meta.globe ? overlayProgress(p) : p} prefix={`${visual.shotId}-bg-`} />
           </div>
         )}
         <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>

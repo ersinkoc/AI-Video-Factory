@@ -37,6 +37,28 @@ describe("gerçek veriden harita", () => {
     expect(world.svg.length).toBeLessThan(300_000);
   });
 
+  it("küre: 3D render için izdüşüm ve eşdikdörtgen doku verir, taban ayrı grupta", async () => {
+    const map = await generateMap(MapSpec.parse({ projection: "globe", focus: ["TUR"], highlight: [{ countries: ["TUR"] }] }), "tr", palette);
+    const g = map.meta.globe!;
+    // Ortografik küre FIT alanına sığar: 1580×740 → yarıçap 370, merkez (960, 480); bakış Türkiye'nin ortasında.
+    expect({ cx: g.cx, cy: g.cy, r: g.r }).toEqual({ cx: 960, cy: 480, r: 370 });
+    expect(g.lon).toBeGreaterThan(30);
+    expect(g.lon).toBeLessThan(40);
+    expect(g.lat).toBeGreaterThan(36);
+    expect(g.lat).toBeLessThan(42);
+    // Doku 2:1, vurgu rengi ve kalın sınırlarla; temizleyiciden geçer.
+    expect(g.texture).toContain('width="4096" height="2048"');
+    expect(g.texture).toContain('fill="#c8553d"');
+    expect(g.texture).toContain('stroke-width="2.88"');
+    expect(sanitizeSvg(g.texture)).toContain('fill="#c8553d"');
+    // Render 3D küreyi çizerken SVG'nin tabanını gizler: gök, küre ve ülkeler aynı grupta.
+    expect(sanitizeSvg(map.svg)).toMatch(/^<svg[^>]*><g id="globe-base"><rect[^>]*fill="#1b2333"\/>/);
+    // Düz haritada küre bilgisi ve taban grubu yok.
+    const flat = await generateMap(MapSpec.parse({ focus: ["TUR"] }), "tr", palette);
+    expect(flat.meta.globe).toBeUndefined();
+    expect(flat.svg).not.toContain("globe-base");
+  });
+
   it("etiketler çakışmayacak şekilde kaydırılır; ülke adı yerinde kalır", () => {
     const out = declutter([
       { x: 500, y: 300, text: "TÜRKİYE", kind: "country", order: 0 },

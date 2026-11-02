@@ -152,6 +152,21 @@ export const VectorAssetMeta = z.object({
   /** Koddan üretilen haritada: varlık koordinatlarında etiketler ve sırayla çizilen rota sayısı. */
   labels: z.array(MapLabel).optional(),
   routes: z.number().int().nonnegative().optional(),
+  /**
+   * Küre haritası: render bunu three.js ile 3D çizer (ışıklı, atmosferli, konuma dönerek gelir). Merkez ve yarıçap
+   * SVG'deki ortografik izdüşümle aynı (px, 1920×1080): küre durunca rotalar, işaretler ve etiketler SVG'den birebir
+   * oturur. Doku eşdikdörtgen (2:1) SVG; yoksa SVG küre gösterilir.
+   */
+  globe: z
+    .object({
+      lon: z.number(),
+      lat: z.number(),
+      cx: z.number(),
+      cy: z.number(),
+      r: z.number().positive(),
+      texture: z.string(),
+    })
+    .optional(),
   /** Gerçek veriden üretildi (harita, bayrak): çizgi stili ve zemin temizliği uygulanmaz, olduğu gibi gösterilir. */
   exact: z.boolean().optional(),
   /** Kalite kapısı sonucu; olmayan (eski) varlık kullanılmadan önce denetlenir. */
