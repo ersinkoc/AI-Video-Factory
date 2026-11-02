@@ -534,7 +534,12 @@ export function closeUpCamera(
   // logo kadraj dışında kalıyordu; duvardaki büyük dergi kapağı ise yakın çekimde dört yandan taşıyordu (Microsoft
   // incelemesi, 1 Kas: "Microsoft logosunun ikiye bölünmesi yok", "dergi kapağı görünmüyor").
   const extra = placed.filter((pl) => !group.includes(pl) && !surfaces.has(pl.index) && whole(pl) && seen(pl));
-  const framed = [...group, ...extra];
+  // Nesneyi tutan kişinin başı da kadraja girer: kamera yalnız elindeki iPad'e ortalayınca yüz göz hizasından
+  // kesiliyordu (Microsoft s9-sh3, 2 Kas). Baş, boyun üst beşte biri.
+  const heads = placed
+    .filter((h) => group.some((g) => g.heldBy === h.index) && seen(h))
+    .map((h) => ({ ...h, width: h.width * 0.5, height: h.height * 0.2, y: h.y - h.height * 0.8 }));
+  const framed = [...group, ...extra, ...heads];
   if (side * z >= small * H) {
     const fit = [...(whole(subject) ? group : []), ...extra];
     return fit.length ? fitWhole(cam, z, fit) : keep;
@@ -545,7 +550,7 @@ export function closeUpCamera(
   const bottom = Math.max(...framed.map((pl) => pl.y));
   const k = Math.min(CLOSE_UP.maxZoom, (CLOSE_UP.target * H) / side, (CLOSE_UP.groupWidth * W) / (r - l), (CLOSE_UP.groupWidth * H) / (bottom - top)) / z;
   const x = (l + r) / 2;
-  const y = extra.length ? (top + bottom) / 2 : centre(subject)[1];
+  const y = extra.length || heads.length ? (top + bottom) / 2 : centre(subject)[1];
   // Zoom zaten tavandaysa yalnız odak düzelir.
   return { cam: { ...cam, zoomFrom: cam.zoomFrom * Math.max(1, k), zoomTo: cam.zoomTo * Math.max(1, k), focusX: x, focusY: y }, centre: true };
 }

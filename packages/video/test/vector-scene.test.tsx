@@ -1201,12 +1201,16 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     expect(out2).toMatchObject({ centre: true, cam: { focusX: 960, focusY: 330, zoomFrom: 1 } });
     expect(out2.cam.zoomTo).toBeCloseTo(1.152);
     // Elde tutulan nesne kişiden önce özne olur; ince uzun nesnede ölçü alanın karekökü (bant "büyük" sayılmasın).
+    // Tutanın başı da kadrajda kalır (baş 350–470, bant 620–660): yüz göz hizasından kesilmez.
     const person = { ...PL, index: 9, width: 300, height: 600, x: 900, y: 950, grounded: true };
     const tape = { ...PL, index: 10, width: 240, height: 40, x: 1050, y: 660, grounded: false, heldBy: 9 };
     const thing = (pl: { index: number }) => pl.index !== 9;
     const insert = closeUpCamera({ ...cam, focusX: 900, focusY: 600 }, [person, tape], false, thing);
-    expect(insert).toMatchObject({ centre: true, cam: { focusX: 1050, focusY: 640 } });
-    expect(insert.cam.zoomTo).toBeCloseTo(3.2);
+    expect(insert).toMatchObject({ centre: true, cam: { focusX: 997.5, focusY: 505 } });
+    expect(insert.cam.zoomTo).toBeCloseTo((0.8 * 1080) / 310);
+    // Tutan yönetmenin kadrajında değilse yalnız nesne kadrajlanır.
+    const alone = closeUpCamera({ ...cam, focusX: 1050, focusY: 300 }, [{ ...person, y: 1900 }, { ...tape, y: 300 }], false, thing);
+    expect(alone.cam).toMatchObject({ focusX: 1050, focusY: 280 });
     // Yönetmenin kadrajı dışındaki nesne özneyi kişiden almaz.
     expect(closeUpCamera({ ...cam, focusX: 300, focusY: 600 }, [{ ...person, x: 300 }, { ...tape, x: 1900, y: 100 }], false, thing).cam.focusX).toBe(300);
     // Okunur boydaki nesneye yaklaşılmaz.
