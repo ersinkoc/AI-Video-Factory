@@ -293,3 +293,14 @@ export function setCaptions(state: EpisodeState, enabled: boolean): void {
   state.input.captions = enabled;
   delete state.done.render;
 }
+
+/**
+ * Kareye kilitli efekt seslerini açar/kapatır. İz timeline aşamasında üretilir: timeline ve render yeniden açılır,
+ * devam yalnız bu ikisini tekrarlar (Claude çağrısı yok, para harcamaz); eski video yenisi çıkana dek kalır.
+ */
+export function setSfx(state: EpisodeState, enabled: boolean): void {
+  if ((state.input.sfx !== false) === enabled) return;
+  state.input.sfx = enabled;
+  delete state.done.timeline;
+  delete state.done.render;
+}

@@ -195,6 +195,22 @@ describe("OverviewTab", () => {
     expect(container.querySelectorAll('[title="#112233"]')).toHaveLength(1);
   });
 
+  it("efekt sesi anahtarı yalnız vektör bölümde; ayarı değiştirir", () => {
+    const act = vi.fn(async (_action: Record<string, unknown>) => true);
+    const animated = makeState({ render: { path: "/x/v.mp4", at: "t" }, done: { render: "t" } });
+    const { rerender } = renderIn(<OverviewTab data={makeData(animated)} act={act} />);
+    expect(screen.queryByLabelText(tr("video.sfx"))).toBeNull();
+    const vector = makeState({ render: { path: "/x/v.mp4", at: "t" }, done: { render: "t" } }, { motionMode: "vector" });
+    rerender(<OverviewTab data={makeData(vector)} act={act} />);
+    const box = screen.getByLabelText(tr("video.sfx")) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    fireEvent.click(box);
+    expect(act).toHaveBeenLastCalledWith({ type: "set-sfx", enabled: false });
+    const off = makeState({ render: { path: "/x/v.mp4", at: "t" }, done: {} }, { motionMode: "vector", sfx: false });
+    rerender(<OverviewTab data={makeData(off)} act={act} />);
+    expect((screen.getByLabelText(tr("video.sfx")) as HTMLInputElement).checked).toBe(false);
+  });
+
   it("altyazı anahtarı ayarı değiştirir; render yeniden açıldıysa yeniden render düğmesi çıkar", () => {
     const act = vi.fn(async (_action: Record<string, unknown>) => true);
     const done = makeState({ render: { path: "/x/v.mp4", at: "t" }, done: { render: "t" } });

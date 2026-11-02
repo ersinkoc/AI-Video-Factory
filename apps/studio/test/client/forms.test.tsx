@@ -215,10 +215,12 @@ describe("NewEpisodeForm", () => {
     fireEvent.change(field<HTMLSelectElement>("lineStyle"), { target: { value: "ink" } });
     fireEvent.click(document.querySelector('input[name="qa"]')!);
     fireEvent.click(document.querySelector('input[name="captions"]')!);
+    // Efekt sesi anahtarı yalnız vektör modunda, varsayılan açık.
+    fireEvent.click(document.querySelector('input[name="sfx"]')!);
     await submit();
     const button = screen.getByRole("button", { name: tr("form.submitting") }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(api.creates[0]).toMatchObject({ motionMode: "vector", lineStyle: "ink", qa: false, captions: true });
+    expect(api.creates[0]).toMatchObject({ motionMode: "vector", lineStyle: "ink", qa: false, captions: true, sfx: false });
     await act(async () => finish(json({ id: "v1" })));
     expect(router.push).toHaveBeenCalledWith("/episodes/v1");
   });

@@ -34,6 +34,7 @@ interface CreateBody {
   realism?: boolean;
   sideViews?: boolean;
   captions?: boolean;
+  sfx?: boolean;
   /** Karakter bankasından sunucu ve kadroya eklenecekler (kütüphane kimlikleri). */
   presenter?: string;
   bankCast?: string[];
@@ -68,6 +69,8 @@ export async function POST(req: Request) {
     sideViews: body.sideViews === true,
     // Gönderilmezse eski davranış: gömülü.
     captions: body.captions !== false,
+    // Efekt sesleri yalnız vektör modunda; gönderilmezse açık.
+    sfx: body.sfx !== false,
     // Boş: stil paketinin çizgi stili.
     lineStyle: body.lineStyle ? LineStyle.optional().catch(undefined).parse(body.lineStyle) : undefined,
     series: typeof body.series === "string" ? cleanSeries(body.series) : undefined,

@@ -63,6 +63,17 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
                 {t("video.captions")}
               </label>
             )}
+            {act && state.input.motionMode === "vector" && (
+              <label className="flex items-center gap-2 text-sm" title={t("form.sfx.hint")}>
+                <input
+                  type="checkbox"
+                  checked={state.input.sfx !== false}
+                  disabled={busy}
+                  onChange={(e) => act({ type: "set-sfx", enabled: e.target.checked })}
+                />
+                {t("video.sfx")}
+              </label>
+            )}
             {act && !state.done.render && (
               // Altyazı ayarı değişti: yalnız render yeniden çalışır (ücretsiz).
               <button className="btn-primary" disabled={busy} onClick={() => act({ type: "resume" })}>
