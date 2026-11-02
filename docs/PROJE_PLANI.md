@@ -541,7 +541,7 @@ Pazar her ay değişiyor. Son 6 ayda Sora kapandı, Kling 4.0, Seedance 2.5, Wan
 | **AI video (karakterli, hero)** | Bulut, **sessiz** üretim (ses ücreti ödenmez): Veo 3.1 Lite ~$0.03/sn (Vertex, sessiz), Seedance 2.0 480p ~$0.025/sn + yerel upscale, Kling 720p ~$0.084/sn | 12 dk videoda ~$5–25 | Premium seviyede Kling 1080p / Veo std |
 | **Upscale ve interpolasyon** | Yerel (Real-ESRGAN / SeedVR, RIFE) | $0 | — |
 | **Lip-sync** | Yerel (LatentSync, Wan-Animate-2, LTX-2 lipsync). Kurgu kuralı: konuşan karakterin yüzü az gösterilir | $0 | Yakın plan hero sahne: sync.so (~$0.05/sn) |
-| **Müzik** | **Kanal müzik kütüphanesi bir kez üretilir** (Eleven Music ile 20–40 parça, ~$30–60 tek sefer) + **YouTube Audio Library** (ücretsiz). Bölümlerde tekrar kullanılır | ~$0/video | Özel tema gerekirse |
+| **Müzik** | **Varsayılan: koddan sentez** (2 Kas: `video/src/music.ts`, sahne havasına göre bölümler, anlatımda ducking, $0). İsteğe bağlı: **kanal müzik kütüphanesi bir kez üretilir** (Eleven Music ile 20–40 parça, ~$30–60 tek sefer) + **YouTube Audio Library** (ücretsiz). Bölümlerde tekrar kullanılır | ~$0/video | Özel tema gerekirse |
 | **SFX** | Ücretsiz kütüphaneler (YouTube Audio Library, Freesound CC0) + bir kez üretilmiş ElevenLabs SFX kütüphanesi | ~$0 | — |
 | **Vision QA** | Önce yerel VLM (Qwen-VL sınıfı) ile eleme, sınırda kalanlar için Claude (Max havuzu) | ~$0 | — |
 | **Render** | Yerel Remotion (≤3 kişi ücretsiz lisans) | $0 | Paralel çok bölüm: Lambda |

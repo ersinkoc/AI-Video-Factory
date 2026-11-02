@@ -857,6 +857,9 @@ describe("timeline, render ve inceleme", () => {
     expect(render.thumbnail.mock.calls.at(-1)![0]).toMatchObject({ title: PKG.thumbnailText, side: "left", output: jpg });
     expect(h.logs).toContain(`  küçük resim: ${jpg}`);
     expect(h.logs).toContain("  başka bir render sürüyor (süreç 4242); sıra bekleniyor");
+    // Altyazı/ses anahtarı yalnız render'ı yeniden açar: küçük resim kaydı kalır.
+    const again = await h.pipeline.run(id, { only: "render" });
+    expect(again.render!.thumbnail).toBe(jpg);
   });
 
   it("package: ajan düşerse küçük resim başlığın kısa parçasıyla yine çıkar; küçük resim düşerse video hazır; yalnız klipte küçük resim yok", async () => {

@@ -80,6 +80,17 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
                 {t("video.sfx")}
               </label>
             )}
+            {act && (
+              <label className="flex items-center gap-2 text-sm" title={t("form.music.hint")}>
+                <input
+                  type="checkbox"
+                  checked={state.input.music !== false}
+                  disabled={busy}
+                  onChange={(e) => act({ type: "set-music", enabled: e.target.checked })}
+                />
+                {t("video.music")}
+              </label>
+            )}
             {act && !state.done.render && (
               // Altyazı ayarı değişti: yalnız render yeniden çalışır (ücretsiz).
               <button className="btn-primary" disabled={busy} onClick={() => act({ type: "resume" })}>

@@ -229,6 +229,19 @@ describe("OverviewTab", () => {
     expect((screen.getByLabelText(tr("video.sfx")) as HTMLInputElement).checked).toBe(false);
   });
 
+  it("müzik anahtarı her modda; ayarı değiştirir", () => {
+    const act = vi.fn(async (_action: Record<string, unknown>) => true);
+    const on = makeState({ render: { path: "/x/v.mp4", at: "t" }, done: { render: "t" } });
+    const { rerender } = renderIn(<OverviewTab data={makeData(on)} act={act} />);
+    const box = screen.getByLabelText(tr("video.music")) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    fireEvent.click(box);
+    expect(act).toHaveBeenLastCalledWith({ type: "set-music", enabled: false });
+    const off = makeState({ render: { path: "/x/v.mp4", at: "t" }, done: {} }, { music: false });
+    rerender(<OverviewTab data={makeData(off)} act={act} />);
+    expect((screen.getByLabelText(tr("video.music")) as HTMLInputElement).checked).toBe(false);
+  });
+
   it("altyazı anahtarı ayarı değiştirir; render yeniden açıldıysa yeniden render düğmesi çıkar", () => {
     const act = vi.fn(async (_action: Record<string, unknown>) => true);
     const done = makeState({ render: { path: "/x/v.mp4", at: "t" }, done: { render: "t" } });

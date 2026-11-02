@@ -76,6 +76,11 @@ export interface EpisodeInput {
    */
   sfx?: boolean;
   /**
+   * Arka plan müziği: koddan sentezlenir (API yok), bölümleri çekimlerin renk havasından, anlatımda kısılır.
+   * Verilmezse açık.
+   */
+  music?: boolean;
+  /**
    * Karakter bankasından ekrandaki sunucu (kütüphane kimliği): kadroya yeniden çizilmeden girer, anlatımı o konuşur;
    * yönetmen onu çekimlerin çoğuna koyar. Yalnız vektör modunda.
    */

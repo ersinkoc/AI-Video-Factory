@@ -151,6 +151,7 @@ export const PIPELINE_MESSAGES = {
   "log.package.failed": { tr: "⚠ yayın paketi yazılamadı (küçük resim yine çıkarılır): {error}", en: "⚠ publishing package could not be written (the thumbnail is still made): {error}" },
   "log.thumbnail.done": { tr: "  küçük resim: {path}", en: "  thumbnail: {path}" },
   "log.thumbnail.failed": { tr: "⚠ küçük resim çıkarılamadı (video hazır): {error}", en: "⚠ thumbnail could not be made (the video is ready): {error}" },
+  "log.music.done": { tr: "  müzik: {n} bölüm ({moods}), anlatımda kısılır ({kb} KB)", en: "  music: {n} sections ({moods}), ducked under narration ({kb} KB)" },
   "log.sfx.done": { tr: "  efekt sesi: {n} olay, kareye kilitli ({kb} KB)", en: "  sound effects: {n} frame-locked events ({kb} KB)" },
   "log.math.done": { tr: "  {shot}: Manim tahtası üretildi ({sec} sn)", en: "  {shot}: Manim board rendered ({sec}s)" },
   "log.math.fromLibrary": { tr: "  {shot}: Manim tahtası kütüphaneden", en: "  {shot}: Manim board from library" },

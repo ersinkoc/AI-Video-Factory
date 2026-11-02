@@ -107,6 +107,20 @@ describe("Manim tahtaları", () => {
     expect((await h.pipeline.run(quiet, { only: "timeline" })).timeline!.audio.some((a) => a.role === "sfx")).toBe(false);
   });
 
+  it("müzik: çekimlerin havasından tek WAV izi timeline'a eklenir; kapalıysa iz yok", async () => {
+    const h = harness();
+    const id = await h.seed(ready());
+    const state = await h.pipeline.run(id, { only: "timeline" });
+    const music = state.timeline!.audio.find((a) => a.role === "music")!;
+    expect(music).toMatchObject({ fromFrame: 0, durationInFrames: state.timeline!.durationInFrames, volume: 1 });
+    expect(music.assetUrl).toMatch(new RegExp(`^assets/music/${id}/[0-9a-f]{16}\\.wav$`));
+    expect(new TextDecoder().decode(h.store.map.get(music.assetUrl)!.slice(0, 4))).toBe("RIFF");
+    expect(h.logs.some((l) => /^ {2}müzik: 1 bölüm \(neutral\), anlatımda kısılır \(\d+ KB\)$/.test(l))).toBe(true);
+
+    const off = await h.seed(ready({ input: { ...ready().input, music: false } }));
+    expect((await h.pipeline.run(off, { only: "timeline" })).timeline!.audio.some((a) => a.role === "music")).toBe(false);
+  });
+
   it("çekimsiz bölümde tahta aranmaz, timeline eksik veri hatası verir", async () => {
     const h = harness();
     const id = await h.seed(ready({ shots: undefined }));

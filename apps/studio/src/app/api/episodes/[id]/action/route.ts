@@ -7,6 +7,7 @@ import {
   rejectAsset,
   setCaptions,
   setSfx,
+  setMusic,
   setRealism,
   changeVoice,
   editNarration,
@@ -41,6 +42,7 @@ export type StudioAction =
   | { type: "set-realism"; enabled: boolean }
   | { type: "set-captions"; enabled: boolean }
   | { type: "set-sfx"; enabled: boolean }
+  | { type: "set-music"; enabled: boolean }
   | { type: "reuse-character"; castId: string; key: string }
   | { type: "set-series"; series?: string }
   | { type: "cancel" };
@@ -122,6 +124,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         break;
       case "set-sfx":
         await episodes.update(id, (s) => setSfx(s, action.enabled === true));
+        break;
+      case "set-music":
+        await episodes.update(id, (s) => setMusic(s, action.enabled === true));
         break;
       case "resume":
         startJob(id, "job.resume", ["episode", "run", id]);

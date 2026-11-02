@@ -304,3 +304,11 @@ export function setSfx(state: EpisodeState, enabled: boolean): void {
   delete state.done.timeline;
   delete state.done.render;
 }
+
+/** Arka plan müziğini açar/kapatır: efekt sesi gibi timeline ve render yeniden açılır (ücretsiz). */
+export function setMusic(state: EpisodeState, enabled: boolean): void {
+  if ((state.input.music !== false) === enabled) return;
+  state.input.music = enabled;
+  delete state.done.timeline;
+  delete state.done.render;
+}

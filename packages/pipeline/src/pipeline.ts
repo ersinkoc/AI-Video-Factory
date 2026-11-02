@@ -91,6 +91,7 @@ import { mapLimit, normalizeClip, probeDurationMs } from "./media.ts";
 import { anonymizeNames, castAliases } from "./names.ts";
 import { generateFlag, generateMap } from "./geo.ts";
 import { boardAccent, cleanMath, renderBoard } from "./manim.ts";
+import { MUSIC_RATE, musicTrack } from "@ys/video/music";
 import { mixSfx, sfxEvents, wavFile } from "@ys/video/sfx";
 import { findReferences, findVectorSources, rasterizeSvg, searchQuery, type References } from "./reference.ts";
 import { frameRank, judgeFrame, QA_MAX_BYTES, redrawPrompt } from "./qa.ts";
@@ -1627,6 +1628,19 @@ export class EpisodePipeline {
     this.log(msg("log.sfx.done", { n: events.length, kb: Math.round(bytes.length / 1024) }));
   }
 
+  /**
+   * Arka plan müziği: koddan sentezlenir (API yok), bölümleri çekimlerin renk havasından gelir, anlatımda kısılmış
+   * olarak tek ize yazılır ve timeline'a "music" sesi olarak eklenir.
+   */
+  private async music(state: EpisodeState, timeline: Timeline): Promise<void> {
+    const { samples, sections } = musicTrack(timeline, state.id);
+    const bytes = wavFile(samples, MUSIC_RATE);
+    const key = `assets/music/${state.id}/${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}.wav`;
+    await this.deps.store.put(key, bytes, "audio/wav");
+    timeline.audio.push({ role: "music", assetUrl: key, fromFrame: 0, durationInFrames: timeline.durationInFrames, volume: 1 });
+    this.log(msg("log.music.done", { n: sections.length, moods: sections.map((s) => s.mood).join(" → "), kb: Math.round(bytes.length / 1024) }));
+  }
+
   /** Timeline'a gömülecek SVG'ler: seçili karakter/mekân varlıkları ve çizilmiş nesneler. */
   private async vectorAssets(state: EpisodeState): Promise<Record<string, VectorAsset>> {
     const out: Record<string, VectorAsset> = {};
@@ -2085,6 +2099,7 @@ export class EpisodePipeline {
       if (motionModeOf(state.input) === "vector") await this.mathBoards(state);
       state.timeline = buildTimeline(state, (key) => key, vector);
       if (motionModeOf(state.input) === "vector" && state.input.sfx !== false) await this.soundEffects(state, state.timeline);
+      if (state.input.music !== false) await this.music(state, state.timeline);
       const sec = state.timeline.durationInFrames / state.timeline.fps;
       this.log(msg("log.timeline.done", { min: (sec / 60).toFixed(1), visuals: state.timeline.visuals.length }));
     },
@@ -2138,7 +2153,9 @@ export class EpisodePipeline {
           this.log(msg("log.render.retry", { reason }));
         },
       });
-      state.render = { path: outputPath, at: new Date().toISOString() };
+      // Yeniden render (altyazı/ses anahtarı) küçük resmi değiştirmez: paket aşaması yeniden açılmadıysa kaydı kalsın.
+      const thumbnail = state.render?.thumbnail;
+      state.render = { path: outputPath, at: new Date().toISOString(), ...(thumbnail ? { thumbnail } : {}) };
       this.log(msg("log.render.done", { path: outputPath }));
     },
 

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AssetCheck } from "@ys/core";
 import { FsAssetStore, getJson, putJson, type AssetStore } from "@ys/storage";
-import { acceptAsset, newEpisodeState, rejectAsset, setCaptions, setRealism, setSfx, type EpisodeInput, type EpisodeState } from "../src/light.ts";
+import { acceptAsset, newEpisodeState, rejectAsset, setCaptions, setMusic, setRealism, setSfx, type EpisodeInput, type EpisodeState } from "../src/light.ts";
 
 const input: EpisodeInput = { topic: "t", lang: "tr", targetSec: 60, tier: "economy", aiClipRatio: 0, budgetUsd: 3, width: 1920, height: 1080, fps: 30 };
 const KEY = "library/vector/character/abc.svg";
@@ -121,5 +121,20 @@ describe("kalite kapısında insan kararı", () => {
     expect(state.done.timeline).toBe("y");
     setSfx(state, true);
     expect(state.input.sfx).toBe(true);
+  });
+
+  it("müzik ayarı değişince timeline ve render yeniden açılır; aynı ayar dokunmaz", () => {
+    const { state } = setup();
+    Object.assign(state.done, { timeline: "x", render: "x", package: "x" });
+    setMusic(state, true);
+    expect(state.done).toMatchObject({ timeline: "x", render: "x" });
+    setMusic(state, false);
+    expect(state.input.music).toBe(false);
+    expect(state.done.timeline).toBeUndefined();
+    expect(state.done.render).toBeUndefined();
+    expect(state.done.package).toBe("x");
+    state.done.timeline = "y";
+    setMusic(state, false);
+    expect(state.done.timeline).toBe("y");
   });
 });

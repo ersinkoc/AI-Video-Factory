@@ -152,6 +152,7 @@ describe("/api/episodes", () => {
       realism: true,
       captions: true,
       sfx: true,
+      music: true,
       stylePack: "auto",
       width: 1920,
       height: 1080,
@@ -181,13 +182,14 @@ describe("/api/episodes", () => {
         realism: false,
         captions: false,
         sfx: false,
+        music: false,
         lineStyle: "ink",
         stylePack: STYLE_PACK_IDS[0],
         series: "  Osmanlı   Tarihi ",
       }),
     );
     const s = await load(((await res.json()) as { id: string }).id);
-    expect(s.input).toMatchObject({ lang: "en-US", targetSec: 90, budgetUsd: 7, tier: "premium", motionMode: "vector", voiceId: "v1", qa: false, realism: false, captions: false, sfx: false, lineStyle: "ink", stylePack: STYLE_PACK_IDS[0], width: 1080, height: 1920 });
+    expect(s.input).toMatchObject({ lang: "en-US", targetSec: 90, budgetUsd: 7, tier: "premium", motionMode: "vector", voiceId: "v1", qa: false, realism: false, captions: false, sfx: false, music: false, lineStyle: "ink", stylePack: STYLE_PACK_IDS[0], width: 1080, height: 1920 });
     expect(s.input.styleHint).toHaveLength(300);
     expect(s.input.series).toBe("Osmanlı Tarihi");
 
@@ -654,6 +656,10 @@ describe("POST /api/episodes/[id]/action", () => {
     expect((await load("a5")).input.sfx).toBe(false);
     await ok("a5", { type: "set-sfx", enabled: true });
     expect((await load("a5")).input.sfx).toBe(true);
+    await ok("a5", { type: "set-music", enabled: false });
+    expect((await load("a5")).input.music).toBe(false);
+    await ok("a5", { type: "set-music", enabled: "evet" });
+    expect((await load("a5")).input.music).toBe(false);
   });
 
   it("kalite kapısında insan kararı: kabul ve ret durum dosyasına ve varlık kaydına yazılır", async () => {
