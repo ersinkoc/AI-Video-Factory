@@ -113,8 +113,8 @@ export function boardScript(spec: MathSpec, sec: number, accent: string): string
   });
   if (spec.graph) {
     const g = spec.graph;
-    const xs = g.points.map((p) => p[0]);
-    const ys = g.points.map((p) => p[1]);
+    const xs = g.points.map((p) => p.x);
+    const ys = g.points.map((p) => p.y);
     const [x0, x1, xs1] = niceRange(Math.min(...xs), Math.max(...xs));
     const [y0, y1, ys1] = niceRange(Math.min(0, ...ys), Math.max(...ys));
     const [gw, gh, gat] = both ? [11, 4.4, "DOWN * 1.0"] : [12.5, 6.2, "ORIGIN"];
@@ -136,7 +136,7 @@ export function boardScript(spec: MathSpec, sec: number, accent: string): string
       line(`self.play(LaggedStart(*[GrowFromEdge(b, DOWN) for b in ax.bars], lag_ratio=0.15), FadeIn(ax.x_axis.labels), run_time=${run()})`);
     } else {
       line(`self.play(Create(ax), FadeIn(labels), run_time=${run()})`);
-      line(`pts = [ax.c2p(x, y) for x, y in [${g.points.map(([x, y]) => `(${num(x)}, ${num(y)})`).join(", ")}]]`);
+      line(`pts = [ax.c2p(x, y) for x, y in [${g.points.map(({ x, y }) => `(${num(x)}, ${num(y)})`).join(", ")}]]`);
       line("curve = VMobject(color=ACCENT, stroke_width=7).set_points_as_corners(pts)");
       line("dots = VGroup(*[Dot(p, color=ACCENT, radius=0.07) for p in pts])");
       line(`self.play(Create(curve), LaggedStart(*[FadeIn(d) for d in dots], lag_ratio=0.3), run_time=${run()})`);

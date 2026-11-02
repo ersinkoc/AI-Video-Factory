@@ -317,7 +317,8 @@ export const MathSpec = z.object({
   graph: z
     .object({
       kind: z.enum(["line", "bar"]).default("line"),
-      points: z.array(z.tuple([z.number(), z.number()])).min(2).max(40).describe("Real data points [x, y] from the narration, x ascending"),
+      // Nokta nesne olarak: [x, y] ikilisi JSON Schema'da dizi biçimli items olur, API 2020-12 diye reddediyordu (2 Kas).
+      points: z.array(z.object({ x: z.number(), y: z.number() })).min(2).max(40).describe("Real data points from the narration, x ascending"),
       xLabel: z.string().max(30).optional().describe("Axis label in the episode language"),
       yLabel: z.string().max(30).optional(),
     })

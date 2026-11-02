@@ -37,7 +37,7 @@ describe("Manim tahtası: güvenlik", () => {
   });
 
   it("izinsiz adımlar ayrılır, grafik kalır", () => {
-    const spec = MathSpec.parse({ steps: ["x^2", "\\input{a}"], graph: { points: [[0, 1], [1, 2]] } });
+    const spec = MathSpec.parse({ steps: ["x^2", "\\input{a}"], graph: { points: [{ x: 0, y: 1 }, { x: 1, y: 2 }] } });
     expect(cleanMath(spec)).toEqual({ spec: { ...spec, steps: ["x^2"] }, dropped: ["\\input{a}"] });
   });
 });
@@ -57,7 +57,7 @@ describe("Manim tahtası: sahne", () => {
   });
 
   it("süre: animasyonlar sığar, kalan süre eşit bekleme; kısa çekimde animasyonlar kısalır", () => {
-    const spec = MathSpec.parse({ steps: ["a", "b"], graph: { points: [[0, 1], [1, 2]] } });
+    const spec = MathSpec.parse({ steps: ["a", "b"], graph: { points: [{ x: 0, y: 1 }, { x: 1, y: 2 }] } });
     expect(boardTiming(spec, 10)).toEqual({ runs: [1.2, 1, 0.8, 1.5], wait: 1.3 });
     const short = boardTiming(spec, 2.3);
     expect(short.wait).toBe(0);
@@ -76,7 +76,7 @@ describe("Manim tahtası: sahne", () => {
   });
 
   it("formül + çizgi grafik: formül üstte, eksenler altta, nokta nokta çizilir; etiketler kaçışlı", () => {
-    const py = boardScript(MathSpec.parse({ steps: ["x^2"], graph: { points: [[1971, 2300], [1993, 3100000]], xLabel: 'Yıl "x"', yLabel: "Transistör" } }), 8, "#ff6b35");
+    const py = boardScript(MathSpec.parse({ steps: ["x^2"], graph: { points: [{ x: 1971, y: 2300 }, { x: 1993, y: 3100000 }], xLabel: 'Yıl "x"', yLabel: "Transistör" } }), 8, "#ff6b35");
     expect(py).toContain(".move_to(UP * 2.6)");
     expect(py).toContain("ax = Axes(x_range=[1970, 1995, 5], y_range=[0, 4000000, 1000000], x_length=11, y_length=4.4");
     expect(py).toContain('"num_decimal_places": 0, "group_with_commas": False');
@@ -86,7 +86,7 @@ describe("Manim tahtası: sahne", () => {
   });
 
   it("çubuk grafik: değerler ve adlar, çubuklar alttan büyür; etiketsiz eksen boş yazı; kesirli adımda ondalık", () => {
-    const py = boardScript(MathSpec.parse({ graph: { kind: "bar", points: [[2019, 0.12], [2020, 0.31]] } }), 6, "#ff6b35");
+    const py = boardScript(MathSpec.parse({ graph: { kind: "bar", points: [{ x: 2019, y: 0.12 }, { x: 2020, y: 0.31 }] } }), 6, "#ff6b35");
     expect(py).toContain('ax = BarChart(values=[0.12, 0.31], bar_names=["2019", "2020"], y_range=[0, 0.4, 0.1], x_length=12.5, y_length=6.2');
     expect(py).toContain('"num_decimal_places": 1');
     expect(py).toContain('Text("", font_size=26');

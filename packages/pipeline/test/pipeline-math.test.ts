@@ -23,7 +23,7 @@ const shot = (id: string, startMs: number, endMs: number, vector: object): Plann
 
 const SHOTS = [
   shot("s1-sh1", 0, 4000, { math: { steps: ["E = mc^2", "\\input{gizli}"] } }),
-  shot("s1-sh2", 4000, 7000, { math: { graph: { points: [[1, 2], [2, 4]] } } }),
+  shot("s1-sh2", 4000, 7000, { math: { graph: { points: [{ x: 1, y: 2 }, { x: 2, y: 4 }] } } }),
   shot("s1-sh3", 7000, 9000, {}),
 ];
 
