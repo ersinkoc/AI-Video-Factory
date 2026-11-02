@@ -21,7 +21,7 @@ export function Thumbnail({ timeline, shotId, side, title }: ThumbnailProps) {
   return (
     <AbsoluteFill style={{ background: "#111" }}>
       {visual?.vector ? (
-        <VectorScene visual={{ ...visual, overlay: undefined, vector: { ...visual.vector, texts: [] } }} assets={timeline.vectorAssets} palette={timeline.palette} lineStyle={timeline.lineStyle} />
+        <VectorScene visual={{ ...visual, overlay: undefined, vector: { ...visual.vector, texts: [] } }} assets={timeline.vectorAssets} palette={timeline.palette} lineStyle={timeline.lineStyle} texture={timeline.texture} />
       ) : (
         visual && <Img src={staticFile(visual.assetUrl)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
       )}

@@ -102,6 +102,10 @@ describe("buildTimeline", () => {
     ]);
     expect(tl.audio).toEqual([{ role: "voice", assetUrl: "assets/voice/s1.mp3", fromFrame: 0, durationInFrames: 90, volume: 1 }]);
     expect(tl.captions.map((c) => c.text)).toEqual(["merhaba", "dünya"]);
+    // Stil kitabı yoksa doku yok; paketin dokusu timeline'a geçer, bilinmeyen paket dokusuz.
+    expect(tl.texture).toBe("none");
+    expect(buildTimeline({ ...state, style: { pack: "chalkboard" } as never }, (k) => k).texture).toBe("chalk");
+    expect(buildTimeline({ ...state, style: { pack: "kaldirilmis" } as never }, (k) => k).texture).toBe("none");
   });
 });
 

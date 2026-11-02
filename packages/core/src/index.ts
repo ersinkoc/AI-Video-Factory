@@ -7,4 +7,5 @@ export * from "./layout.ts";
 export * from "./models.ts";
 export * from "./version.ts";
 export * from "./styles.ts";
+export * from "./texture.ts";
 export * from "./messages/index.ts";

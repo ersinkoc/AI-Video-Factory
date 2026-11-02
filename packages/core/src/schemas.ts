@@ -1,3 +1,4 @@
+import { Texture } from "./texture.ts";
 import { LineStyle, VectorAsset, VectorShot } from "./vector.ts";
 import { z } from "zod";
 
@@ -175,5 +176,7 @@ export const Timeline = z.object({
   /** Vektör sahnelerde arka plan yoksa kullanılan palet. */
   palette: z.array(z.string()).default([]),
   lineStyle: LineStyle.default("outline"),
+  /** Stil paketinin dokusu (vektör sahnelerin üstüne); eski timeline'da yok. */
+  texture: Texture.default("none"),
 });
 export type Timeline = z.infer<typeof Timeline>;

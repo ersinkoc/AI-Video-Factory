@@ -1,5 +1,5 @@
 import type { ShotPlanOut } from "@ys/agents";
-import { LocalizedError, msg, type Timeline, type VectorAsset, type VectorShot, type WordTiming } from "@ys/core";
+import { LocalizedError, msg, stylePackOf, type Timeline, type VectorAsset, type VectorShot, type WordTiming } from "@ys/core";
 import type { EpisodeState, PlannedShotState, SceneVoice } from "./state.ts";
 import { lineStyleOf } from "./state.ts";
 
@@ -208,6 +208,7 @@ export function buildTimeline(
     vectorAssets,
     palette: state.style?.palette ?? [],
     lineStyle: lineStyleOf(state),
+    texture: stylePackOf(state.style?.pack ?? "")?.texture ?? "none",
   };
 }
 

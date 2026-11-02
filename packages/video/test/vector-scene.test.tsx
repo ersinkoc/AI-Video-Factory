@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { cleanup, render } from "@testing-library/react";
-import { RIG, RIG_SIDE, TimelineVisual, VectorAsset, VectorLayer, VectorShot, type LineStyle } from "@ys/core";
+import { RIG, RIG_SIDE, textureLayer, TimelineVisual, VectorAsset, VectorLayer, VectorShot, type LineStyle, type Texture } from "@ys/core";
 import { random } from "remotion";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,8 @@ vi.mock("remotion", async (orig) => ({
   ...(await orig<typeof import("remotion")>()),
   useCurrentFrame: () => clock.frame,
   useVideoConfig: () => ({ fps: clock.fps, width: clock.width, height: clock.height, durationInFrames: 300 }),
+  // Remotion'un Img'i kompozisyon ister; burada düz resim yeter.
+  Img: (p: object) => <img {...p} />,
 }));
 
 // 3D küre ayrı testte (globe3d.test.tsx); burada yalnız sahneye hangi bilgiyle konduğu.
@@ -80,6 +82,7 @@ interface Opts {
   frame?: number;
   palette?: string[];
   lineStyle?: LineStyle;
+  texture?: Texture;
   width?: number;
   height?: number;
   shotId?: string;
@@ -96,7 +99,7 @@ function scene(shot: object, o: Opts = {}) {
     durationInFrames: DURATION,
     vector: VectorShot.parse(shot),
   });
-  const props = { visual, assets: ASSETS, palette: o.palette ?? [], ...(o.speech ? { speech: o.speech } : {}) };
+  const props = { visual, assets: ASSETS, palette: o.palette ?? [], ...(o.speech ? { speech: o.speech } : {}), ...(o.texture ? { texture: o.texture } : {}) };
   return render(o.lineStyle ? <VectorScene {...props} lineStyle={o.lineStyle} /> : <VectorScene {...props} />).container;
 }
 
@@ -1429,6 +1432,19 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     // Tuvalin dışı tuval kenarı sayılır; tuvalin tamamından küçük olmaz.
     expect(contentFit(1080, base, [-500, 2400])).toBe(1080 / 1920);
     expect(tagBounds(1080, 1920, 1080 / 1920)).toEqual({ left: 0, right: (1080 - 150) / (1080 / 1920) });
+  });
+
+  it("stil dokusu sahnenin üstünde, yazıların altında resim olarak biner; dokusuz pakette katman yok", () => {
+    const c = scene({ background: "room", texts: [{ text: "1923", x: 960, y: 200 }] }, { texture: "watercolor" });
+    const img = c.querySelector('img[data-texture="watercolor"]') as HTMLImageElement;
+    expect(img.getAttribute("src")!.startsWith("data:image/svg+xml;charset=utf-8,%3Csvg")).toBe(true);
+    expect(decodeURIComponent(img.getAttribute("src")!)).toContain('id="s1-tex-wash"');
+    expect(Number(img.style.opacity)).toBeCloseTo(textureLayer("watercolor")!.opacity);
+    // Yazı katmanı dokudan sonra gelir: dokunun altında kalmaz.
+    // En içteki yazı kutusu (dış kaplar da aynı metni taşır).
+    const text = [...c.querySelectorAll("div")].filter((d) => d.textContent === "1923").at(-1)!;
+    expect(img.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(scene({ background: "room" }).querySelector("img[data-texture]")).toBeNull();
   });
 
   it("kare kadrajda büyütme yapılmaz; arka plan yoksa bulanık kopya da yoktur", () => {

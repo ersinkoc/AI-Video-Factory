@@ -172,7 +172,7 @@ export function Episode({ timeline }: EpisodeProps) {
             <FadeIn first={i === 0}>
               {v.kind === "motion_graphic" && v.vector ? (
                 <AbsoluteFill>
-                  <VectorScene visual={v} assets={timeline.vectorAssets} palette={timeline.palette} lineStyle={timeline.lineStyle} speech={timeline.speech} />
+                  <VectorScene visual={v} assets={timeline.vectorAssets} palette={timeline.palette} lineStyle={timeline.lineStyle} texture={timeline.texture} speech={timeline.speech} />
                   {v.overlay && <MathBoard url={v.overlay} />}
                   <Ambience kind={v.ambience} seed={v.shotId} />
                 </AbsoluteFill>

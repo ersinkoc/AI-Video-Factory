@@ -1,3 +1,4 @@
+import type { Texture } from "./texture.ts";
 import type { LineStyle } from "./vector.ts";
 
 /**
@@ -20,6 +21,8 @@ export interface StylePack {
   promptPrefix: string;
   negativeRules: string[];
   lineStyle: LineStyle;
+  /** Render'da sahnenin üstüne binen doku (core/texture.ts): paketleri palet dışında da ayırır. */
+  texture: Texture;
   designNotes: string;
 }
 
@@ -37,6 +40,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "bold flat geometric vector illustration, clean shapes, limited saturated palette, soft long shadows,",
     negativeRules: [...NO_TEXT, "photorealism", "gradients with noise"],
     lineStyle: "flat",
+    texture: "none",
     designNotes: "Build everything from simple geometric primitives (circles, rounded rectangles). Big readable shapes, one darker tone for shadows, small round highlights. Characters slightly stylised with simple, friendly faces.",
   },
   {
@@ -50,6 +54,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "muted semi-realistic flat illustration, earthy documentary palette, natural proportions, soft directional light,",
     negativeRules: [...NO_TEXT, "cartoon exaggeration", "neon colours"],
     lineStyle: "outline",
+    texture: "grain",
     designNotes: "Natural adult proportions. Muted earthy colours, 3-tone shading on faces and clothes, period-accurate details. Dark brown outlines.",
   },
   {
@@ -63,6 +68,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "19th-century copperplate engraving, fine cross-hatching, cream paper tone, monochrome ink with a single muted red accent,",
     negativeRules: [...NO_TEXT, "bright colours", "smooth gradients"],
     lineStyle: "ink",
+    texture: "hatching",
     designNotes: "Monochrome dark ink on cream. Shade with parallel and cross-hatched line groups instead of fills. Realistic proportions. At most one muted red accent per asset.",
   },
   {
@@ -76,6 +82,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "Ottoman miniature painting style, flat perspective, jewel tones, fine gold details, decorative patterns on textiles,",
     negativeRules: [...NO_TEXT, "western linear perspective", "photorealism", "depictions of prophets or religious figures"],
     lineStyle: "outline",
+    texture: "paper",
     designNotes: "Flat colour areas without shading, fine dark outlines, gold accents on fabric and architecture, small patterned textiles. Faces simple and serene. Buildings in flat elevation with domes and arches.",
   },
   {
@@ -89,6 +96,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "layered paper cut-out collage, matte paper textures, soft drop shadows between layers,",
     negativeRules: [...NO_TEXT, "glossy surfaces", "photorealism"],
     lineStyle: "flat",
+    texture: "paper",
     designNotes: "No outlines. Each part is a separate paper layer with a slightly irregular cut edge and a small soft drop shadow (a darker offset copy at low opacity). Simple shapes, warm matte colours.",
   },
   {
@@ -102,6 +110,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "mid-century modern illustration, angular stylised figures, limited retro palette, offset colour printing look,",
     negativeRules: [...NO_TEXT, "photorealism", "modern gradients"],
     lineStyle: "flat",
+    texture: "paper",
     designNotes: "Angular stylised figures with long limbs and small heads, boomerang and starburst shapes in backgrounds, slightly misregistered colour shapes for shadows.",
   },
   {
@@ -115,6 +124,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "bold comic book illustration, thick ink lines, halftone dot shading, saturated primary colours,",
     negativeRules: [...NO_TEXT, "speech bubbles", "photorealism"],
     lineStyle: "ink",
+    texture: "halftone",
     designNotes: "Thick black contour lines, hard black shadow shapes, halftone dot pattern (small circles) on shaded areas, saturated primaries. Expressive faces.",
   },
   {
@@ -128,6 +138,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "film noir illustration, high contrast black and white with a single red accent, hard shadows, moody,",
     negativeRules: [...NO_TEXT, "bright cheerful colours"],
     lineStyle: "ink",
+    texture: "grain",
     designNotes: "Mostly black, greys and off-white with large solid shadow shapes covering half of faces and bodies. One red accent (tie, lips, light). Hats, coats, rain-wet streets.",
   },
   {
@@ -141,6 +152,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "technical blueprint drawing, white and pale blue lines on deep blue, grid, orthographic views,",
     negativeRules: [...NO_TEXT, "photorealism", "warm colours"],
     lineStyle: "outline",
+    texture: "none",
     designNotes: "Draw with light lines (#e8f1fa) on deep blue fills, thin construction lines and circles, dashed hidden lines, a faint grid only at the edges of backgrounds. Characters as clean line drawings with pale blue fills. Yellow only for highlights.",
   },
   {
@@ -154,6 +166,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "Japanese ukiyo-e woodblock print, flat colour areas, Prussian blue, bold curving outlines, wave and cloud patterns,",
     negativeRules: [...NO_TEXT, "western shading", "photorealism"],
     lineStyle: "ink",
+    texture: "paper",
     designNotes: "Flat colour areas with confident curved black outlines, stylised wave, cloud and wood-grain patterns, Prussian blue and soft beige. No gradients except a simple sky band.",
   },
   {
@@ -167,6 +180,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "Art Deco poster illustration, geometric streamlined forms, gold and navy, symmetrical, radiating lines,",
     negativeRules: [...NO_TEXT, "organic messy textures"],
     lineStyle: "flat",
+    texture: "grain",
     designNotes: "Streamlined geometric forms, stepped and radiating shapes, gold accents on navy, elegant elongated figures, sharp gradients only as stepped bands.",
   },
   {
@@ -180,6 +194,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "constructivist poster style, bold diagonals, red black and cream, geometric shapes, heroic figures,",
     negativeRules: [...NO_TEXT, "soft pastel colours"],
     lineStyle: "flat",
+    texture: "paper",
     designNotes: "Red, black and cream only (plus grey). Strong diagonal compositions, geometric blocks, figures in silhouette or two tones, heroic poses.",
   },
   {
@@ -193,6 +208,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "soft pastel children's storybook illustration, rounded shapes, gentle textures, warm and friendly,",
     negativeRules: [...NO_TEXT, "violence", "harsh contrast"],
     lineStyle: "sketch",
+    texture: "watercolor",
     designNotes: "Rounded soft shapes, big friendly eyes, pastel colours, slightly wobbly hand-drawn outlines in a darker shade of the fill colour, rosy cheeks.",
   },
   {
@@ -206,6 +222,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "bright rounded cartoon, saturated colours, thick clean outlines, cel shading,",
     negativeRules: [...NO_TEXT, "dark moody tones", "realistic anatomy"],
     lineStyle: "outline",
+    texture: "none",
     designNotes: "Chunky rounded shapes, oversized expressive eyes, saturated primaries, one cel-shadow tone.",
   },
   {
@@ -219,6 +236,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "chalk drawing on a dark green chalkboard, rough chalk strokes, white with a few coloured chalks,",
     negativeRules: [...NO_TEXT, "photorealism"],
     lineStyle: "sketch",
+    texture: "chalk",
     designNotes: "Dark green fills for backgrounds; subjects drawn with rough off-white chalk strokes (irregular 3–4 px lines, slight gaps), fills as sparse diagonal hatching. Accents in yellow, cyan, pink chalk.",
   },
   {
@@ -232,6 +250,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "neon synthwave illustration, dark purple background, glowing magenta and cyan outlines, retro grid, sunset gradient,",
     negativeRules: [...NO_TEXT, "daylight scenes", "earthy colours"],
     lineStyle: "outline",
+    texture: "scanlines",
     designNotes: "Dark navy-purple fills, glowing outlines in cyan or magenta (draw each outline twice: a wide low-opacity stroke under a thin bright one). In backgrounds a low sunset band and a faint perspective grid on the floor only.",
   },
   {
@@ -245,6 +264,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "medieval illuminated manuscript style painting, flat colours, gold leaf accents, stylised figures, no page border,",
     negativeRules: [...NO_TEXT, "linear perspective", "photorealism"],
     lineStyle: "outline",
+    texture: "paper",
     designNotes: "Flat ultramarine, vermilion and green fills, gold accents, dark brown outlines, stylised elongated figures with simple faces, a subtle pattern only at the far edges of backgrounds (the centre band stays plain).",
   },
   {
@@ -258,6 +278,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "sepia-toned archival illustration, faded vintage photograph look, soft grain, muted browns,",
     negativeRules: [...NO_TEXT, "saturated colours"],
     lineStyle: "sketch",
+    texture: "grain",
     designNotes: "Only sepia browns and cream. Soft pencil-like outlines, 3-tone shading, realistic proportions, period clothing.",
   },
   {
@@ -271,6 +292,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "minimal monoline illustration, uniform thin dark lines, off-white background, single orange accent, lots of negative space,",
     negativeRules: [...NO_TEXT, "busy details", "many colours"],
     lineStyle: "outline",
+    texture: "none",
     designNotes: "Uniform 3 px dark lines, almost no fills (light grey at most), a single orange accent per asset. Simple faces (dots for eyes), lots of empty space.",
   },
   {
@@ -284,6 +306,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "naturalistic flat wildlife illustration, accurate animal anatomy, earthy natural palette, soft golden light,",
     negativeRules: [...NO_TEXT, "anthropomorphic animals", "neon colours"],
     lineStyle: "flat",
+    texture: "paper",
     designNotes: "Anatomically accurate animals in natural poses (side view), layered landscapes with atmospheric perspective (lighter, bluer far layers), earthy colours, no outlines.",
   },
   {
@@ -297,6 +320,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "clean sci-fi space illustration, deep space blues, glowing highlights, crisp hard-surface shapes,",
     negativeRules: [...NO_TEXT, "cartoon exaggeration"],
     lineStyle: "flat",
+    texture: "none",
     designNotes: "Very dark blue backgrounds with sparse small stars, hard-surface technology in clean shapes with a bright rim light on one side, glowing elements as a bright core over a soft low-opacity halo.",
   },
   {
@@ -310,6 +334,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "dark gothic sketch illustration, desaturated blues and greys, scratchy ink lines, fog, moonlight,",
     negativeRules: [...NO_TEXT, "gore", "bright cheerful colours"],
     lineStyle: "sketch",
+    texture: "grain",
     designNotes: "Desaturated cold greys and blues, scratchy irregular dark lines, large shadow areas, thin fog bands (white at low opacity), dark red only as a rare accent. No gore.",
   },
   {
@@ -323,6 +348,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "loose watercolour illustration, translucent washes, soft bleeding edges, light pencil lines,",
     negativeRules: [...NO_TEXT, "hard vector edges", "heavy black outlines"],
     lineStyle: "sketch",
+    texture: "watercolor",
     designNotes: "Fills as 2–3 overlapping translucent shapes (opacity 0.5–0.7) with slightly irregular edges, thin light pencil-grey outlines that do not fully close, lots of paper white.",
   },
   {
@@ -336,6 +362,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
     promptPrefix: "8-bit pixel art, chunky square pixels, limited retro game palette, no anti-aliasing,",
     negativeRules: [...NO_TEXT, "smooth gradients", "photorealism"],
     lineStyle: "outline",
+    texture: "scanlines",
     designNotes: "Build every shape from axis-aligned squares on a coarse grid (e.g. 10 px cells; use <rect> elements or stepped paths), no curves, no anti-aliased diagonals, one shadow tone, dark 1-cell outline.",
   },
 ];

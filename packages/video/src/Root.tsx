@@ -18,6 +18,7 @@ const PLACEHOLDER: Timeline = {
   vectorAssets: {},
   palette: [],
   lineStyle: "outline",
+  texture: "none",
 };
 
 export function Root() {

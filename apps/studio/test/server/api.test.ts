@@ -33,6 +33,7 @@ const estimate = await import("../../src/app/api/estimate/route.ts");
 const models = await import("../../src/app/api/settings/models/route.ts");
 const characters = await import("../../src/app/api/characters/route.ts");
 const mascot = await import("../../src/app/api/characters/mascot/route.ts");
+const styleSample = await import("../../src/app/api/styles/[pack]/sample/route.ts");
 
 /** Karakter bankasına onaylı karakter koyar (kütüphane kimliği = anahtarın hash'i). */
 async function bankCharacter(id: string, name: string, identity: object = {}) {
@@ -73,6 +74,36 @@ beforeEach(() => {
   registry.skipped = [];
 });
 afterEach(() => vi.restoreAllMocks());
+
+describe("GET /api/styles/[pack]/sample", () => {
+  const get = (pack: string, query: string) => styleSample.GET(new Request(`http://x/api/styles/${pack}/sample${query}`), params({ pack }));
+
+  it("bilinmeyen paket ya da tür, dizinde olmayan ya da silinmiş örnek 404", async () => {
+    expect((await get("yok", "?kind=character")).status).toBe(404);
+    expect((await get("noir", "?kind=prop")).status).toBe(404);
+    expect((await get("noir", "")).status).toBe(404);
+    expect((await get("noir", "?kind=character")).status).toBe(404);
+    await putJson(server.store(), "library/style-samples.json", { noir: { character: "library/vector/character/silinmis.svg", source: "drawn", at: "t" } });
+    expect((await get("noir", "?kind=character")).status).toBe(404);
+    expect((await get("noir", "?kind=background")).status).toBe(404);
+  });
+
+  it("örneği temizleyip paketin çizgi stiliyle, kum havuzu başlıklarıyla sunar; anahtar dizinden okunur", async () => {
+    const key = "library/vector/character/n.svg";
+    await server.store().put(key, new TextEncoder().encode('<svg viewBox="0 0 10 10"><script>x()</script><rect width="5" height="5" stroke="#000000" stroke-width="2"/></svg>'), "image/svg+xml");
+    await putJson(server.store(), "library/style-samples.json", { noir: { character: key, source: "drawn", at: "t" } });
+    // İstemcinin verdiği v= başka bir yol olsa da dizindeki anahtar kullanılır.
+    const res = await get("noir", "?kind=character&v=episodes%2Fx%2Fstate.json");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/svg+xml");
+    expect(res.headers.get("content-security-policy")).toContain("sandbox");
+    const svg = await res.text();
+    expect(svg).not.toContain("script");
+    // Kara film paketinin çizgi stili mürekkep: koyu kontur siyah ve kalın.
+    expect(svg).toContain('stroke="#111014"');
+    expect(svg).toContain('stroke-width="3.0"');
+  });
+});
 
 describe("GET /api/assets/[...key]", () => {
   it("yalnız assets/ ve library/ köklerinden; ayraç, nokta ile başlama ve boş parça yasak", async () => {

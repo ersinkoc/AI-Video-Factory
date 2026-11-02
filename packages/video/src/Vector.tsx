@@ -19,13 +19,15 @@ import {
   type VectorMood,
   type VectorShot,
   type VectorText,
+  type Texture,
   type WordTiming,
   STAGE,
   TEXT_RULES,
+  textureLayer,
   VERTICAL_SAFE,
 } from "@ys/core";
 import { useMemo, type CSSProperties } from "react";
-import { AbsoluteFill, Easing, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
 import { Globe3D } from "./Globe3D.tsx";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
@@ -1236,12 +1238,15 @@ export function VectorScene({
   assets,
   palette,
   lineStyle = "outline",
+  texture = "none",
   speech = [],
 }: {
   visual: Visual;
   assets: Assets;
   palette: string[];
   lineStyle?: LineStyle;
+  /** Stil paketinin dokusu: sahnenin üstüne, yazıların altına. */
+  texture?: Texture;
   /** Anlatımın kelime zamanları (bölüm başından, ms): konuşan karakterin ağzı bunlarla oynar. */
   speech?: WordTiming[];
 }) {
@@ -1333,6 +1338,7 @@ export function VectorScene({
     return { x, y, head: near !== undefined };
   }, tagBounds(width, height, fit));
   const [c0 = "#1d2433", c1 = "#3a4a66", accent = "#ffd84d"] = palette;
+  const grain = useMemo(() => textureLayer(texture, `${visual.shotId}-tex`), [texture, visual.shotId]);
 
   const stage = (
     <AbsoluteFill style={{ overflow: "hidden", background: `linear-gradient(160deg, ${c0}, ${c1})` }}>
@@ -1407,6 +1413,15 @@ export function VectorScene({
         </div>
       </AbsoluteFill>
       <AbsoluteFill style={MOOD_GRADE[spec.mood]} />
+      {grain && (
+        // Durağan doku katmanı resim olarak: tarayıcı bir kez rasterlar (satır içi SVG filtresi her karede yeniden
+        // hesaplanıyordu: render %40–60 yavaşladı). Kameradan bağımsız, kağıt gibi sabit.
+        <Img
+          data-texture={texture}
+          src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(grain.svg)}`}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: grain.opacity }}
+        />
+      )}
       <AbsoluteFill style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.32) 100%)" }} />
       {/* Yazılar kamera hareketinin dışında: zoom onları altyazı bölgesine itmesin. */}
       <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>

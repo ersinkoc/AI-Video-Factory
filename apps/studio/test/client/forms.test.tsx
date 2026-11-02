@@ -155,18 +155,21 @@ describe("NewEpisodeForm", () => {
     const thumbs = screen.getAllByRole("button", { pressed: false }).filter((b) => b.querySelector("img"));
     expect(thumbs).toHaveLength(3);
     // "Otomatik" seçiliyken büyük önizleme yok: her resim bir küçük resimde.
-    expect(document.querySelectorAll('img[src="/api/assets/library/vector/background/n.svg"]')).toHaveLength(1);
+    expect(document.querySelectorAll('img[src="/api/styles/noir/sample?kind=background&v=library%2Fvector%2Fbackground%2Fn.svg"]')).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: /Kara film/ }));
     expect(field<HTMLSelectElement>("stylePack").value).toBe("noir");
     expect(screen.getByRole("button", { pressed: true }).textContent).toContain("Kara film (noir)");
-    expect(document.querySelectorAll('img[src="/api/assets/library/vector/background/n.svg"]')).toHaveLength(2);
-    expect(document.querySelector('img[alt="Kara film (noir)"][src="/api/assets/library/vector/character/n.svg"]')).toBeTruthy();
+    expect(document.querySelectorAll('img[src="/api/styles/noir/sample?kind=background&v=library%2Fvector%2Fbackground%2Fn.svg"]')).toHaveLength(2);
+    expect(document.querySelector('img[alt="Kara film (noir)"][src="/api/styles/noir/sample?kind=character&v=library%2Fvector%2Fcharacter%2Fn.svg"]')).toBeTruthy();
     // Yalnız mekânı ya da yalnız karakteri olan örnek de gösterilir.
-    expect(document.querySelector('img[src="/api/assets/library/vector/background/p.svg"]')).toBeTruthy();
-    expect(document.querySelector('img[src="/api/assets/library/vector/character/u.svg"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/api/styles/pixel/sample?kind=background&v=library%2Fvector%2Fbackground%2Fp.svg"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/api/styles/ukiyo-e/sample?kind=character&v=library%2Fvector%2Fcharacter%2Fu.svg"]')).toBeTruthy();
+    // Önizlemeye paketin dokusu biner (kara film: film greni); dokusuz pakette katman yok.
+    expect(document.querySelectorAll('img[data-texture="grain"]').length).toBeGreaterThanOrEqual(2);
+    expect(document.querySelector('img[data-texture="none"]')).toBeNull();
     // Örneği olmayan paket seçilince büyük önizleme kalkar.
     fireEvent.change(field<HTMLSelectElement>("stylePack"), { target: { value: "flat-explainer" } });
-    expect(document.querySelectorAll('img[src="/api/assets/library/vector/background/n.svg"]')).toHaveLength(1);
+    expect(document.querySelectorAll('img[src="/api/styles/noir/sample?kind=background&v=library%2Fvector%2Fbackground%2Fn.svg"]')).toHaveLength(1);
   });
 
   it("var olan seri seçilince ayarlar son bölümden dolar; bilinmeyen seri ipucu gösterir", async () => {
