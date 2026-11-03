@@ -155,6 +155,19 @@ describe("renderEpisode", () => {
     expect(existsSync(LOCK)).toBe(false);
   });
 
+  it("ilerleme sürdükçe bekçi beklemeye devam eder (yük altında da: ilerleme bekçi aralığından sık gelir)", async () => {
+    remotion.renderMedia.mockImplementationOnce(async (o: { onProgress: (p: { progress: number }) => void }) => {
+      for (let i = 1; i <= 35; i++) {
+        await new Promise((r) => setTimeout(r, 10));
+        o.onProgress({ progress: i / 35 });
+      }
+    });
+    const reasons: string[] = [];
+    await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), stallMs: 200, onRetry: (r) => reasons.push(r) });
+    expect(reasons).toEqual([]);
+    expect(remotion.renderMedia).toHaveBeenCalledTimes(1);
+  });
+
   it("Chrome kare alamayınca (bellek) aynı arka uçla yarı paralellikle bir kez baştan alır", async () => {
     const oom = "Could not take a screenshot because Google Chrome ran out of memory or disk space. Decrease the concurrency to use less RAM.";
     remotion.renderMedia.mockRejectedValueOnce(new Error(oom));

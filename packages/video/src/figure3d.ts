@@ -1,4 +1,5 @@
 import { FigureSpec, RIG, type RigPart } from "@ys/core";
+import type { BrowPart } from "./browShape.ts";
 import {
   CapsuleGeometry,
   CircleGeometry,
@@ -27,7 +28,7 @@ import {
  * (ayak tabanı Y = 0); ön yüz +Z.
  */
 
-export type FigurePart = RigPart | "torso";
+export type FigurePart = RigPart | "torso" | BrowPart;
 
 export interface Figure {
   root: Group;
@@ -198,12 +199,15 @@ export function buildFigure(input: FigureSpec): Figure {
   ];
   const eyes = group([0, eyeY], ...eye(-27), ...eye(27));
   const browColor = spec.hair.style === "bald" ? "#5b4636" : spec.hair.color;
+  // Her kaş kendi ortasında döner (SVG'deki brow-l/brow-r gibi): ifadenin eğimi aynı pozla uygulanır.
   const brow = (x: number, tilt: number) => {
-    const b = mesh(new CapsuleGeometry(3.6, 15, q(4), q(8)), browColor, [x, 0, faceDepth(x, browY) + 1]);
+    const b = mesh(new CapsuleGeometry(3.6, 15, q(4), q(8)), browColor, [0, 0, faceDepth(x, browY) + 1]);
     b.rotation.z = Math.PI / 2 + tilt;
-    return b;
+    return group([x, 0], b);
   };
-  const brows = group([0, browY], brow(-27, 0.1), brow(27, -0.1));
+  const browL = brow(-27, 0.1);
+  const browR = brow(27, -0.1);
+  const brows = group([0, browY], browL, browR);
   // Ağız: düz üstlü yarım daire (açık gülümseme). Dikey ölçek açıklığıdır: konuşurken açılıp kapanır, eksi olunca ters
   // döner (üzgün, kızgın).
   const mouth = group([0, mouthY], mesh(new CircleGeometry(15, 32, Math.PI, Math.PI), "#5c1f26", [0, 7, faceDepth(0, mouthY + 4) + 0.5], [1, 0.5, 1], "matte"));
@@ -265,6 +269,8 @@ export function buildFigure(input: FigureSpec): Figure {
     head,
     eyes,
     brows,
+    "brow-l": browL,
+    "brow-r": browR,
     mouth,
     "arm-l": armL.group,
     "arm-r": armR.group,

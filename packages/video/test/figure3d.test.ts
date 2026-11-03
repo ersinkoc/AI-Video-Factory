@@ -25,11 +25,27 @@ describe("3D figür: iskelet", () => {
   it("her parçanın dönme noktası kukla tuvalindeki yerinde (X = x − 200, Y = 800 − y)", () => {
     const f = buildFigure(BASE);
     f.root.updateMatrixWorld(true);
+    // Kaşlar kaş noktasının iki yanında (her biri kendi ortasında döner).
+    const brow: Record<string, number> = { "brow-l": -27, "brow-r": 27 };
     for (const [name, part] of Object.entries(f.parts)) {
-      const [x, y] = RIG.pivots[(name === "torso" ? "body" : name) as RigPart];
+      const [x, y] = RIG.pivots[(name === "torso" ? "body" : name in brow ? "brows" : name) as RigPart];
       const at = part.getWorldPosition(new Vector3());
-      expect([at.x, at.y], name).toEqual([x - 200, 800 - y]);
+      expect([at.x, at.y], name).toEqual([x - 200 + (brow[name] ?? 0), 800 - y]);
     }
+  });
+
+  it("kaş eğimi SVG pozuyla aynı: iç uç kalkınca (endişe) ekranın solundaki kaşın sağ ucu yükselir", () => {
+    const f = buildFigure(BASE);
+    const ends = (): [number, number] => {
+      f.root.updateMatrixWorld(true);
+      const b = f.parts["brow-l"];
+      return [b.localToWorld(new Vector3(-8, 0, 0)).y, b.localToWorld(new Vector3(8, 0, 0)).y];
+    };
+    const [l0, r0] = ends();
+    poseFigure(f, { "brow-l": { rotate: -20, sx: 1, sy: 1, tx: 0, ty: 0 } });
+    const [l1, r1] = ends();
+    expect(r1).toBeGreaterThan(r0 + 2);
+    expect(l1).toBeLessThan(l0 - 2);
   });
 
   it("ayakkabı tabanı zeminde; figür tuvalin içinde ve önü +Z", () => {

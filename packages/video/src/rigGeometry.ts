@@ -51,7 +51,7 @@ function geometry(): paper.PaperScope {
   return scope;
 }
 
-function attrsOf(raw: string): Record<string, string> {
+export function attrsOf(raw: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const m of raw.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) out[m[1]!] = m[2] ?? m[3]!;
   return out;
@@ -78,7 +78,7 @@ export function transformOf(value: string | undefined): paper.Matrix {
 }
 
 /** Şeklin kendi koordinatındaki sınırları (paper ile); ölçülemezse undefined. */
-function shapeBounds(tag: string, a: Record<string, string>, matrix: paper.Matrix): Bounds | undefined {
+export function shapeBounds(tag: string, a: Record<string, string>, matrix: paper.Matrix): Bounds | undefined {
   const g = geometry();
   let item: paper.Item;
   try {
@@ -111,7 +111,7 @@ function shapeBounds(tag: string, a: Record<string, string>, matrix: paper.Matri
   return [b.x, b.y, b.width, b.height].every(Number.isFinite) && b.width + b.height > 0 ? { x: b.x, y: b.y, w: b.width, h: b.height } : undefined;
 }
 
-const union = (a: Bounds | undefined, b: Bounds): Bounds => {
+export const unionBounds = (a: Bounds | undefined, b: Bounds): Bounds => {
   if (!a) return b;
   const x = Math.min(a.x, b.x);
   const y = Math.min(a.y, b.y);
@@ -166,7 +166,7 @@ export function faceOf(svg: string, rig: { width: number; height: number } = { w
     if (!own) continue;
     const b = shapeBounds(name!, a, top.matrix);
     if (!b) continue;
-    found[own] = union(found[own], b);
+    found[own] = unionBounds(found[own], b);
     if (own === "mouth") {
       line ??= stroke;
       fill ??= paint;

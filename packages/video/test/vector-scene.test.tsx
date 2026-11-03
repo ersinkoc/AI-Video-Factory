@@ -37,7 +37,7 @@ const { clapClosed, penDown, typingTaps } = await import("../src/gesture-timing.
 const { tip } = await import("../src/ik.ts");
 const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -2330,5 +2330,67 @@ describe("vektör sahne: anatomi", () => {
     expect(out).toEqual([]);
     // Yan çizim ve 3D figür yürürken gerçekten profile döndü: profil sınırlarına da bakıldı.
     expect(profiles).toBeGreaterThan(GESTURES.length * 10);
+  });
+});
+
+describe("vektör sahne: kaşlar", () => {
+  // İki ayrı kaş çizilmiş karakter (soldaki ortası x 179, sağdaki 221).
+  const browed = asset(
+    "browed",
+    "character",
+    `<svg viewBox="0 0 400 800">${PARTS.filter((p) => p !== "brows")
+      .map((p) => `<g id="${p}"><rect width="10" height="10"/></g>`)
+      .join("")}<g id="brows"><path d="M166 145 Q180 137 192 143" stroke="#000" stroke-width="5" fill="none"/><path d="M208 143 Q220 137 234 145" stroke="#000" stroke-width="5" fill="none"/></g></svg>`,
+    400,
+    800,
+  );
+  (ASSETS as Record<string, typeof browed>).browed = browed;
+  const face = (layer: object, frame = 150) => {
+    const c = scene({ layers: [{ asset: "browed", x: 960, depth: 0, ...layer }] }, { frame });
+    const css = c.querySelector("style")!.textContent!;
+    const html = c.innerHTML;
+    cleanup();
+    return { g: (p: string) => pose(css, p), css, html };
+  };
+
+  it("kaşlar sol ve sağa ayrılır, her biri kendi ortasında döner; endişede iç uçlar kalkar, öfkede iner ve çatılır", () => {
+    const worried = face({ expression: "worried" });
+    expect(worried.html).toContain('id="s1-0-brow-l"');
+    expect(worried.css).toMatch(/#s1-0-brow-l\{[^}]*transform-origin:179px 14\d\.\d+px/);
+    expect([worried.g("brow-l").rotate, worried.g("brow-r").rotate, worried.g("brow-l").tx, worried.g("brow-r").tx]).toEqual([-20, 20, 1.5, -1.5]);
+    const angry = face({ expression: "angry" });
+    expect([angry.g("brow-l").rotate, angry.g("brow-r").rotate, angry.g("brow-l").tx]).toEqual([18, -18, 2.5]);
+    const neutral = face({});
+    expect([neutral.g("brow-l").rotate, neutral.g("brow-r").rotate]).toEqual([0, 0]);
+  });
+
+  it("düşünen yüzde tek kaş kalkar (hangisi tohumdan), öbürü hafif iner; düşünme jesti de aynısını yapar, ikisi birlikte iki kez değil", () => {
+    const up = random("s1-0--brow") < 0.5 ? "l" : "r";
+    const down = up === "l" ? "r" : "l";
+    const out = (s: "l" | "r") => (s === "l" ? 1 : -1);
+    const thinking = face({ expression: "thinking" });
+    expect(thinking.g(`brow-${up}`).ty).toBe(-QUIZZICAL.lift);
+    expect(thinking.g(`brow-${up}`).rotate).toBe(out(up) * QUIZZICAL.arch);
+    expect(thinking.g(`brow-${down}`).ty).toBe(QUIZZICAL.drop);
+    expect(thinking.g(`brow-${down}`).rotate).toBe(out(down) * QUIZZICAL.frown);
+    const gesture = face({ anims: [{ type: "think" }] });
+    expect(gesture.g(`brow-${up}`).ty).toBeCloseTo(-QUIZZICAL.lift, 1);
+    const both = face({ expression: "thinking", anims: [{ type: "think" }] });
+    expect(both.g(`brow-${up}`).ty).toBe(-QUIZZICAL.lift);
+  });
+
+  it("kaşlar varlık başına bir kez ayrılır (ayrılamayan da hatırlanır)", () => {
+    expect(browsFor(browed)).toBe(browsFor(browed));
+    expect(browsFor(ASSETS.hero)).toBeUndefined();
+    expect(browsFor(ASSETS.hero)).toBeUndefined();
+  });
+
+  it("başını iki yana sallarken kaşlar çatılır; kaşları ayrılamayan çizimde kaş kuralı yazılmaz", () => {
+    const no = face({ anims: [{ type: "shake_head" }] });
+    expect(no.g("brow-l").rotate).toBeGreaterThan(7);
+    expect(no.g("brow-r").rotate).toBeLessThan(-7);
+    const c = scene({ layers: [{ asset: "hero", x: 960, depth: 0, expression: "worried" }] }, { frame: 150 });
+    expect(c.querySelector("style")!.textContent).not.toContain("brow-l{");
+    expect(pose(c, "brows").ty).toBe(-3);
   });
 });

@@ -36,6 +36,7 @@ import { Figure3D } from "./Figure3D.tsx";
 import { clapClosed, GESTURE_RHYTHM, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
 import { anatomical, flexion, type Strain } from "./anatomy.ts";
+import { splitBrows, type BrowPart, type SplitBrows } from "./browShape.ts";
 import { bend, reach } from "./ik.ts";
 import { revealWindow } from "./kinetic-timing.ts";
 import { lipLine, mouthIds, withMouths, type SpeakingMouth } from "./mouthShape.ts";
@@ -206,7 +207,7 @@ function layerTransform(
 }
 
 /** İskelet parçası ya da üst gövde (gövde + kollar + baş; kalçadan, `wrapTorso`). */
-type PosePart = RigPart | "torso";
+type PosePart = RigPart | "torso" | BrowPart;
 
 interface PartPose {
   rotate: number;
@@ -325,6 +326,15 @@ export function faceFor(asset: VectorAsset): FaceFit {
   return f;
 }
 
+const brows = new WeakMap<VectorAsset, SplitBrows | null>();
+
+/** Çizimin sol ve sağa ayrılmış kaşları (browShape; varlık başına bir kez); ayrılamıyorsa undefined. */
+export function browsFor(asset: VectorAsset): SplitBrows | undefined {
+  let b = brows.get(asset);
+  if (b === undefined) brows.set(asset, (b = splitBrows(asset.svg) ?? null));
+  return b ?? undefined;
+}
+
 /** İskelet parçalarının bu karedeki pozu: sürekli canlılık + Claude'un istediği jestler. */
 /**
  * Yüz ifadeleri: kaş yüksekliği, göz açıklığı ve ağız eğrisi. Ağız gülümseme olarak çizilir; dikey ölçeği eksi olunca
@@ -336,15 +346,45 @@ export function faceFor(asset: VectorAsset): FaceFit {
  * 21 bölümün 9'unda benzer not).
  */
 /** mood: koddan çizilen konuşan ağzın köşeleri (−1 somurtkan … 1 gülen; mouthShape). */
-const EXPRESSIONS: Record<VectorExpression, { brows: number; eyes: number; mouth: number; mouthW?: number; mood: number; head: number; droop: number; lookX?: number }> = {
-  neutral: { brows: 0, eyes: 1, mouth: 1, mood: 0.3, head: 0, droop: 0 },
-  happy: { brows: -4, eyes: 0.9, mouth: 1.35, mood: 0.8, head: -1, droop: 0 },
-  sad: { brows: 4, eyes: 0.75, mouth: -0.8, mood: -0.7, head: 6, droop: 6 },
-  angry: { brows: 7, eyes: 0.8, mouth: -0.45, mood: -0.5, head: 2, droop: -3 },
-  worried: { brows: -5, eyes: 1.1, mouth: -0.5, mood: -0.4, head: 3, droop: 3 },
-  surprised: { brows: -10, eyes: 1.25, mouth: 0.3, mouthW: 0.6, mood: 0, head: -2, droop: 0 },
-  thinking: { brows: -3, eyes: 0.9, mouth: 0.45, mood: 0.15, head: 0, droop: 0, lookX: 6 },
+/**
+ * Kaş eğimi (browShape; 3 Kas, kare denetçisi: "yüz endişeli görünmüyor" 40 çekimde, "kızgın değil, sakin", "nötr,
+ * hafif gülümsüyor"): inner, iç uçların kalkışı (derece; artı endişe ve üzüntünün eğik kaşı, eksi öfkenin indiği ve
+ * çatıldığı kaş), knit kaşların birbirine yaklaşması (px). quizzical: düşünürken tek kaş kalkar, öbürü hafif iner (hangisi
+ * tohumdan). Kaşlar eskiden yalnız bütün olarak aşağı yukarı kayıyordu; duygu kaşın eğiminden okunur.
+ */
+const EXPRESSIONS: Record<
+  VectorExpression,
+  { brows: number; inner: number; knit: number; quizzical?: boolean; eyes: number; mouth: number; mouthW?: number; mood: number; head: number; droop: number; lookX?: number }
+> = {
+  neutral: { brows: 0, inner: 0, knit: 0, eyes: 1, mouth: 1, mood: 0.3, head: 0, droop: 0 },
+  happy: { brows: -4, inner: 3, knit: 0, eyes: 0.9, mouth: 1.35, mood: 0.8, head: -1, droop: 0 },
+  sad: { brows: 3, inner: 15, knit: 1, eyes: 0.75, mouth: -0.8, mood: -0.7, head: 6, droop: 6 },
+  angry: { brows: 5, inner: -18, knit: 2.5, eyes: 0.8, mouth: -0.45, mood: -0.5, head: 2, droop: -3 },
+  worried: { brows: -3, inner: 20, knit: 1.5, eyes: 1.1, mouth: -0.5, mood: -0.4, head: 3, droop: 3 },
+  surprised: { brows: -10, inner: 4, knit: 0, eyes: 1.25, mouth: 0.3, mouthW: 0.6, mood: 0, head: -2, droop: 0 },
+  thinking: { brows: -2, inner: 0, knit: 0, quizzical: true, eyes: 0.9, mouth: 0.45, mood: 0.15, head: 0, droop: 0, lookX: 6 },
 };
+
+/**
+ * Düşünürken kalkan tek kaş (iskelet px, derece): kalkan kaş lift px yukarı, dış ucu arch derece daha yukarı (sorgulayan
+ * kemer); öbür kaş drop px aşağı, iç ucu frown derece aşağı (yoğunlaşma).
+ */
+export const QUIZZICAL = { lift: 5, arch: 7, drop: 1, frown: 4 } as const;
+
+/** Kaşın iç ucunu deg derece kaldırır (eksi: indirir). brow-l ekranın solunda: iç ucu sağ ucu, saat yönünün tersiyle kalkar. */
+function innerUp(pose: (k: PosePart) => PartPose, side: "l" | "r", deg: number): void {
+  pose(`brow-${side}`).rotate += side === "l" ? -deg : deg;
+}
+
+/** Düşünen yüzün tek kaşı (k: ağırlık); hangi kaşın kalktığı karakterin tohumundan. */
+function quizzical(pose: (k: PosePart) => PartPose, seed: string, k: number): void {
+  const up = random(`${seed}-brow`) < 0.5 ? "l" : "r";
+  const down = up === "l" ? "r" : "l";
+  pose(`brow-${up}`).ty -= QUIZZICAL.lift * k;
+  innerUp(pose, up, -QUIZZICAL.arch * k);
+  pose(`brow-${down}`).ty += QUIZZICAL.drop * k;
+  innerUp(pose, down, -QUIZZICAL.frown * k);
+}
 
 /**
  * Ağzı koddan çizilemeyen yüzde (3D figür, ağzı ölçülemeyen çizim) vizemin ağız ölçeği: [genişlik, açıklık]. Sessizlik
@@ -404,6 +444,11 @@ function rigPose(
   }
   // İfade taban pozdur; jestler bunun üstüne karışır.
   part("brows").ty = face.brows;
+  innerUp(part, "l", face.inner);
+  innerUp(part, "r", face.inner);
+  part("brow-l").tx = face.knit;
+  part("brow-r").tx = -face.knit;
+  if (face.quizzical) quizzical(part, seed, 1);
   part("eyes").sy = face.eyes;
   part("mouth").sy = face.mouth;
   part("mouth").sx = face.mouthW ?? 1;
@@ -625,6 +670,8 @@ function rigPose(
         // Çekim başına üç duruştan biri (thinkPoseOf): yönetmen bölüm başına 6–13 çekimde düşündürüyor, hep aynı duruş
         // tekrar ediyordu (3 Kas).
         const how = thinkPoseOf(seed, attention.holding);
+        // Düşünen yüz: tek kaş kalkar (ifade zaten düşünceliyse ikinci kez değil).
+        if (!face.quizzical) quizzical(part, seed, w);
         if (how === "scratch") {
           // Başını kaşır: el başın yanına, üst üçte birine gider (saçın içine), dirsek dışa ve yukarı açılır (IK, dış
           // çözüm; aşağıdaki çözüm ön kolu yüzün önünden geçirirdi). Kol başın arkasında kalır: el başın kenarından görünür.
@@ -882,6 +929,9 @@ function rigPose(
         part("brows").tx += 3 * turn;
         part("mouth").tx += 3 * turn;
         mix("brows", "ty", face.brows + 2);
+        // Kaşlar çatılır: iç uçlar iner.
+        innerUp(part, "l", -8 * w);
+        innerUp(part, "r", -8 * w);
         break;
       }
       case "give": {
@@ -1697,7 +1747,10 @@ function Layer({
   // 3D figür: SVG yerine three.js kuklası (yürürken kendisi yana döner). WebGL açılamazsa SVG pozuyla birlikte yedek
   // olarak gösterilir.
   const figure = asset.meta.figure;
-  const prefixed = prefixSvgIds(fitSvg((motion.side ?? asset).svg, "meet"), prefix);
+  // Kaşlar sol ve sağa ayrılır: ifadenin eğimi her kaşı kendi ortasında döndürür (3D figürün kaşları kendisinde).
+  const look = motion.side ?? asset;
+  const split = figure ? undefined : browsFor(look);
+  const prefixed = prefixSvgIds(fitSvg(split?.svg ?? look.svg, "meet"), prefix);
   // Düşünen el yüzün önünde (yandan yürürken front yok: yan çizimde kol jesti uygulanmaz).
   const raw = motion.front ? armInFront(prefixed, prefix, motion.front) : prefixed;
   const shaped = pose?.torso ? wrapTorso(raw, prefix) : raw;
@@ -1719,7 +1772,10 @@ function Layer({
     ? Object.entries(pose)
         .map(([k, v]) => {
           const pivots = (motion.side ? RIG_SIDE : RIG).pivots;
-          const [px, py] = k === "torso" ? pivots.body : pivots[k as RigPart];
+          // Kaş kendi ortasında döner; ayrılamayan çizimde kaşın tek parçası yok (kural yazılmaz).
+          const brow = k.startsWith("brow-") ? split?.centres[k as BrowPart] : undefined;
+          if (k.startsWith("brow-") && !brow) return "";
+          const [px, py] = brow ?? (k === "torso" ? pivots.body : pivots[k as RigPart]);
           // Kısalan üst kol (kameraya uzanan) ön kolu bozmaz: ön kol üst kolun ölçeğini dirsekte geri alır, yalnız
           // dirsek omza yaklaşır (ön kol üst kola göre döndüğü için kendi ölçeğiyle geri almak onu eğerdi).
           const up = k.startsWith("forearm-") ? pose[`arm-${k.slice(-1)}` as RigPart] : undefined;
