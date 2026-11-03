@@ -34,7 +34,7 @@ vi.mock("../src/Figure3D.tsx", () => ({
 }));
 
 const { clapClosed, penDown, typingTaps } = await import("../src/gesture-timing.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, heldFraming, fillWide, wrapTorso, mouthOpen, stageFit, tagBounds, contentFit } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, heldFraming, fillWide, jointSafe, wrapTorso, mouthOpen, stageFit, tagBounds, contentFit } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -1421,6 +1421,43 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     expect(fillWide(cam, [], isMan)).toBeUndefined();
     expect(fillWide({ ...cam, zoomTo: 1.75 }, [man(800)], isMan)).toBeUndefined();
     expect(fillWide(cam, [{ ...PL, x: 960, y: 1080, width: 1920, height: 1080 }], isMan)).toBeUndefined();
+  });
+
+  it("ayakta duran eklem yerinden kesilmez: ayaklar kadrajda ya da kesim uyluk ortasının üstünde, en az kaydırmayla", () => {
+    const man = { ...PL, x: 960, y: 1000, width: 300, height: 600 };
+    // 1,25 zoom, sabit odak: kadraj 108–972, ayakkabılar 28 px kesik. Ayaklar (kare boyunun %1'i payla) kadraja girer.
+    const cam = { zoomFrom: 1.25, zoomTo: 1.25, panX: 0, focusX: 960, focusY: 540 };
+    expect(jointSafe(cam, false, [man], []).focusY).toBe(724);
+    // Ortalanan kamerada odak kadrajın ortasıdır.
+    expect(jointSafe(cam, true, [man], []).focusY).toBe(580);
+    // Ayaklar tuvalin dibindeyse kadraja giremez: kesim uyluk ortasına çıkar (kafa yine kadrajda).
+    const low = { ...man, y: 1078 };
+    expect(jointSafe(cam, false, [low], []).focusY).toBe(260);
+    // Bütün görünen yerdeki nesne kesilecekse ve başka çare yoksa kamera olduğu gibi kalır.
+    const box = { ...PL, x: 1300, y: 960, width: 100, height: 100 };
+    expect(jointSafe(cam, false, [low], [box])).toBe(cam);
+    // Zaten bütün kalan nesne kısıt değildir.
+    expect(jointSafe(cam, false, [low], [{ ...box, y: 1000 }]).focusY).toBe(260);
+    // Uygun kadraj, kadraj dışındaki kişi, zoom 1, kişisiz sahne: dokunulmaz.
+    for (const [c, people] of [
+      [{ ...cam, focusY: 900 }, [man]],
+      [cam, [{ ...man, x: -500 }]],
+      [{ ...cam, zoomFrom: 1, zoomTo: 1 }, [man]],
+      [cam, []],
+    ] as const)
+      expect(jointSafe(c, false, [...people], [])).toBe(c);
+    // Boyu kadraja sığmayan kişi: ne ayak ne uyluk kuralı sağlanır, kamera kalır.
+    expect(jointSafe(cam, false, [{ ...man, y: 1078, height: 1000 }], [])).toBe(cam);
+  });
+
+  it("fillWide'ın orta planı baldırdan kesmez: sahnede ayaklar kadraja girer", () => {
+    const man = (x: number) => ({ ...PL, x, y: 950, width: 280, height: 560 });
+    const out = fillWide({ zoomFrom: 1.1, zoomTo: 1.3, panX: 0.2, focusX: 960, focusY: 540 }, [man(800), man(1200)], () => true)!;
+    const bottom = (c: { focusY?: number }) => c.focusY! + 540 / 1.8;
+    // fillWide yalnız dizin üstünü kadrajda tutar: kesim baldırda kalıyordu.
+    expect((950 - bottom(out.cam)) / 560).toBeGreaterThan(0.05);
+    const safe = jointSafe(out.cam, true, [man(800), man(1200)], []);
+    expect(bottom(safe)).toBeGreaterThanOrEqual(950 + 0.01 * 600);
   });
 
   it("üstünde bir şey duran masa kişi gibi alttan kesilebilir: masa başındaki kişiye yaklaşılır (Bilgisayarlar s4-sh4)", () => {

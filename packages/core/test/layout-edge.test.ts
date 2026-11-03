@@ -154,6 +154,43 @@ describe("sahne fiziği: olmayan katmana başvuru", () => {
     expect(stuck.fixes).not.toContain("arkadaki karakterin yüzünü örtüyordu");
   });
 
+  it("masadaki nesne arkadaki kişinin yüzünü örtmez: yüzeyde kayar; yer yoksa ayaktaki kişi kenara çekilir", () => {
+    const assets = {
+      desk: asset("desk", "prop", { realHeight: 0.75, surface: 1, grounded: true }, 1000, 500),
+      table: asset("table", "prop", { realHeight: 0.75, surface: 1, grounded: true }, 300, 500),
+      chair: asset("chair", "prop", { realHeight: 0.9, surface: 0.5, grounded: true }, 400, 600),
+      man: asset("man", "character", {}, 400, 800),
+      mon: asset("mon", "prop", { realHeight: 0.5 }, 500, 400),
+      banner: asset("banner", "prop", { realHeight: 0.6 }, 9000, 300),
+    };
+    const at = (layers: unknown[], i: number) => resolveLayout(shot(layers), assets).find((p) => p.index === i)!;
+    const desk = { asset: "desk", x: 960, depth: 0.3 };
+    const man = { asset: "man", x: 960, depth: 0.5 };
+    // Kişinin önündeki monitör yüzeyde yana kayar, kişi yerinde kalır; iki monitör iki yana açılır.
+    const mon = at([desk, man, { asset: "mon", x: 960, on: 0 }], 2);
+    expect(mon.x).toBe(800);
+    expect(mon.fixes).toContain("arkasındaki kişinin yüzünü örtüyordu, yüzeyde kaydırıldı");
+    expect(at([desk, man, { asset: "mon", x: 960, on: 0 }], 1).x).toBe(960);
+    expect(at([desk, man, { asset: "mon", x: 900, on: 0 }, { asset: "mon", x: 1000, on: 0 }], 3).x).toBeGreaterThan(1100);
+    // Masaya oturan kişinin yüzü de açılır; yüzü açıkta kalan monitör kıpırdamaz.
+    const chair = { asset: "chair", x: 960, depth: 0.5 };
+    expect(at([chair, desk, { asset: "man", x: 960, on: 0 }, { asset: "mon", x: 960, on: 1 }], 3).x).not.toBe(960);
+    expect(at([desk, man, { asset: "mon", x: 1140, on: 0 }], 2).x).toBe(1140);
+    // Dar masada yer yok: ayaktaki kişi kenara çekilir; oturan ve sahneye yürüyen kalır.
+    const table = { asset: "table", x: 960, depth: 0.3 };
+    const moved = at([table, man, { asset: "mon", x: 960, on: 0 }], 1);
+    expect(Math.abs(moved.x - 960)).toBeGreaterThan(100);
+    expect(moved.fixes).toContain("önündeki nesne yüzünü örtüyordu, kenara çekildi");
+    expect(at([table, { ...man, anims: [{ type: "walk", toX: 1500 }] }, { asset: "mon", x: 960, on: 0 }], 1).x).toBe(960);
+    expect(at([chair, table, { asset: "man", x: 960, on: 0 }, { asset: "mon", x: 960, on: 1 }], 2).fixes).not.toContain("önündeki nesne yüzünü örtüyordu, kenara çekildi");
+    // Yüzü örtülmeyen öteki kişi kıpırdamaz; sahneyi boydan boya kaplayan pankartın önünden kaçılacak yer yoksa kişi kalır.
+    const far = at([table, man, { asset: "man", x: 300, depth: 0.5 }, { asset: "mon", x: 960, on: 0 }], 2);
+    expect(far.x).toBe(300);
+    const stuck = at([table, man, { asset: "banner", x: 960, on: 0 }], 1);
+    expect(stuck.x).toBe(960);
+    expect(stuck.fixes).not.toContain("önündeki nesne yüzünü örtüyordu, kenara çekildi");
+  });
+
   it("aynı oturağa oturan kişiler yönetmenin x sırasıyla yan yana dizilir; tek kişi oturağın ortasında kalır", () => {
     const assets = { bench: asset("bench", "prop", { realHeight: 0.5, surface: 0.5, grounded: true }, 1200, 400), a: asset("a", "character", {}, 400, 800), b: asset("b", "character", {}, 400, 800) };
     const placed = resolveLayout(

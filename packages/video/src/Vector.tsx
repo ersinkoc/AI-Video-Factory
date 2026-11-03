@@ -774,6 +774,49 @@ export function fillWide(
 }
 
 /**
+ * Ayakta duranın alttan kesileceği yer: ya ayakları kadrajda (alt kenara kare boyunun %1'i pay) ya da kesim en az uyluk
+ * ortasında (boyunun alttan %27'si); arası (bilek, baldır, diz) kesilmez. Odak bu adımla taranır (tuval pikseli).
+ */
+const CROP = { feet: 0.01, thigh: 0.27, step: 4 } as const;
+
+/**
+ * Geniş/orta planda kişiyi eklem yerinden kesmeme (3 Kas, C# bölümü taslağı: 31 karenin 15'inde "ayakkabılar alt
+ * kenarda kesik", "bacaklar baldırdan kesik"). Hafif yaklaşan kamera ayakları birkaç piksel kesiyordu; fillWide de
+ * dizin üstü bir çizgiyi kadrajda tutup kesimi bilek-baldır arasına bırakıyordu. Çekimin başında ve sonunda her
+ * ayaktaki kişi için kural sağlanmıyorsa kamera dikeyde en az kaydırmayla buna uyan odağa geçer; kafalar ve önceden
+ * bütün görünen nesneler kadrajda kalır. Uyan odak yoksa kamera olduğu gibi kalır.
+ */
+export function jointSafe(cam: VectorShot["camera"], centre: boolean, people: PlacedLayer[], whole: PlacedLayer[]): VectorShot["camera"] {
+  const z = Math.max(cam.zoomFrom, cam.zoomTo);
+  if (z <= 1 || !people.length) return cam;
+  const frames = (c: VectorShot["camera"]) =>
+    [0, 1].map((k) => {
+      const at = cameraAt(c, k, centre);
+      return { x0: -at.tx / at.scale - (at.panX / 100) * W, y0: -at.ty / at.scale, w: W / at.scale, h: H / at.scale };
+    });
+  type Frame = ReturnType<typeof frames>[number];
+  const inX = (f: Frame, pl: PlacedLayer) => pl.x + pl.width / 2 > f.x0 && pl.x - pl.width / 2 < f.x0 + f.w;
+  const fits = (f: Frame, pl: PlacedLayer) => pl.y - pl.height >= f.y0 - 1 && pl.y <= f.y0 + f.h + 1;
+  const before = frames(cam);
+  const kept = whole.filter((pl) => before.every((f) => !inX(f, pl) || fits(f, pl)));
+  const safe = (c: VectorShot["camera"]) =>
+    frames(c).every(
+      (f) =>
+        people.every((pl) => {
+          if (!inX(f, pl)) return true;
+          const bottom = f.y0 + f.h;
+          // Kafa kadrajda; ayaklar içeride ya da kesim uyluk ortasının üstünde.
+          return pl.y - pl.height >= f.y0 - 1 && (pl.y + CROP.feet * f.h <= bottom || pl.y - bottom >= CROP.thigh * pl.height);
+        }) && kept.every((pl) => !inX(f, pl) || fits(f, pl)),
+    );
+  if (safe(cam)) return cam;
+  const from = cam.focusY ?? H / 2;
+  let best: number | undefined;
+  for (let y = 0; y <= H; y += CROP.step) if (safe({ ...cam, focusY: y }) && (best === undefined || Math.abs(y - from) < Math.abs(best - from))) best = y;
+  return best === undefined ? cam : { ...cam, focusY: best };
+}
+
+/**
  * Kameranın bu karedeki dönüşümü (sol üst köşe kökenli). Odak noktası ekranda yerinde kalarak yaklaşılır (yönetmenin
  * kadrajı); centre ile (kod özneyi yeniden çerçevelediyse) odak kadrajın ortasına gelir, tuvalin dışı görünmez. Sabit
  * odak alttaki küçük nesneyi kadrajın dibinde bırakıyordu; her çekimi ortalamak ise iyi kadrajları bozuyordu.
@@ -1509,8 +1552,10 @@ export function VectorScene({
     if (close.centre || bg?.meta.exact) return close;
     // Boş geniş çekim içeriğe yaklaşır; sahneye giren biri varsa yolu kadrajda kalsın diye yaklaşılmaz.
     const filled = placed.some((pl) => moving(pl.index)) ? undefined : fillWide(close.cam, placed, (pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character");
-    if (filled) return filled;
-    return { cam: frameWide(close.cam, keep), centre: false };
+    const wide = filled ?? { cam: frameWide(close.cam, keep), centre: false };
+    // Son olarak ayakta duranlar eklem yerinden kesilmez (oturanın bacağı masanın ardında, ona bakılmaz).
+    const people = placed.filter((pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character" && !pl.sitting);
+    return { cam: jointSafe(wide.cam, wide.centre, people, keep), centre: wide.centre };
   }, [spec, placed, bg, safe, keep]);
   // Dikey kadraj: geniş çekimde kenara düşen kişi/nesne kesilmesin diye sahne gerektiği kadar küçülür (contentFit).
   // Yakın çekim bilerek kırpar; harita tuvalin tamamıdır; tahta ekrana sabittir, sahneyle aynı ölçekte kalmalı.

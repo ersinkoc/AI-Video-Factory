@@ -233,6 +233,37 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
     note(front, "arkadaki karakterin yüzünü örtüyordu");
   }
 
+  // Masadaki nesne arkasındaki kişinin yüzünü örtmesin (3 Kas, C# taslağı s1-sh1: masadaki monitör arkadaki kişinin
+  // yüzünü örtüyordu, "monitörün üstünden bakıyor"). Nesne yüzeyde yüzü açan en yakın yere kayar; yüzeyde yer yoksa
+  // ayaktaki kişi kenara çekilir. Oturan kişi render'da biraz aşağı iner (SIT_DROP, boyunun ~%9'u).
+  const faceHidden = (o: Pick<PlacedLayer, "x" | "y" | "width" | "height">, q: PlacedLayer) => {
+    const drop = q.sitting ? q.height * 0.09 : 0;
+    return o.y - o.height < q.y - q.height * 0.65 + drop && o.y > q.y - q.height * 0.9 + drop && Math.abs(o.x - q.x) < o.width / 2 + q.width * 0.18;
+  };
+  const nearest = (from: number, ok: (x: number) => boolean, lo: number, hi: number) =>
+    Array.from({ length: 80 }, (_, n) => from + (n % 2 ? 1 : -1) * 20 * Math.ceil((n + 1) / 2)).find((x) => x >= lo && x <= hi && ok(x));
+  for (const o of list) {
+    // Yüzeydeki karakter oturur (sitting); geriye nesneler kalır.
+    if (o.on === undefined || o.sitting) continue;
+    const faces = people.filter((q) => q.z < o.z);
+    const blocks = (x: number) => faces.some((q) => faceHidden({ ...o, x }, q));
+    if (!blocks(o.x)) continue;
+    const base = placed.get(o.on)!;
+    const x = nearest(o.x, (x) => !blocks(x), base.x - base.width * 0.4, base.x + base.width * 0.4);
+    if (x !== undefined) {
+      o.x = x;
+      note(o, "arkasındaki kişinin yüzünü örtüyordu, yüzeyde kaydırıldı");
+      continue;
+    }
+    for (const q of faces.filter((q) => !q.sitting && !entering(spec.layers[q.index]!) && faceHidden(o, q))) {
+      const half = q.width / 2;
+      const qx = nearest(q.x, (x) => !faceHidden(o, { ...q, x }), half + 20, STAGE.width - half - 20);
+      if (qx === undefined) continue;
+      q.x = qx;
+      note(q, "önündeki nesne yüzünü örtüyordu, kenara çekildi");
+    }
+  }
+
   // Duvardaki/havadaki öğe (logo, ok, tabela) yerdeki her şeyin arkasında çizilir. Bir mobilya onu yarıdan fazla
   // örtüyorsa (Microsoft incelemesi, 1 Kas: ikiye bölünen logo yakın çekimdeki masanın arkasında kayboldu) o
   // mobilyanın önüne alınır. Karakterin arkasındaki poster yerinde kalır; yönetmen z verdiyse dokunulmaz.
