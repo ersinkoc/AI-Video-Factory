@@ -88,6 +88,64 @@ const isGrounded = (layer: VectorLayer, asset: VectorAsset, floorY: number) =>
 
 const entering = (layer: VectorLayer) => layer.anims.some((a) => a.type === "walk" || a.type === "slide_in" || a.type === "move");
 
+/**
+ * Konuşma mesafesi (m, iki kişinin ortaları arası) ve geçişin sınırları: aynı derinlikte sayılan z farkı, geçişin
+ * uygulandığı en büyük yönetmen zoom'u (altı geniş çekim), kişinin gövde yarı genişliği (çizim genişliğinin kesri; kollar
+ * hariç).
+ */
+export const CONVERSE = { max: 1.5, depth: 25, zoom: 1.5, body: 0.22, note: "konuşma mesafesinden uzaktı, yaklaştırıldı" } as const;
+
+/**
+ * Ayaktaki iki kişi konuşma mesafesine gelir (3 Kas, inceleme notları: "stand far apart, not interacting" bölüm başına
+ * onlarca kez; ölçüm: yan yana duran çiftlerin %37'si 2 m'den, %17'si 2,5 m'den uzaktı). Aynı derinlikte x sırasıyla
+ * komşu iki kişi CONVERSE.max'tan uzaksa aradaki fazlayı ikisi yarı yarıya kapatır. Aralarındaki eşya (masa, pano,
+ * duvardaki ekran: gövdeleriyle aynı yükseklikteyse) aşılmaz, kişi onun kenarında durur. Kendi dışındaki bir nesneyi
+ * gösteren kişi yerinde kalır, yaklaşmayı öbürü yapar. Yalnız geniş çekimde (yakın kadraj yönetmenin konumlarına göre
+ * kurulmuş) ve Manim tahtası yokken (tahta ortada, kişiler yanlarında durur); giren, yürüyen ve oturan kişiye dokunulmaz.
+ */
+function converse(spec: VectorShot, assets: Record<string, VectorAsset>, list: PlacedLayer[], moved: (p: PlacedLayer) => void): void {
+  const zoom = Math.max(spec.camera.zoomFrom, spec.camera.zoomTo);
+  if (zoom >= CONVERSE.zoom || spec.math) return;
+  const layer = (p: PlacedLayer) => spec.layers[p.index]!;
+  const person = (p: PlacedLayer) => assets[layer(p).asset]!.kind === "character";
+  const talkers = list.filter((p) => person(p) && !p.sitting && p.heldBy === undefined && !entering(layer(p))).sort((a, b) => a.x - b.x);
+  const things = list.filter((o) => !person(o) && o.heldBy === undefined);
+  // Kişi kendi dışında (öbürüne göre arkasında kalan yanda) bir nesneyi gösteriyor mu.
+  const anchored = (p: PlacedLayer, outward: number) =>
+    layer(p).anims.some((a) => {
+      const t = a.type === "point" && a.target !== undefined ? list.find((o) => o.index === a.target) : undefined;
+      return t !== undefined && !person(t) && (t.x - p.x) * outward >= 0;
+    });
+  // Üç ve daha çok kişide ortadaki birine yaklaşırken öbüründen uzaklaşır: hiçbir çift kıpırdamayana kadar tekrarlanır
+  // (fazla her turda yarılanır). Kişiler birbirinin üstünden geçmez, x sırası korunur.
+  for (let round = 0; round < 40; round++) {
+    let any = false;
+    for (let k = 1; k < talkers.length; k++) any = pull(talkers[k - 1]!, talkers[k]!) || any;
+    if (!any) break;
+  }
+  function pull(a: PlacedLayer, b: PlacedLayer): boolean {
+    if (Math.abs(a.z - b.z) > CONVERSE.depth) return false;
+    const excess = b.x - a.x - CONVERSE.max * STAGE.pxPerMeter * ((a.scale + b.scale) / 2);
+    if (excess < 1) return false;
+    // Aradaki, gövde yüksekliğinde duran eşya: kişiler kenarlarına kadar gelir.
+    const top = Math.min(a.y - a.height * 0.95, b.y - b.height * 0.95);
+    const bottom = Math.max(a.y - a.height * 0.2, b.y - b.height * 0.2);
+    const between = things.filter((o) => o.x + o.width / 2 > a.x && o.x - o.width / 2 < b.x && o.y - o.height < bottom && o.y > top);
+    const roomA = anchored(a, -1) ? 0 : Math.max(0, Math.min(a.x + excess, ...between.map((o) => o.x - o.width / 2 - a.width * CONVERSE.body)) - a.x);
+    const roomB = anchored(b, 1) ? 0 : Math.max(0, b.x - Math.max(b.x - excess, ...between.map((o) => o.x + o.width / 2 + b.width * CONVERSE.body)));
+    // Yarı yarıya; biri yer bulamazsa öbürü kalanı (sınırına kadar) üstlenir.
+    let da = Math.min(excess / 2, roomA);
+    const db = Math.min(excess - da, roomB);
+    da = Math.min(excess - db, roomA);
+    if (da + db < 1) return false;
+    a.x += da;
+    b.x -= db;
+    if (da >= 1) moved(a);
+    if (db >= 1) moved(b);
+    return true;
+  }
+}
+
 export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAsset>): PlacedLayer[] {
   const floorY = floorYOf(spec, assets);
   const placed = new Map<number, PlacedLayer>();
@@ -207,6 +265,8 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
     }
     if (!moved) break;
   }
+
+  converse(spec, assets, list, (p) => note(p, CONVERSE.note));
 
   // Öndeki karakter arkadakinin yüzünü örtmesin (3 Kas, Pascal incelemesi: masadaki komite üyelerinin yüzü öndeki
   // ayaktaki kişinin arkasında kalıyordu; farklı derinlikte oldukları için yukarıdaki ayırma görmüyordu). Öndeki ayaktaki

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { floorYOf, resolveLayout, STAGE, VectorShot, type VectorAsset } from "../src/index.ts";
+import { CONVERSE, floorYOf, resolveLayout, STAGE, VectorShot, type VectorAsset } from "../src/index.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({
   id,
@@ -183,8 +183,9 @@ describe("sahne fiziği: olmayan katmana başvuru", () => {
     expect(moved.fixes).toContain("önündeki nesne yüzünü örtüyordu, kenara çekildi");
     expect(at([table, { ...man, anims: [{ type: "walk", toX: 1500 }] }, { asset: "mon", x: 960, on: 0 }], 1).x).toBe(960);
     expect(at([chair, table, { asset: "man", x: 960, on: 0 }, { asset: "mon", x: 960, on: 1 }], 2).fixes).not.toContain("önündeki nesne yüzünü örtüyordu, kenara çekildi");
-    // Yüzü örtülmeyen öteki kişi kıpırdamaz; sahneyi boydan boya kaplayan pankartın önünden kaçılacak yer yoksa kişi kalır.
-    const far = at([table, man, { asset: "man", x: 300, depth: 0.5 }, { asset: "mon", x: 960, on: 0 }], 2);
+    // Yüzü örtülmeyen öteki kişi (başka derinlikte: konuşma mesafesine çekilmez) kıpırdamaz; sahneyi boydan boya
+    // kaplayan pankartın önünden kaçılacak yer yoksa kişi kalır.
+    const far = at([table, man, { asset: "man", x: 300, depth: 0.8 }, { asset: "mon", x: 960, on: 0 }], 2);
     expect(far.x).toBe(300);
     const stuck = at([table, man, { asset: "banner", x: 960, on: 0 }], 1);
     expect(stuck.x).toBe(960);
@@ -211,5 +212,122 @@ describe("sahne fiziği: olmayan katmana başvuru", () => {
     // Aynı x'te iki kişi: kimlik sırasıyla.
     const same = resolveLayout(shot([{ asset: "bench", x: 960, depth: 0.4 }, { asset: "a", x: 960, on: 0 }, { asset: "b", x: 960, on: 0 }]), assets);
     expect(same.find((p) => p.index === 1)!.x).toBeLessThan(same.find((p) => p.index === 2)!.x);
+  });
+});
+
+describe("sahne fiziği: konuşma mesafesi", () => {
+  const assets = {
+    a: asset("a", "character", {}, 400, 800),
+    b: asset("b", "character", {}, 400, 800),
+    c: asset("c", "character", {}, 400, 800),
+    desk: asset("desk", "prop", { realHeight: 0.75, surface: 1, grounded: true }, 1000, 500),
+    screen: asset("screen", "prop", { realHeight: 0.8 }, 800, 500),
+    chair: asset("chair", "prop", { realHeight: 0.9, surface: 0.5, grounded: true }, 400, 600),
+    cup: asset("cup", "prop", { realHeight: 0.3, grounded: true }, 200, 300),
+  };
+  const place = (layers: unknown[], extra: object = {}) => resolveLayout(VectorShot.parse({ layers, ...extra }), assets);
+  const by = (placed: ReturnType<typeof resolveLayout>, i: number) => placed.find((p) => p.index === i)!;
+  // Derinlik 0,3: ölçek 0,85; 1,5 m = 510 px. Kişi boyu 578 px, genişliği 289 px.
+  const max = CONVERSE.max * STAGE.pxPerMeter * 0.85;
+
+  it("uzaktaki iki kişi ortada buluşur, aralarında konuşma mesafesi kalır; yakındakiler kıpırdamaz", () => {
+    const placed = place([
+      { asset: "a", x: 400, depth: 0.3 },
+      { asset: "b", x: 1500, depth: 0.3 },
+    ]);
+    expect(by(placed, 1).x - by(placed, 0).x).toBeCloseTo(max, 6);
+    expect((by(placed, 0).x + by(placed, 1).x) / 2).toBeCloseTo(950, 6);
+    expect(by(placed, 0).fixes).toContain(CONVERSE.note);
+    expect(by(placed, 1).fixes).toContain(CONVERSE.note);
+    const near = place([
+      { asset: "a", x: 800, depth: 0.3 },
+      { asset: "b", x: 1200, depth: 0.3 },
+    ]);
+    expect([by(near, 0).x, by(near, 1).x]).toEqual([800, 1200]);
+    expect(by(near, 0).fixes).not.toContain(CONVERSE.note);
+  });
+
+  it("üç kişi birbirine yaklaşır: ortadaki birine yaklaşırken öbüründen uzaklaşmaz", () => {
+    const placed = place([
+      { asset: "a", x: 200, depth: 0.3 },
+      { asset: "b", x: 960, depth: 0.3 },
+      { asset: "c", x: 1720, depth: 0.3 },
+    ]);
+    for (const [l, r] of [
+      [0, 1],
+      [1, 2],
+    ])
+      expect(Math.abs(by(placed, r!).x - by(placed, l!).x - max)).toBeLessThan(1.5);
+    // Grup sahnenin ortasında kalır.
+    expect(by(placed, 1).x).toBeCloseTo(960, 0);
+  });
+
+  it("aradaki masa ya da gövde hizasındaki duvar ekranı aşılmaz: kişiler kenarında durur; başların üstündeki pano engel değil", () => {
+    const body = 289 * CONVERSE.body;
+    const desk = { asset: "desk", x: 960, depth: 0.3 };
+    const atDesk = place([{ asset: "a", x: 200, depth: 0.3 }, desk, { asset: "b", x: 1720, depth: 0.3 }]);
+    const d = by(atDesk, 1);
+    expect(by(atDesk, 0).x).toBeCloseTo(d.x - d.width / 2 - body, 6);
+    expect(by(atDesk, 2).x).toBeCloseTo(d.x + d.width / 2 + body, 6);
+    // Gövde hizasında duvardaki ekran (yere basmaz) da engeldir.
+    const screen = place([{ asset: "a", x: 200, depth: 0.3 }, { asset: "screen", x: 960, y: 700 }, { asset: "b", x: 1720, depth: 0.3 }]);
+    const s = by(screen, 1);
+    expect(s.grounded).toBe(false);
+    expect(by(screen, 0).x).toBeCloseTo(s.x - s.width / 2 - body, 6);
+    // Başların üstünde asılı pano engel değil: tam mesafeye gelirler.
+    const high = place([{ asset: "a", x: 200, depth: 0.3 }, { asset: "screen", x: 960, y: 200, height: 150 }, { asset: "b", x: 1720, depth: 0.3 }]);
+    expect(by(high, 2).x - by(high, 0).x).toBeCloseTo(max, 6);
+  });
+
+  it("biri engele dayalıysa kalanı öbürü kapatır", () => {
+    // Gövde hizasındaki ekran a'nın hemen yanında: a kıpırdayamaz, b bütün fazlayı kapatır.
+    const placed = place([
+      { asset: "a", x: 300, depth: 0.3 },
+      { asset: "screen", x: 420, y: 700, height: 200 },
+      { asset: "b", x: 1700, depth: 0.3 },
+    ]);
+    expect(by(placed, 0).x).toBe(300);
+    expect(by(placed, 0).fixes).not.toContain(CONVERSE.note);
+    expect(by(placed, 2).x - 300).toBeCloseTo(max, 6);
+  });
+
+  it("kendi dışındaki nesneyi gösteren kişi yerinde kalır, öbürü yaklaşır; aradakini ya da bir kişiyi gösteren yaklaşır", () => {
+    const cup = { asset: "cup", x: 100, depth: 0.3 };
+    const point = (target?: number) => ({ type: "point", ...(target === undefined ? {} : { target }) });
+    // a (sol) kendi solundaki bardağı gösteriyor.
+    let placed = place([{ asset: "a", x: 400, depth: 0.3, anims: [point(2)] }, { asset: "b", x: 1500, depth: 0.3 }, cup]);
+    expect(by(placed, 0).x).toBe(400);
+    expect(by(placed, 1).x).toBeCloseTo(400 + max, 6);
+    // b (sağ) kendi sağındaki bardağı gösteriyor.
+    placed = place([{ asset: "a", x: 400, depth: 0.3 }, { asset: "b", x: 1500, depth: 0.3, anims: [point(2)] }, { ...cup, x: 1800 }]);
+    expect(by(placed, 1).x).toBe(1500);
+    expect(by(placed, 1).fixes).not.toContain(CONVERSE.note);
+    expect(by(placed, 0).x).toBeCloseTo(1500 - max, 6);
+    // İkisi de kendi yanındakini gösteriyor: kimse kıpırdamaz.
+    placed = place([
+      { asset: "a", x: 400, depth: 0.3, anims: [point(2)] },
+      { asset: "b", x: 1500, depth: 0.3, anims: [point(3)] },
+      cup,
+      { ...cup, x: 1800 },
+    ]);
+    expect([by(placed, 0).x, by(placed, 1).x]).toEqual([400, 1500]);
+    // Hedefsiz işaret, olmayan katman, öbür kişi ve aradaki nesne kişiyi tutmaz.
+    for (const anims of [[point()], [point(9)], [point(1)], [{ type: "explain" }]]) {
+      placed = place([{ asset: "a", x: 400, depth: 0.3, anims }, { asset: "b", x: 1500, depth: 0.3 }]);
+      expect(by(placed, 1).x - by(placed, 0).x).toBeCloseTo(max, 6);
+    }
+    placed = place([{ asset: "a", x: 400, depth: 0.3, anims: [point(2)] }, { asset: "b", x: 1500, depth: 0.3 }, { ...cup, x: 950 }]);
+    expect(by(placed, 0).x).toBeGreaterThan(400);
+  });
+
+  it("farklı derinlikteki, giren, oturan kişiye; yakın çekimde ve tahtalı çekimde dokunulmaz", () => {
+    const two = (b: object) => [{ asset: "a", x: 400, depth: 0.3 }, { asset: "b", x: 1500, depth: 0.3, ...b }];
+    const xs = (placed: ReturnType<typeof resolveLayout>) => [by(placed, 0).x, by(placed, 1).x];
+    expect(xs(place(two({ depth: 0.6 })))).toEqual([400, 1500]);
+    expect(xs(place(two({ anims: [{ type: "walk", toX: 1200 }] })))).toEqual([400, 1500]);
+    const seated = place([{ asset: "a", x: 400, depth: 0.3 }, { asset: "chair", x: 1500, depth: 0.3 }, { asset: "b", x: 1500, on: 1 }]);
+    expect(by(seated, 0).x).toBe(400);
+    expect(xs(place(two({}), { camera: { zoomFrom: 1, zoomTo: 1.6 } }))).toEqual([400, 1500]);
+    expect(xs(place(two({}), { math: { steps: ["a = b"] } }))).toEqual([400, 1500]);
   });
 });

@@ -2128,9 +2128,10 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
       return Number(/scale\(([\d.]+)\)/.exec(box.style.transform)![1]);
     };
     const tall = { width: 1080, height: 1920 };
+    // Farklı derinlikte: konuşma mesafesine çekilmezler.
     const spread = [
       { asset: "ada", x: 150 },
-      { asset: "babbage", x: 1770 },
+      { asset: "babbage", x: 1770, depth: 0.6 },
     ];
     const fit = scale(scene({ background: "room", layers: spread }, tall));
     expect(fit).toBeLessThan(base);

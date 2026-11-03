@@ -77,24 +77,24 @@ describe("sahne fiziği", () => {
   });
 
   it("karakter elde tutulmaz: tutma yok sayılır, kendi yerinde durur", () => {
-    const placed = resolveLayout(shot([{ asset: "ali", x: 600, depth: 0.5 }, { asset: "ayse", x: 1200, depth: 0.5, heldBy: 0 }]), assets);
+    const placed = resolveLayout(shot([{ asset: "ali", x: 600, depth: 0.5 }, { asset: "ayse", x: 1000, depth: 0.5, heldBy: 0 }]), assets);
     const ayse = placed.find((p) => p.index === 1)!;
     expect(ayse.heldBy).toBeUndefined();
     expect(ayse.grounded).toBe(true);
-    expect(ayse.x).toBe(1200);
+    expect(ayse.x).toBe(1000);
   });
 
   it("karakter başka karakterin üstüne oturmaz; nesne karakterin üstünde durabilir", () => {
     const placed = resolveLayout(
       shot([
         { asset: "ali", x: 600, depth: 0.5 },
-        { asset: "ayse", x: 1200, depth: 0.5, on: 0 },
+        { asset: "ayse", x: 1000, depth: 0.5, on: 0 },
         { asset: "chip", x: 600, on: 0 },
       ]),
       assets,
     );
     const by = (i: number) => placed.find((p) => p.index === i)!;
-    expect(by(1)).toMatchObject({ sitting: false, grounded: true, x: 1200 });
+    expect(by(1)).toMatchObject({ sitting: false, grounded: true, x: 1000 });
     expect(by(1).y).toBe(by(0).y);
     expect(by(2).y).toBeLessThan(by(0).y);
   });
