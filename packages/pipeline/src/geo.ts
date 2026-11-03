@@ -2,15 +2,16 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { LocalizedError, msg, type FlagSpec, type MapLabel, type MapSpec, type VectorAssetMeta } from "@ys/core";
-import { geoBounds, geoCentroid, geoEquirectangular, geoMercator, geoNaturalEarth1, geoOrthographic, geoPath, geoGraticule10, type GeoPath, type GeoProjection } from "d3-geo";
+import { geoBounds, geoCentroid, geoContains, geoEquirectangular, geoMercator, geoNaturalEarth1, geoOrthographic, geoPath, geoGraticule10, type GeoPath, type GeoProjection } from "d3-geo";
 import countries from "i18n-iso-countries";
 import type { Feature, FeatureCollection, Geometry, MultiPolygon, Polygon } from "geojson";
 import { feature } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
+import { polityAt, polityFeature, politiesIn, type Polity } from "./history.ts";
 
 /**
- * Gerçek dünya varlıkları: harita Natural Earth 1:50m sınırlarından (world-atlas, ISC), bayrak flag-icons'tan (MIT)
- * üretilir. Model çağrısı yoktur; aynı tarif her zaman aynı SVG'yi verir (kütüphane anahtarı tariften).
+ * Gerçek dünya varlıkları: harita Natural Earth 1:50m sınırlarından (world-atlas, ISC; tarihî haritada o yılın sınırları
+ * Cliopatria'dan, history.ts), bayrak flag-icons'tan (MIT) üretilir. Model çağrısı yoktur; aynı tarif her zaman aynı SVG'yi verir (kütüphane anahtarı tariften).
  */
 
 const require = createRequire(import.meta.url);
@@ -34,6 +35,20 @@ export interface GeneratedAsset {
 
 type Country = Feature<Polygon | MultiPolygon, { name: string }>;
 const worlds = new Map<string, Promise<Country[]>>();
+const lands = new Map<string, Promise<Feature<MultiPolygon>>>();
+
+/** Kara (kıyı çizgisi, ülke sınırı yok): tarihî haritanın tabanı ve siyasi katmanın kırpma şekli. */
+function loadLand(detail: "50m" | "110m"): Promise<Feature<MultiPolygon>> {
+  let l = lands.get(detail);
+  if (!l) {
+    l = readFile(require.resolve(`world-atlas/land-${detail}.json`), "utf8").then((raw) => {
+      const topo = JSON.parse(raw) as Topology<{ land: GeometryCollection }>;
+      return (feature(topo, topo.objects.land) as FeatureCollection<MultiPolygon>).features[0]!;
+    });
+    lands.set(detail, l);
+  }
+  return l;
+}
 
 /** Bölge haritası 1:50m (ayrıntılı kıyı ve adalar), dünya ve küre 1:110m (dosya ~10 kat küçük). */
 function loadWorld(detail: "50m" | "110m"): Promise<Country[]> {
@@ -102,20 +117,48 @@ function saturation(hex: string): number {
   return (max - min) / max;
 }
 
-export async function generateMap(spec: MapSpec, lang: string, palette: string[]): Promise<GeneratedAsset> {
+/**
+ * Harita. `year` verilirse tarihî harita: bugünkü ülke sınırları çizilmez; kara (kıyı çizgisi) üstüne o yılın siyasi
+ * varlıkları (`history`, Cliopatria) karaya kırpılarak çizilir. Vurgu tarihî devletlere gider (adıyla ya da bugünkü
+ * ülke kodu verildiyse o yıl ülkenin ortasındaki devlet). Veri yüklenemediyse yalnız kara, işaretler ve rotalar:
+ * yanlış dönemin sınırı hiç çizilmez.
+ */
+export async function generateMap(spec: MapSpec, lang: string, palette: string[], history?: Polity[]): Promise<GeneratedAsset> {
+  const past = spec.year !== undefined;
   const wide = spec.projection === "globe" || (!spec.focus.length && !spec.markers.length && !spec.routes.length);
-  const all = await loadWorld(wide ? "110m" : "50m");
+  const detail = wide ? "110m" : "50m";
+  const all = await loadWorld(detail);
   const byId = new Map(all.filter((f) => f.id !== undefined).map((f) => [String(f.id), f]));
   const pick = (codes: string[]) => codes.map((c) => ({ code: c, f: byId.get(numericOf(c) ?? "") })).filter((x): x is { code: string; f: Country } => Boolean(x.f));
   const colors = mapColors(palette);
 
-  // Görünüm: odak ülkeleri + işaretler + rotalar; hiçbiri yoksa bütün dünya.
+  // O yılın siyasi varlıkları (şekil nesnesi kimlik olarak kullanılır: vurgu rengi ve çizim sırası).
+  const year = spec.year ?? 0;
+  const era = new Map<Polity, Country>(politiesIn(history ?? [], year).map((p) => [p, polityFeature(p)]));
+  const shapeOf = (p: Polity) => era.get(p) ?? era.set(p, polityFeature(p)).get(p)!;
+  const membersOf = (h: MapSpec["highlight"][number]): { code?: string; f: Country }[] => {
+    if (!past) return pick(h.countries);
+    const named = h.polities.flatMap((n) => {
+      const p = polityAt(history ?? [], n, year);
+      return p ? [{ f: shapeOf(p) }] : [];
+    });
+    // Bugünkü ülke kodu: o yıl ülkenin ortasında hangi devlet varsa o (bugünün sınırı çizilmez).
+    const placed = pick(h.countries).flatMap((x) => {
+      const centre = geoCentroid(mainPart(x.f));
+      const at = [...era.values()].find((f) => geoContains(f, centre));
+      return at ? [{ f: at }] : [];
+    });
+    return [...named, ...placed];
+  };
+  const groups = spec.highlight.map((h) => ({ h, members: membersOf(h) }));
+
+  // Görünüm: odak ülkeleri + işaretler + rotalar; hiçbiri yoksa vurgulananlar, o da yoksa bütün dünya.
   const fitTo: Feature<Geometry>[] = [
     ...pick(spec.focus).map((x) => x.f),
     ...spec.markers.map((m) => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [m.lon, m.lat] } }) as Feature<Geometry>),
     ...spec.routes.map((r) => ({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: r.points.map((p) => [p.lon, p.lat]) } }) as Feature<Geometry>),
   ];
-  if (!fitTo.length) fitTo.push(...spec.highlight.flatMap((h) => pick(h.countries).map((x) => x.f)));
+  if (!fitTo.length) fitTo.push(...groups.flatMap((g) => g.members.map((m) => m.f)));
   const target: FeatureCollection = { type: "FeatureCollection", features: fitTo };
   const regional = fitTo.length > 0;
 
@@ -140,25 +183,27 @@ export async function generateMap(spec: MapSpec, lang: string, palette: string[]
   }
   const path = geoPath(projection).digits(1);
 
-  const tone = new Map<string, string>();
+  const tone = new Map<Country, string>();
   const labels: MapLabel[] = [];
-  for (const h of spec.highlight) {
-    const members = pick(h.countries);
-    for (const m of members) tone.set(String(m.f.id), colors.tone[h.tone]);
+  for (const { h, members } of groups) {
+    for (const m of members) tone.set(m.f, colors.tone[h.tone]);
     if (h.label && members.length) {
       // Grup etiketi: grubun en büyük ülkesinin ortası.
       const biggest = members.reduce((a, b) => (path.area(a.f) > path.area(b.f) ? a : b));
       const [x, y] = path.centroid(mainPart(biggest.f));
       if (Number.isFinite(x)) labels.push({ x, y, text: upper(h.label, lang), kind: "country", order: 0 });
-    } else {
+    } else if (!past) {
+      // Tarihî devletin veri setindeki adı İngilizce: bölümün dilinde etiket yalnız yönetmenden gelir.
       for (const m of members) {
         const [x, y] = path.centroid(mainPart(m.f));
         // Ekranda çok küçük kalan ülkeye isim yazılmaz (üst üste binmesin).
-        if (Number.isFinite(x) && path.area(m.f) > 2500) labels.push({ x, y, text: upper(countryName(m.code, lang), lang), kind: "country", order: 0 });
+        if (Number.isFinite(x) && path.area(m.f) > 2500) labels.push({ x, y, text: upper(countryName(m.code!, lang), lang), kind: "country", order: 0 });
       }
     }
   }
-  const focusIds = new Set(pick(spec.focus).map((x) => String(x.f.id)));
+  const focusShapes = new Set(past ? [] : pick(spec.focus).map((x) => x.f));
+  const land = past ? await loadLand(detail) : undefined;
+  const base = (p: GeoPath, line: number) => (land ? historyParts(land, [...era.values()], p, tone, colors, line) : landParts(all, p, tone, focusShapes, colors, line));
 
   const globe = spec.projection === "globe";
   const parts: string[] = [];
@@ -166,7 +211,7 @@ export async function generateMap(spec: MapSpec, lang: string, palette: string[]
   if (globe) parts.push(`<g id="globe-base">`);
   parts.push(`<rect width="${W}" height="${H}" fill="${globe ? "#1b2333" : colors.sea}"/>`);
   if (globe) parts.push(`<path d="${path({ type: "Sphere" })}" fill="${colors.sea}" stroke="#8fa3b5" stroke-width="2"/>`);
-  parts.push(...landParts(all, path, tone, focusIds, colors, 1));
+  parts.push(...base(path, 1));
   if (globe) parts.push(`</g>`);
 
   spec.routes.forEach((r, i) => {
@@ -191,32 +236,50 @@ export async function generateMap(spec: MapSpec, lang: string, palette: string[]
   if (globe) {
     const [lon, lat] = projection.rotate().map((v) => -v) as [number, number];
     const [cx, cy] = projection.translate();
-    meta.globe = { lon, lat, cx, cy, r: projection.scale(), texture: globeTexture(all, tone, focusIds, colors) };
+    meta.globe = { lon, lat, cx, cy, r: projection.scale(), texture: globeTexture(base, colors) };
   }
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">${parts.join("")}</svg>`, width: W, height: H, meta };
 }
 
+const graticule = (path: GeoPath, line: number) => `<path d="${path(geoGraticule10())}" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="${line}"/>`;
+const border = (strong: boolean, line: number) => +((strong ? 1.6 : 0.9) * line).toFixed(2);
+
 /** Enlem-boylam ağı ve ülkeler; önce sıradan ülkeler, sonra odak/vurgulu olanlar (sınırları üstte görünsün). */
-function landParts(all: Country[], path: GeoPath, tone: Map<string, string>, focusIds: Set<string>, colors: ReturnType<typeof mapColors>, line: number): string[] {
-  const parts = [`<path d="${path(geoGraticule10())}" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="${line}"/>`];
-  const ordered = [...all].sort((a, b) => Number(tone.has(String(a.id)) || focusIds.has(String(a.id))) - Number(tone.has(String(b.id)) || focusIds.has(String(b.id))));
-  for (const f of ordered) {
+function landParts(all: Country[], path: GeoPath, tone: Map<Country, string>, focus: Set<Country>, colors: ReturnType<typeof mapColors>, line: number): string[] {
+  const parts = [graticule(path, line)];
+  const strong = (f: Country) => tone.has(f) || focus.has(f);
+  for (const f of [...all].sort((a, b) => Number(strong(a)) - Number(strong(b)))) {
     const d = path(f);
     if (!d) continue;
-    const id = String(f.id);
-    const fill = tone.get(id) ?? colors.land;
-    const strong = tone.has(id) || focusIds.has(id);
-    parts.push(`<path d="${d}" fill="${fill}" stroke="${strong ? colors.focusBorder : colors.border}" stroke-width="${+((strong ? 1.6 : 0.9) * line).toFixed(2)}" stroke-linejoin="round"/>`);
+    parts.push(`<path d="${d}" fill="${tone.get(f) ?? colors.land}" stroke="${strong(f) ? colors.focusBorder : colors.border}" stroke-width="${border(strong(f), line)}" stroke-linejoin="round"/>`);
   }
+  return parts;
+}
+
+/**
+ * Tarihî taban: kara, üstünde o yılın siyasi sınırları karaya kırpılmış (veri setindeki kıyılar kaba, Natural Earth'ün
+ * kıyısı doğru), en üstte kıyı çizgisi. Sahipsiz kara düz kalır; vurgulananlar en son çizilir.
+ */
+function historyParts(land: Feature<MultiPolygon>, shapes: Country[], path: GeoPath, tone: Map<Country, string>, colors: ReturnType<typeof mapColors>, line: number): string[] {
+  // Görünümde hiç kara yoksa (açık deniz) yol boş gelir.
+  const coast = path(land) ?? "";
+  const parts = [graticule(path, line), `<clipPath id="land"><path d="${coast}"/></clipPath>`, `<path d="${coast}" fill="${colors.land}"/>`, `<g clip-path="url(#land)">`];
+  for (const f of [...shapes].sort((a, b) => Number(tone.has(a)) - Number(tone.has(b)))) {
+    const d = path(f);
+    if (!d) continue;
+    const fill = tone.get(f);
+    parts.push(`<path d="${d}" fill="${fill ?? "none"}" stroke="${fill ? colors.focusBorder : colors.border}" stroke-width="${border(Boolean(fill), line)}" stroke-linejoin="round"/>`);
+  }
+  parts.push(`</g>`, `<path d="${coast}" fill="none" stroke="${colors.border}" stroke-width="${border(false, line)}" stroke-linejoin="round"/>`);
   return parts;
 }
 
 /** 3D kürenin dokusu: eşdikdörtgen izdüşüm (2:1). Kürenin önünde doku pikseli ekran pikselinin ~1,8 katı: çizgiler de o kadar kalın. */
 const TEX_W = 4096;
 const TEX_H = 2048;
-function globeTexture(all: Country[], tone: Map<string, string>, focusIds: Set<string>, colors: ReturnType<typeof mapColors>): string {
+function globeTexture(base: (path: GeoPath, line: number) => string[], colors: ReturnType<typeof mapColors>): string {
   const path = geoPath(geoEquirectangular().scale(TEX_W / (2 * Math.PI)).translate([TEX_W / 2, TEX_H / 2])).digits(1);
-  const parts = [`<rect width="${TEX_W}" height="${TEX_H}" fill="${colors.sea}"/>`, ...landParts(all, path, tone, focusIds, colors, 1.8)];
+  const parts = [`<rect width="${TEX_W}" height="${TEX_H}" fill="${colors.sea}"/>`, ...base(path, 1.8)];
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${TEX_W}" height="${TEX_H}" viewBox="0 0 ${TEX_W} ${TEX_H}">${parts.join("")}</svg>`;
 }
 

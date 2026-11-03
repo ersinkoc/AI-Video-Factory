@@ -548,6 +548,8 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
   const { state } = data;
   const shots = state.shots ?? [];
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [anchor, setAnchor] = useState<number>();
+  const [note, setNote] = useState("");
   const [open, setOpen] = useState<string>();
   const [weakOnly, setWeakOnly] = useState(false);
   const imageMode = (modeOf(state.input)) !== "vector";
@@ -556,15 +558,22 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
   const perFrame = kfRow && kfRow.quantity ? kfRow.costUsd / kfRow.quantity : 0;
   if (!shots.length) return <Empty>{t("shots.empty")}</Empty>;
 
-  const toggle = (id: string) =>
+  // Shift ile tıklama: son seçilen çekimden buna kadar aralık seçilir (sahne aralığını yeniden oluşturmak için).
+  const toggle = (id: string, range = false) => {
+    const at = shots.findIndex((s) => s.id === id);
     setPicked((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
+      if (range && anchor !== undefined) for (const s of shots.slice(Math.min(anchor, at), Math.max(anchor, at) + 1)) next.add(s.id);
+      else if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+    setAnchor(at);
+  };
   const visible = weakOnly ? shots.filter((s) => scoreOf(state, s.id)?.bad) : shots;
   const current = open ? shots.find((s) => s.id === open) : undefined;
+  const scenesPicked = new Set(shots.filter((s) => picked.has(s.id)).map((s) => s.sceneId)).size;
+  const pending = Object.keys(state.replans ?? {});
 
   return (
     <div className="grid gap-4">
@@ -613,6 +622,43 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
         )}
       </div>
 
+      {!imageMode && (
+        // Notla yeniden oluşturma (render öncesi ya da sonrası): yönetmen seçilen çekimlerin sahnelerini notla yeniden planlar.
+        <div className="grid gap-2 rounded-lg border border-line bg-panel-2 p-3 text-sm">
+          <p className="text-xs text-muted">{t("prod.replanHint")}</p>
+          {pending.length > 0 && <p className="text-xs text-run">{t("prod.replanPending", { scenes: pending.join(", ") })}</p>}
+          {picked.size > 0 && (
+            <>
+              <textarea
+                aria-label={t("prod.replanNote")}
+                className="field"
+                rows={3}
+                maxLength={1500}
+                placeholder={t("prod.replanNote")}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+              <div className="flex flex-wrap gap-2">
+                <button className="btn-ghost py-1 text-xs" onClick={() => setPicked(new Set())}>
+                  {t("prod.clear")}
+                </button>
+                <button
+                  className="btn-primary py-1 text-xs"
+                  disabled={busy || !note.trim()}
+                  onClick={async () => {
+                    if (!(await act({ type: "replan", shotIds: [...picked], note }))) return;
+                    setPicked(new Set());
+                    setNote("");
+                  }}
+                >
+                  <Wand2 size={14} /> {t("prod.replan", { n: scenesPicked })}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
         {visible.map((s) => (
           <ShotCard
@@ -623,7 +669,7 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
             active={open === s.id}
             picked={picked.has(s.id)}
             onOpen={() => setOpen(open === s.id ? undefined : s.id)}
-            onPick={imageMode && state.keyframes?.[s.id] && !busy ? () => toggle(s.id) : undefined}
+            onPick={!busy && (!imageMode || state.keyframes?.[s.id]) ? (range) => toggle(s.id, range) : undefined}
           />
         ))}
       </div>
@@ -657,7 +703,7 @@ function ShotCard({
   active: boolean;
   picked: boolean;
   onOpen: () => void;
-  onPick?: () => void;
+  onPick?: (range: boolean) => void;
 }) {
   const { t } = useI18n();
   const thumb = thumbOf(state, shot.id);
@@ -698,7 +744,7 @@ function ShotCard({
       {onPick && (
         <button
           type="button"
-          onClick={onPick}
+          onClick={(e) => onPick(e.shiftKey)}
           aria-label={shot.id}
           className={`absolute bottom-9 left-1.5 rounded bg-black/70 p-0.5 ${picked ? "text-accent" : "text-white/70 opacity-0 group-hover:opacity-100"}`}
         >

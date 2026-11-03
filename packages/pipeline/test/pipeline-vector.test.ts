@@ -22,6 +22,8 @@ vi.mock("../src/reference.ts", async (orig) => {
     rasterizeSvg: (...a: any[]) => f.refs.rasterize(...a),
   };
 });
+const hist = vi.hoisted(() => ({ load: vi.fn(async (): Promise<unknown[]> => [{ name: "Ottoman Empire" }]) }));
+vi.mock("../src/history.ts", async (orig) => ({ ...(await orig<object>()), loadHistory: () => hist.load() }));
 vi.mock("../src/geo.ts", async (orig) => {
   const f = await import("./pipeline-fakes.ts");
   return { ...(await orig<object>()), generateMap: (...a: any[]) => f.geo.map(...a), generateFlag: (...a: any[]) => f.geo.flag(...a) };
@@ -75,6 +77,7 @@ const afterCast = (input: object = {}, extra: Partial<EpisodeState> = {}) =>
 
 beforeEach(() => {
   resetFakes();
+  hist.load.mockClear();
   lint.shot.mockReset();
   lint.shot.mockImplementation(() => []);
   refs.find.mockResolvedValue({ images: [], sources: [], keys: [] });
@@ -389,7 +392,8 @@ describe("vektör nesneleri ve önizleme (kare denetimi kapalı)", () => {
     expect(props["p-cup"]!.key).toMatch(/^library\/vector\/prop\//);
     expect(props["b-room"]!.key).toMatch(/^library\/vector\/background\//);
     expect(props["p-unused"]!.key).toBeUndefined();
-    expect(geo.map).toHaveBeenCalledWith(MAP, "tr", STYLE.palette);
+    expect(geo.map).toHaveBeenCalledWith(MAP, "tr", STYLE.palette, undefined);
+    expect(hist.load).not.toHaveBeenCalled();
     expect(geo.flag).toHaveBeenCalledWith({ code: "tr", pole: true });
     expect(h.store.json(`${props["b-map"]!.key}.json`)).toEqual({ exact: true });
     expect(h.logs.some((l) => /^  b-map: harita gerçek veriden üretildi \(\d+ KB\)$/.test(l))).toBe(true);
@@ -405,6 +409,23 @@ describe("vektör nesneleri ve önizleme (kare denetimi kapalı)", () => {
     await h.pipeline.run(again, { only: "keyframes" });
     expect(geo.map).not.toHaveBeenCalled();
     expect(h.logs).toContain("  b-map: kütüphaneden (gerçek veri)");
+  });
+
+  it("yıllı harita o yılın sınır verisiyle üretilir; veri yüklenemezse sınırsız çizilir, anahtar ayrı kalır", async () => {
+    const h = harness();
+    agents();
+    const past = { ...MAP, year: 1452 };
+    const extra = (map: typeof past) => ({ vectorProps: { "b-map": { description: "route", kind: "background" as const, map } } });
+    const state = await h.pipeline.run(await keyframeReady(h, { qa: false }, extra(past)), { only: "keyframes" });
+    expect(geo.map).toHaveBeenCalledWith(past, "tr", STYLE.palette, [{ name: "Ottoman Empire" }]);
+    const withData = state.vectorProps!["b-map"]!.key;
+
+    hist.load.mockRejectedValueOnce(new Error("ağ yok"));
+    geo.map.mockClear();
+    const offline = await h.pipeline.run(await keyframeReady(h, { qa: false }, extra({ ...past, year: 1453 })), { only: "keyframes" });
+    expect(geo.map).toHaveBeenCalledWith({ ...past, year: 1453 }, "tr", STYLE.palette, undefined);
+    expect(h.logs).toContain("⚠ tarihî sınır verisi yüklenemedi, harita sınırsız çiziliyor (bugünün sınırları çizilmez): ağ yok");
+    expect(offline.vectorProps!["b-map"]!.key).not.toBe(withData);
   });
 
   it("küre haritasının 3D dokusu da temizlenerek saklanır", async () => {
@@ -660,6 +681,36 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     expect(Object.keys(state.stills!).sort()).toEqual(["s1-sh1", "s2-sh1"]);
     expect(render.stills.mock.calls.at(-1)![0].frames).toEqual({ "s1-sh1": expect.any(Number) });
     expect(h.logs).toContain("  önizleme: 1 çekim karesi");
+  });
+
+  it("yapımcının notu: yalnız notlu sahne notla yeniden planlanır, otomatik düzeltme turları yapılmaz, önizlemeler yenilenir", async () => {
+    const h = harness();
+    agents();
+    // Normal çalıştırmada s2'yi yeniden planlatacak bir animasyon kusuru: notlu çalıştırmada denetim yapılmaz.
+    lint.shot.mockImplementation((v) => (v.shotId === "s2-sh1" ? [{ code: "face_cut", shotId: "s2-sh1", detail: "x", replan: true }] : []));
+    onAgent("vectorDirector", () => ({ shots: [{ startWord: 0, description: "map 1453", ambience: "none", spec: vshot({ layers: [] }) }], newProps: [], newBackgrounds: [] }));
+    const shot = (id: string, sceneId: string, startMs: number, description: string) => ({ id, sceneId, kind: "still_motion", startMs, endMs: startMs + 500, description, imagePrompt: "", motionPrompt: "", camera: "static", vector: vshot({ layers: [] }) });
+    const planned = { startWord: 0, characterIds: [], locationId: "", kind: "still_motion", description: "other", imagePrompt: "", motionPrompt: "", camera: "static", ambience: "none", vector: vshot({ layers: [] }) };
+    const id = await keyframeReady(h, {}, {
+      vectorProps: {},
+      shotPlan: { scenes: [{ sceneId: "s1", shots: [] }, { sceneId: "s2", shots: [planned] }] } as never,
+      shots: [shot("s1-sh1", "s1", 0, "wide map"), shot("s1-sh2", "s1", 700, "close-up"), shot("s2-sh1", "s2", 2400, "other")] as never,
+      replans: { s1: { note: "Harita 1453 olsun", shots: ["s1-sh2"], at: "2026-11-04T00:00:00Z" } },
+    });
+    const state = await h.pipeline.run(id, { only: "keyframes" });
+
+    const calls = callsOf("vectorDirector");
+    expect(calls.map((c) => (c.args[0] as { scene: { id: string } }).scene.id)).toEqual(["s1"]);
+    const feedback = (calls[0]!.args[0] as { feedback: string }).feedback;
+    expect(feedback).toContain('asks for these changes:\n"Harita 1453 olsun"\nThe current plan:\n- shot 1: wide map\n- shot 2 (pointed at): close-up\n');
+    expect(feedback).toContain("give it under a new id");
+    expect(h.logs).toContain("  yapımcının notuyla yeniden planlanıyor: s1");
+    expect(callsOf("sceneCritic")).toHaveLength(0);
+    expect(lint.shot).not.toHaveBeenCalled();
+    expect(state.replans).toBeUndefined();
+    expect(state.shots!.map((s) => s.id)).toEqual(["s1-sh1", "s2-sh1"]);
+    expect(Object.keys(state.stills!).sort()).toEqual(["s1-sh1", "s2-sh1"]);
+    expect(state.done.keyframes).toBeDefined();
   });
 
   it("yalnız en kötü sahneler yeniden planlanır: en kötüden başlanır, sahnelerin en çok çeyreği", async () => {

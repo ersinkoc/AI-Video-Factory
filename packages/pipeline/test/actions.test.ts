@@ -10,6 +10,7 @@ import {
   changeVoice,
   gateBefore,
   redrawShots,
+  replanShots,
   isApproved,
   missingSelections,
   revokeApproval,
@@ -134,6 +135,37 @@ describe("redrawShots", () => {
     expect(s.done.keyframes).toBeUndefined();
     expect(s.done.render).toBeUndefined();
     expect(() => redrawShots(s, ["yok"])).toThrow(/çekim yok/);
+  });
+});
+
+describe("replanShots", () => {
+  const shot = (id: string, sceneId: string) => ({ id, sceneId, kind: "still_motion" as const, startMs: 0, endMs: 1000, description: "", imagePrompt: "", motionPrompt: "", camera: "static" as const });
+
+  it("notu seçilen çekimlerin sahnelerine yazar, ikinci notu ekler; render sonrası da kareden sonrasını yeniden açar", () => {
+    const s = baseState();
+    s.input.motionMode = "vector";
+    s.shots = [shot("a", "s1"), shot("b", "s1"), shot("c", "s2")];
+    s.done = { ...s.done, shots: "x", keyframes: "x", render: "x", package: "x" };
+    s.lastError = { stage: "render", message: "eski hata", at: "" };
+    replanShots(s, ["a", "c", "yok"], "  Harita 1453 olsun  ");
+    expect(s.replans).toEqual({ s1: { note: "Harita 1453 olsun", shots: ["a"], at: expect.any(String) }, s2: { note: "Harita 1453 olsun", shots: ["c"], at: expect.any(String) } });
+    replanShots(s, ["b", "a"], "Mehmed haritanın önünde");
+    expect(s.replans!.s1).toMatchObject({ note: "Harita 1453 olsun\nMehmed haritanın önünde", shots: ["a", "b"] });
+    expect(s.done).toMatchObject({ shots: "x" });
+    expect(s.done.keyframes).toBeUndefined();
+    expect(s.done.render).toBeUndefined();
+    expect(s.done.package).toBeUndefined();
+    expect(s.lastError).toBeUndefined();
+  });
+
+  it("yalnız vektör bölümde, boş olmayan notla ve var olan çekimle", () => {
+    const s = baseState();
+    expect(() => replanShots(s, ["a"], "not")).toThrow(/yalnız vektör/);
+    s.input.motionMode = "vector";
+    expect(() => replanShots(s, ["a"], "not")).toThrow(/çekim yok/);
+    s.shots = [shot("a", "s1")];
+    expect(() => replanShots(s, ["a"], "   ")).toThrow(/not yazın/);
+    expect(s.replans).toBeUndefined();
   });
 });
 

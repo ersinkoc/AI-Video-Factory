@@ -445,9 +445,43 @@ describe("ShotsTab", () => {
     expect(screen.queryByRole("button", { name: "sh4" })).toBeNull();
   });
 
-  it("iş sürerken ve vektör modunda seçim yok; kare tahmini yoksa maliyet sıfır", () => {
+  it("vektör: notla yeniden oluşturma; Shift ile aralık, bekleyen not, boş notla gönderilmez (sunucu reddederse seçim kalır)", async () => {
+    const act = okAct();
+    const state = shotsState({ replans: { s2: { note: "eski", shots: ["sh3"], at: "t" } } }, { motionMode: "vector" });
+    renderIn(<ShotsTab data={makeData(state)} busy={false} act={act} />);
+    expect(screen.getByText(tr("prod.replanHint"))).toBeTruthy();
+    expect(screen.getByText(tr("prod.replanPending", { scenes: "s2" }))).toBeTruthy();
+    expect(screen.queryByText(tr("prod.pickFailed"), { exact: false })).toBeNull();
+    // Vektörde karesiz çekim de seçilir; Shift ile sh1'den sh3'e aralık (iki sahne).
+    fireEvent.click(screen.getByRole("button", { name: "sh1" }));
+    fireEvent.click(screen.getByRole("button", { name: "sh3" }), { shiftKey: true });
+    const go = screen.getByRole("button", { name: tr("prod.replan", { n: 2 }) }) as HTMLButtonElement;
+    expect(go.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(tr("prod.replanNote")), { target: { value: "Harita 1453 olsun" } });
+    act.mockResolvedValueOnce(false);
+    await reactAct(async () => fireEvent.click(go));
+    expect(act).toHaveBeenLastCalledWith({ type: "replan", shotIds: ["sh1", "sh2", "sh3"], note: "Harita 1453 olsun" });
+    expect((screen.getByLabelText(tr("prod.replanNote")) as HTMLTextAreaElement).value).toBe("Harita 1453 olsun");
+    // Shift'siz tıklama tek çekimi çıkarır.
+    fireEvent.click(screen.getByRole("button", { name: "sh2" }));
+    await reactAct(async () => fireEvent.click(screen.getByRole("button", { name: tr("prod.replan", { n: 2 }) })));
+    expect(act).toHaveBeenLastCalledWith({ type: "replan", shotIds: ["sh1", "sh3"], note: "Harita 1453 olsun" });
+    expect(screen.queryByLabelText(tr("prod.replanNote"))).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "sh4" }));
+    fireEvent.click(screen.getByRole("button", { name: tr("prod.clear") }));
+    expect(screen.queryByLabelText(tr("prod.replanNote"))).toBeNull();
+  });
+
+  it("vektör: Shift'li ilk tıklama tek çekim seçer (çapa yok); bekleyen not yoksa satırı yok", () => {
+    renderIn(<ShotsTab data={makeData(shotsState({}, { motionMode: "vector" }))} busy={false} act={okAct()} />);
+    expect(screen.queryByText(tr("prod.replanPending", { scenes: "" }), { exact: false })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "sh2" }), { shiftKey: true });
+    expect(screen.getByRole("button", { name: tr("prod.replan", { n: 1 }) })).toBeTruthy();
+  });
+
+  it("iş sürerken seçim yok; kare tahmini yoksa maliyet sıfır", () => {
     const state = shotsState({}, { motionMode: "vector" });
-    const { rerender } = renderIn(<ShotsTab data={makeData(state)} busy={false} act={okAct()} />);
+    const { rerender } = renderIn(<ShotsTab data={makeData(state)} busy act={okAct()} />);
     expect(screen.queryByRole("button", { name: "sh1" })).toBeNull();
     expect(screen.queryByText(tr("prod.pickFailed"), { exact: false })).toBeNull();
     const noKf = makeData(shotsState({ qa: {} }), {});

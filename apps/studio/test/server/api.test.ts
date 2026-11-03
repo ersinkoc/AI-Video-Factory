@@ -637,6 +637,7 @@ describe("POST /api/episodes/[id]/action", () => {
       [{ type: "approve-script" }, "job.concept", ["--until", "concept"], { script }],
       [{ type: "approve-concept" }, "job.produce", [], { script, concept: { candidates: {}, selected: {} } }],
       [{ type: "redraw", shotIds: ["sh1", "yok"] }, "job.redraw", [], { shots: [{ id: "sh1" }] as unknown as EpisodeState["shots"], keyframes: { sh1: { key: "k", mimeType: "image/png" } }, done: { keyframes: "t", render: "t" } }],
+      [{ type: "replan", shotIds: ["sh1"], note: "Harita 1453 olsun" }, "job.replan", [], { input: { motionMode: "vector" } as EpisodeState["input"], shots: [{ id: "sh1", sceneId: "s1" }] as unknown as EpisodeState["shots"], done: { keyframes: "t", render: "t" } }],
     ];
     for (const [i, [body, label, extra, over]] of jobs.entries()) {
       const id = `job-${i}`;
@@ -647,6 +648,12 @@ describe("POST /api/episodes/[id]/action", () => {
     }
     expect((await load("job-2")).approvals?.script).toBeDefined();
     expect((await load("job-3")).approvals?.concept).toBeDefined();
+    // Bozuk gövde: çekim listesi ve not metin değilse boş sayılır (önce not istenir).
+    await saveEpisode("job-bad", { shots: [{ id: "sh1", sceneId: "s1" }] as unknown as EpisodeState["shots"] }, { motionMode: "vector" });
+    await fail("job-bad", { type: "replan", shotIds: "sh1", note: 5 }, "Ne değişsin");
+    const replanned = await load("job-5");
+    expect(replanned.replans).toEqual({ s1: { note: "Harita 1453 olsun", shots: ["sh1"], at: expect.any(String) } });
+    expect(replanned.done.render).toBeUndefined();
     const redrawn = await load("job-4");
     expect(redrawn.redraws).toEqual({ sh1: 1 });
     expect(redrawn.keyframes).toEqual({});

@@ -76,8 +76,8 @@ export function chapterLines(chapters: PackageOut["chapters"], sceneStartSec: Re
   return kept.length >= 3 ? kept.map((c) => `${chapterTime(c.at)} ${c.title}`) : [];
 }
 
-/** Yüklemeye hazır açıklama: modelin metni, bölüm satırları ve hashtag'ler. */
-export function fullDescription(pkg: PackageOut, chapters: string[]): string {
+/** Yüklemeye hazır açıklama: modelin metni, bölüm satırları, kaynak satırları (lisansın istediği atıf) ve hashtag'ler. */
+export function fullDescription(pkg: PackageOut, chapters: string[], credits: string[] = []): string {
   const tags = pkg.hashtags.map((h) => `#${h.replace(/^#/, "").replace(/\s+/g, "")}`).filter((h) => h.length > 1);
-  return [pkg.description.trim(), chapters.join("\n"), tags.join(" ")].filter(Boolean).join("\n\n");
+  return [pkg.description.trim(), chapters.join("\n"), credits.join("\n"), tags.join(" ")].filter(Boolean).join("\n\n");
 }

@@ -289,6 +289,11 @@ export interface EpisodeState {
   assetChecks?: Record<string, AssetCheck>;
   /** Elle istenen yeniden çizim sayısı (çekim başına); seed olarak kullanılır. */
   redraws?: Record<string, number>;
+  /**
+   * Yapımcının notuyla yeniden oluşturulacak sahneler (Stüdyo → Çekimler, vektör): sahne → not ve işaret edilen
+   * çekimler. Kare aşaması yalnız bunları yeniden planlatır, sonra siler.
+   */
+  replans?: Record<string, { note: string; shots: string[]; at: string }>;
   /** Çekim başına kare denetimi sonucu. */
   qa?: Record<string, FrameQa>;
   clips?: Record<string, AssetRef & { durationSec: number }>;

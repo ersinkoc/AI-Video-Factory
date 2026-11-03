@@ -13,6 +13,7 @@ import {
   changeVoice,
   editNarration,
   redrawShots,
+  replanShots,
   revokeApproval,
   selectCandidate,
   setMotion,
@@ -37,6 +38,7 @@ export type StudioAction =
   | { type: "approve-concept" }
   | { type: "change-voice"; voiceId: string }
   | { type: "redraw"; shotIds: string[] }
+  | { type: "replan"; shotIds: string[]; note: string }
   | { type: "resume" }
   | { type: "accept-asset"; key: string }
   | { type: "reject-asset"; key: string; note?: string }
@@ -100,6 +102,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       case "redraw":
         await episodes.update(id, (s) => redrawShots(s, action.shotIds));
         startJob(id, "job.redraw", ["episode", "run", id]);
+        break;
+      case "replan":
+        await episodes.update(id, (s) => replanShots(s, Array.isArray(action.shotIds) ? action.shotIds : [], typeof action.note === "string" ? action.note : ""));
+        startJob(id, "job.replan", ["episode", "run", id]);
         break;
       case "accept-asset":
       case "reject-asset": {

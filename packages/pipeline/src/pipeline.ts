@@ -98,6 +98,7 @@ import { alignWords } from "./align.ts";
 import { detectSilences, mapLimit, normalizeClip, probeDurationMs } from "./media.ts";
 import { anonymizeNames, castAliases } from "./names.ts";
 import { generateFlag, generateMap } from "./geo.ts";
+import { HISTORY, historyCredits, loadHistory, type Polity } from "./history.ts";
 import { boardAccent, cleanMath, renderBoard } from "./manim.ts";
 import { lintShot } from "@ys/video/lint";
 import { LEXICON, restoreWords, sayPlan } from "./pronounce.ts";
@@ -191,7 +192,6 @@ function virtualState(id: string, packId: string, topic: string, lineStyle?: Lin
 
 const onScreen = (state: EpisodeState, timeline: Timeline): Timeline =>
   state.input.captions === false ? { ...timeline, captions: [] } : timeline;
-
 /** Kalite kapısını geçemeyen SVG: kullanılmaz (nesne çekimden düşer, karakter/mekân konsepti durdurur). */
 export class AssetRejectedError extends LocalizedError {}
 
@@ -1538,17 +1538,37 @@ export class EpisodePipeline {
    * Sahneleri geri bildirimle yönetmene yeniden planlatır (taslak denetimi, çizilemeyen ana nesne): çekim zamanları
    * yeniden kurulur, boy çeşitliliği yeniden uygulanır, yeni planın nesne/mekânları çizilir.
    */
+  /**
+   * Yapımcının notuyla yeniden oluşturma (Stüdyo → Çekimler): yalnız notlu sahneler yeniden planlanır, yeni varlıklar
+   * çizilir, önizlemeler yenilenir. Otomatik düzeltme turları (animasyon denetimi, taslak incelemesi) bu çalıştırmada
+   * yapılmaz: yapımcının istediğini geri almasınlar, aynı sahneler her notta yeniden ücretlenmesin.
+   */
+  private async userReplans(state: EpisodeState): Promise<void> {
+    const asks = state.replans!;
+    const scenes = state.script!.scenes.filter((s) => asks[s.id]);
+    this.log(msg("log.replan.user", { scenes: scenes.map((s) => s.id).join(", ") }));
+    await this.replanScenes(state, scenes, topLessons(await loadLessons(this.deps.store), "director"), (shots, scene) => {
+      const ask = asks[scene.id]!;
+      const plan = shots.map((s, n) => `- shot ${n + 1}${ask.shots.includes(s.id) ? " (pointed at)" : ""}: ${s.description}`).join("\n");
+      return `The channel's producer reviewed this scene and asks for these changes:\n"${ask.note}"\nThe current plan:\n${plan}\nFollow the request exactly and keep what it does not mention. To change how an existing prop, background or map looks, give it under a new id with a new description (an existing id keeps its old drawing).`;
+    });
+    delete state.replans;
+    await this.restageMissing(state);
+    state.stills = {};
+    await this.vectorPreviews(state);
+  }
+
   private async replanScenes(
     state: EpisodeState,
     scenes: NonNullable<EpisodeState["script"]>["scenes"],
     lessons: string[],
-    feedbackOf: (shots: PlannedShotState[]) => string,
+    feedbackOf: (shots: PlannedShotState[], scene: NonNullable<EpisodeState["script"]>["scenes"][number]) => string,
   ): Promise<void> {
     const script = state.script!;
     const voice = state.voice!;
     const durations = Object.fromEntries(script.scenes.map((s) => [s.id, (voice[s.id]?.durationMs ?? 0) / 1000]));
     await mapLimit(scenes, this.deps.concurrency ?? 3, async (scene) => {
-      const feedback = feedbackOf(state.shots!.filter((s) => s.sceneId === scene.id));
+      const feedback = feedbackOf(state.shots!.filter((s) => s.sceneId === scene.id), scene);
       const replanned = await this.planVectorScene(state, scene, /* v8 ignore next -- süreler senaryonun bütün sahnelerinden kurulur */ durations[scene.id] ?? 0, lessons, feedback);
       const entry = state.shotPlan!.scenes.find((s) => s.sceneId === scene.id);
       if (entry) entry.shots = replanned;
@@ -1703,6 +1723,7 @@ export class EpisodePipeline {
    * gözden geçirip sorunlu sahneleri yeniden planlatır.
    */
   private async vectorProps(state: EpisodeState): Promise<void> {
+    if (state.replans && Object.keys(state.replans).length) return this.userReplans(state);
     await this.vectorPropsDraw(state, true);
     await this.restageMissing(state);
     await this.lintRevise(state);
@@ -1919,14 +1940,17 @@ export class EpisodePipeline {
   private async realWorldAsset(state: EpisodeState, id: string, p: NonNullable<EpisodeState["vectorProps"]>[string]): Promise<string> {
     /* v8 ignore next -- tek çağıran kare aşamasıdır ve stil ister */
     const palette = state.style?.palette ?? [];
-    const source = p.map ? { map: p.map, lang: state.input.lang, palette } : { flag: p.flag };
+    // Tarihî harita: o yılın sınırları (Cliopatria). Veri yüklenemezse yalnız kara çizilir; anahtar veri sürümünü taşır,
+    // veri sonradan gelince harita sınırlarıyla yeniden üretilir.
+    const history = p.map?.year !== undefined ? await this.history() : undefined;
+    const source = p.map ? { map: p.map, lang: state.input.lang, palette, ...(p.map.year !== undefined ? { history: history ? HISTORY.version : "none" } : {}) } : { flag: p.flag };
     const hash = createHash("sha256").update(JSON.stringify({ v: GEO_VERSION, ...source })).digest("hex").slice(0, 32);
     const key = `library/vector/geo/${hash}.svg`;
     if ((await this.deps.store.get(key)) && (await this.deps.store.get(`${key}.json`))) {
       this.log(msg("log.geo.fromLibrary", { id }));
       return key;
     }
-    const out = p.map ? await generateMap(p.map, state.input.lang, palette) : await generateFlag(p.flag!);
+    const out = p.map ? await generateMap(p.map, state.input.lang, palette, history) : await generateFlag(p.flag!);
     const svg = sanitizeSvg(out.svg);
     if (out.meta.globe) out.meta.globe.texture = sanitizeSvg(out.meta.globe.texture);
     // Önce meta: SVG var ama meta yoksa "exact" bilgisi kaybolur (deniz dikdörtgeni silinir, çizgi stili uygulanır).
@@ -1934,6 +1958,16 @@ export class EpisodePipeline {
     await this.deps.store.put(key, new TextEncoder().encode(svg), "image/svg+xml");
     this.log(msg(p.map ? "log.geo.map" : "log.geo.flag", { id, kb: (svg.length / 1024).toFixed(0) }));
     return key;
+  }
+
+  /** Tarihî sınır verisi; indirilemezse undefined (harita sınırsız çizilir, bölüm durmaz). */
+  private async history(): Promise<Polity[] | undefined> {
+    try {
+      return await loadHistory({ store: this.deps.store, log: this.log });
+    } catch (e) {
+      this.log(msg("log.history.failed", { error: errorText(e) }));
+      return undefined;
+    }
   }
 
   /**
@@ -2556,7 +2590,7 @@ export class EpisodePipeline {
       const sceneSec = Object.fromEntries(starts.map(([id, at], i) => [id, (starts[i + 1]?.[1] ?? durationSec) - at]));
       try {
         const pkg = await this.agent(state, "package", packager({ story, script, lang: state.input.lang, durationSec, sceneSec }, this.agentDeps));
-        const description = fullDescription(pkg, chapterLines(pkg.chapters, Object.fromEntries(starts)));
+        const description = fullDescription(pkg, chapterLines(pkg.chapters, Object.fromEntries(starts)), historyCredits(state));
         thumbnailText = pkg.thumbnailText.trim() || thumbnailText;
         state.package = { title: pkg.title.trim(), thumbnailText, description, tags: pkg.tags, short: { ...pkg.short, title: pkg.short.title.trim() }, at: new Date().toISOString() };
         // Yüklemede kopyalanacak metinler videonun yanında da dursun.

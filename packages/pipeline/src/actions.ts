@@ -2,7 +2,7 @@ import { LocalizedError, msg, sideAssetId, VectorAssetMeta } from "@ys/core";
 import { getJson, putJson, type AssetStore } from "@ys/storage";
 import { libraryIdOf, noteCharacterUse } from "./library.ts";
 import { cleanSeries } from "./series.ts";
-import { GATES, STAGES, type EpisodeInput, type EpisodeState, type Gate, type MotionMode } from "./state.ts";
+import { GATES, motionModeOf, STAGES, type EpisodeInput, type EpisodeState, type Gate, type MotionMode } from "./state.ts";
 
 /*
  * İnsan kararları: onay, seçim, düzenleme. Ağır bağımlılık (Remotion, Agent SDK) içermez;
@@ -127,6 +127,28 @@ export function redrawShots(state: EpisodeState, shotIds: string[]): void {
     delete state.keyframes?.[id];
     delete state.qa?.[id];
     delete state.clips?.[id];
+  }
+  delete state.lastError;
+  invalidateFrom(state, "keyframes");
+}
+
+/**
+ * Yapımcının notuyla yeniden oluşturma (vektör): seçilen çekimlerin sahnelerine not yazılır ve üretim kare
+ * aşamasından yeniden açılır (render öncesi ya da sonrası). Kare aşaması yalnız bu sahneleri notla yeniden planlatır;
+ * render ve paket yeniden alınır. Aynı sahneye ikinci not öncekinin altına eklenir.
+ */
+export function replanShots(state: EpisodeState, shotIds: string[], note: string): void {
+  if (motionModeOf(state.input) !== "vector") throw new LocalizedError(msg("err.action.replanVector"));
+  const text = note.trim();
+  if (!text) throw new LocalizedError(msg("err.action.noNote"));
+  const picked = (state.shots ?? []).filter((s) => shotIds.includes(s.id));
+  if (!picked.length) throw new LocalizedError(msg("err.action.noShots"));
+  state.replans ??= {};
+  const at = new Date().toISOString();
+  for (const sceneId of new Set(picked.map((s) => s.sceneId))) {
+    const prev = state.replans[sceneId];
+    const shots = picked.filter((s) => s.sceneId === sceneId).map((s) => s.id);
+    state.replans[sceneId] = { note: prev ? `${prev.note}\n${text}` : text, shots: [...new Set([...(prev?.shots ?? []), ...shots])], at };
   }
   delete state.lastError;
   invalidateFrom(state, "keyframes");

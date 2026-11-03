@@ -14,16 +14,32 @@ export type GeoPoint = z.infer<typeof GeoPoint>;
 
 export const MapSpec = z.object({
   projection: z.enum(["flat", "globe"]).default("flat").describe("flat: regional/world map; globe: the planet seen from space"),
+  year: z
+    .number()
+    .int()
+    .min(-3400)
+    .max(2024)
+    .optional()
+    .describe(
+      "The year the map shows (negative = BCE). Set it for every historical subject: the political borders are then that year's, from a historical atlas dataset, and today's countries are not drawn",
+    ),
   focus: z
     .array(z.string())
     .default([])
-    .describe("ISO 3166-1 alpha-3 codes the view fits to (e.g. TUR, GRC); empty = whole world (or fit to markers/routes)"),
+    .describe("ISO 3166-1 alpha-3 codes the view fits to (e.g. TUR, GRC; only their area, also with year); empty = whole world (or fit to markers/routes)"),
   highlight: z
     .array(
       z.object({
-        countries: z.array(z.string()).min(1).describe("ISO alpha-3 codes"),
+        countries: z.array(z.string()).default([]).describe("Today's countries, ISO alpha-3 codes (maps without year)"),
+        polities: z
+          .array(z.string())
+          .default([])
+          .describe('Historical states that existed in "year", by their English Wikipedia title (e.g. "Ottoman Empire", "Byzantine Empire", "Republic of Venice")'),
         tone: z.enum(["accent", "warm", "cool", "muted"]).default("accent"),
-        label: z.string().optional().describe("One label for this group, in the episode language; else each country gets its name"),
+        label: z
+          .string()
+          .optional()
+          .describe("One label naming the highlighted state(s), in the episode language; else each country gets its name (historical states get none)"),
       }),
     )
     .max(6)

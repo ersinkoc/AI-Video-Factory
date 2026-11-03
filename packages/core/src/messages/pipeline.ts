@@ -182,6 +182,19 @@ export const PIPELINE_MESSAGES = {
   },
   "log.geo.fromLibrary": { tr: "  {id}: kütüphaneden (gerçek veri)", en: "  {id}: from the library (real data)" },
   "log.geo.map": { tr: "  {id}: harita gerçek veriden üretildi ({kb} KB)", en: "  {id}: map generated from real data ({kb} KB)" },
+  "log.replan.user": {
+    tr: "  yapımcının notuyla yeniden planlanıyor: {scenes}",
+    en: "  re-planning with the producer's note: {scenes}",
+  },
+  "log.history.download": {
+    tr: "  tarihî sınır verisi (Cliopatria {version}) bir kez indiriliyor (~46 MB)…",
+    en: "  downloading the historical border data (Cliopatria {version}) once (~46 MB)…",
+  },
+  "log.history.ready": { tr: "  tarihî sınır verisi hazır: {n} kayıt kütüphanede", en: "  historical border data ready: {n} records in the library" },
+  "log.history.failed": {
+    tr: "⚠ tarihî sınır verisi yüklenemedi, harita sınırsız çiziliyor (bugünün sınırları çizilmez): {error}",
+    en: "⚠ the historical border data could not be loaded, the map is drawn without borders (today's borders are not drawn): {error}",
+  },
   "log.package.done": { tr: "  yayın paketi (başlık, açıklama, bölümler, etiketler): {path}", en: "  publishing package (title, description, chapters, tags): {path}" },
   "log.package.failed": { tr: "⚠ yayın paketi yazılamadı (küçük resim yine çıkarılır): {error}", en: "⚠ publishing package could not be written (the thumbnail is still made): {error}" },
   "log.thumbnail.done": { tr: "  küçük resim: {path}", en: "  thumbnail: {path}" },
@@ -299,6 +312,11 @@ export const PIPELINE_MESSAGES = {
   "err.action.noScene": { tr: "Sahne yok: {id}", en: "No such scene: {id}" },
   "err.action.conceptApproved": { tr: "Konsept onaylandı; hareket modu değiştirilemez", en: "The concept is approved; the motion mode cannot be changed" },
   "err.action.noShots": { tr: "Yeniden çizilecek çekim yok", en: "No shots to redraw" },
+  "err.action.noNote": { tr: "Ne değişsin? Bir not yazın", en: "What should change? Write a note" },
+  "err.action.replanVector": {
+    tr: "Notla yeniden oluşturma yalnız vektör bölümlerde; görsel modda yeniden çizimi kullanın",
+    en: "Re-creating with a note works only for vector episodes; use redraw in image mode",
+  },
   "err.action.rendered": {
     tr: "Video render edildi; ses değiştirmek için yeni bölüm aç",
     en: "The video is rendered; open a new episode to change the voice",

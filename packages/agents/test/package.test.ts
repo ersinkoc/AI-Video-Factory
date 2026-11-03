@@ -58,5 +58,7 @@ describe("yayın paketi", () => {
   it("açıklama: metin, bölümler ve # ile boşluksuz hashtag'ler; boş parçalar atlanır", () => {
     expect(fullDescription(PKG, ["0:00 A", "1:00 B", "2:00 C"])).toBe("Açıklama.\n\n0:00 A\n1:00 B\n2:00 C\n\n#tarih #teknoloji");
     expect(fullDescription({ ...PKG, hashtags: [] }, [])).toBe("Açıklama.");
+    // Lisansın istediği atıf (tarihî harita verisi) bölümlerden sonra, hashtag'lerden önce.
+    expect(fullDescription(PKG, [], ["Kaynak: X"])).toBe("Açıklama.\n\nKaynak: X\n\n#tarih #teknoloji");
   });
 });
