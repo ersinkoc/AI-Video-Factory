@@ -48,6 +48,14 @@ afterEach(() => {
 });
 
 describe("3D figür (three.js)", () => {
+  it("yakın çekimde tuval ekrandaki boyunda çizilir (onda bir adımla yukarı yuvarlanır), en çok maxPx", () => {
+    render(<Figure3D spec={SPEC} scale={2.41} />);
+    expect(gl.size).toEqual([Math.round(400 * 1.3 * 2.5), Math.round(800 * 1.08 * 2.5)]);
+    cleanup();
+    render(<Figure3D spec={SPEC} scale={9} />);
+    expect(gl.size).toEqual([Math.round(400 * 1.3 * FIGURE_VIEW.maxPx), Math.round(800 * 1.08 * FIGURE_VIEW.maxPx)]);
+  });
+
   it("şeffaf, gölgeli tuvalde kukla tuvaline hizalı ortografik kamerayla her karede çizer; poz değişince yeniden çizer", () => {
     const pose = { "arm-r": { rotate: 30, sx: 1, sy: 1, tx: 0, ty: 0 } };
     const { container, rerender } = render(<Figure3D spec={SPEC} pose={pose} />);

@@ -17,7 +17,7 @@ import { buildFigure, poseFigure, type Figure, type FigurePart, type FigureView,
  * Çizim alanı: kukla tuvali (400×800) ve kol kaldırınca, eğilince taşan kısım için kenar payı. Tuval katman kutusundan
  * bu oranda büyük konur; figür kutunun içinde SVG kuklasıyla aynı yerde durur.
  */
-export const FIGURE_VIEW = { padX: 0.15, padTop: 0.06, padBottom: 0.02, px: 1.6 } as const;
+export const FIGURE_VIEW = { padX: 0.15, padTop: 0.06, padBottom: 0.02, px: 1.6, maxPx: 3 } as const;
 const VIEW_W = 400 * (1 + 2 * FIGURE_VIEW.padX);
 const VIEW_H = 800 * (1 + FIGURE_VIEW.padTop + FIGURE_VIEW.padBottom);
 
@@ -39,17 +39,25 @@ export function Figure3D({
   pose,
   view,
   fallback,
+  scale = 0,
 }: {
   spec: FigureSpec;
   pose?: Partial<Record<FigurePart, PartPose>>;
   /** Yürürken yana dönüş ve yan poz. */
   view?: FigureView;
   fallback?: ReactNode;
+  /**
+   * Ekranda kukla tuvalinin bir pikseli kaç piksel (katman boyu × kamera zoom'u / 800). Tuval en az FIGURE_VIEW.px
+   * çözünürlükte, yakın çekimde ekran kadar (en çok maxPx) çizilir: 3,2 zoom'da sabit tuval büyütülüp bulanıklaşıyordu.
+   */
+  scale?: number;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [stage, setStage] = useState<Stage>();
   const [failed, setFailed] = useState(false);
   const [handle] = useState(() => delayRender("figure"));
+  // Tuval keskinliği ~%10 adımlarla: kamera zoom'u kare kare değişse de renderer yeniden kurulmaz (zoom çekimin en büyüğü).
+  const px = Math.min(FIGURE_VIEW.maxPx, Math.max(FIGURE_VIEW.px, Math.ceil(scale * 10) / 10));
 
   useEffect(() => {
     if (failed) return;
@@ -62,7 +70,7 @@ export function Figure3D({
       return;
     }
     renderer.setPixelRatio(1);
-    renderer.setSize(Math.round(VIEW_W * FIGURE_VIEW.px), Math.round(VIEW_H * FIGURE_VIEW.px), false);
+    renderer.setSize(Math.round(VIEW_W * px), Math.round(VIEW_H * px), false);
     renderer.setClearColor(0x000000, 0);
     renderer.outputColorSpace = SRGBColorSpace;
     renderer.toneMapping = NeutralToneMapping;
@@ -95,7 +103,7 @@ export function Figure3D({
       figure.dispose();
       renderer.dispose();
     };
-  }, [spec, handle, failed]);
+  }, [spec, handle, failed, px]);
 
   useLayoutEffect(() => {
     if (!stage) return;

@@ -26,8 +26,8 @@ vi.mock("../src/Ambience.tsx", () => ({
 
 // 3D figür ayrı testte (figure3d-view.test.tsx); burada yalnız katmana hangi tarif, poz ve SVG yedeğiyle konduğu.
 vi.mock("../src/Figure3D.tsx", () => ({
-  Figure3D: ({ spec, pose, view, fallback }: { spec: { skin: string }; pose?: Record<string, { rotate: number }>; view: { turn?: number; profile?: boolean }; fallback: unknown }) => (
-    <div data-figure={spec.skin} data-arm={pose?.["arm-r"]?.rotate} data-turn={view.turn ?? 0} data-profile={String(Boolean(view.profile))}>
+  Figure3D: ({ spec, pose, view, fallback, scale }: { spec: { skin: string }; pose?: Record<string, { rotate: number }>; view: { turn?: number; profile?: boolean }; fallback: unknown; scale: number }) => (
+    <div data-figure={spec.skin} data-arm={pose?.["arm-r"]?.rotate} data-turn={view.turn ?? 0} data-profile={String(Boolean(view.profile))} data-scale={scale}>
       {fallback as never}
     </div>
   ),
@@ -733,9 +733,10 @@ describe("vektör sahne: yan görünüş", () => {
 describe("vektör sahne: bilgi kartı", () => {
   it("sol üst kişiyle doluysa kart sağ üstte, sağa yaslı ve çizgisi sağda; boşsa solda", () => {
     const card = (x: number) => {
-      // Yakın çekim: kişinin başı ve kaldırdığı kolları ekranın üst köşesine çıkar.
+      // Yakın çekim: kişinin başı ve kaldırdığı kolları ekranın üst köşesine çıkar. Yerinde yürüdüğü için kamera onu
+      // portre kadrajında ortalamaz, yönetmenin kadrajı kalır.
       const camera = { zoomFrom: 2.2, zoomTo: 2.2, panX: 0, focusX: x, focusY: 520 };
-      const c = scene({ layers: [{ asset: "hero", x, depth: 0, anims: [{ type: "cheer" }] }], texts: [{ text: "1970", style: "title", x: 0, y: 0 }], camera }, { frame: 60 });
+      const c = scene({ layers: [{ asset: "hero", x, depth: 0, anims: [{ type: "cheer" }, { type: "walk" }] }], texts: [{ text: "1970", style: "title", x: 0, y: 0 }], camera }, { frame: 60 });
       const el = c.querySelector<HTMLElement>('[data-text="card"]')!;
       const r = { align: el.style.textAlign, left: el.style.left, bar: (el.firstElementChild as HTMLElement).style.borderRight };
       cleanup();
@@ -812,6 +813,21 @@ describe("vektör sahne: 3D figür", () => {
     expect(c.querySelector("[data-contact]")).not.toBeNull();
     // Yedek SVG'nin pozu da hazır (WebGL açılamazsa kukla yine oynar).
     expect(pose(c, "arm-r").rotate).toBeCloseTo(Number(fig.getAttribute("data-arm")), 1);
+  });
+
+  it("figür tuvalinin keskinliği ekrandaki boyundan: katman boyu × kameranın en büyük zoom'u", () => {
+    const at = (camera?: object) => {
+      const c = scene({ layers: [{ asset: "toy", x: 960, depth: 0, anims: [{ type: "walk" }] }], ...(camera ? { camera } : {}) }, { frame: 10 });
+      const fig = c.querySelector<HTMLElement>("[data-figure]")!;
+      const r = { scale: Number(fig.getAttribute("data-scale")), height: parseFloat(fig.parentElement!.style.height) };
+      cleanup();
+      return r;
+    };
+    const wide = at({ zoomFrom: 1, zoomTo: 1, panX: 0 });
+    expect(wide.scale).toBeCloseTo(wide.height / 800, 5);
+    // Varsayılan kamera hafifçe yaklaşır.
+    expect(at().scale).toBeGreaterThan(wide.scale);
+    expect(at({ zoomFrom: 1, zoomTo: 2, panX: 0, focusX: 960, focusY: 500 }).scale).toBeCloseTo((wide.height * 2) / 800, 5);
   });
 
   it("oturan figürde temas gölgesi yok", () => {
@@ -1532,6 +1548,35 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     // Uzaktaki kişi (masanın yanında değil) kadrajı genişletmez.
     const far = { ...ada, index: 5, x: 200 };
     expect(closeUpCamera(cam, [desk, article, far, steam], false, person).cam.focusX).toBeCloseTo((1011 + 1565) / 2);
+  });
+
+  it("kişi yakın çekimi belden yukarı: kafa üstte küçük payla, kesim belde; oturan biraz aşağıda, yanındaki de kadrajda", () => {
+    const man = { ...PL, index: 0, x: 960, y: 951, width: 289, height: 578 };
+    const isMan = (pl: { index: number }) => pl.index <= 1;
+    // Yönetmen 1,4 → 1,8 kafanın üstündeki duvara odaklanmış: kişi tam boy, kadrajın dibinde kalıyordu.
+    const cam = { zoomFrom: 1.4, zoomTo: 1.8, panX: 0.1, focusX: 960, focusY: 400 };
+    const out = closeUpCamera(cam, [man], false, () => false, isMan);
+    expect(out.centre).toBe(true);
+    // Kafa (kutunun %10 altı) ile bel (alttan %44) arası kadrajın %93'ünü doldurmak 3,78 ister; tavan 3,2.
+    expect(out.cam).toMatchObject({ panX: 0, focusX: 960, zoomTo: 3.2 });
+    expect(out.cam.zoomFrom).toBeCloseTo((1.4 * 3.2) / 1.8, 5);
+    const view = 1080 / 3.2;
+    const top = 951 - 578 * 0.9;
+    expect(out.cam.focusY).toBeCloseTo(top - 0.07 * view + view / 2, 5);
+    // Oturan kişi render'da aşağı iner (SIT_DROP): kadraj da onunla iner.
+    const sat = closeUpCamera(cam, [{ ...man, sitting: true }], false, () => false, isMan).cam;
+    expect(sat.focusY! - out.cam.focusY!).toBeCloseTo((110 * 0.65 * 578) / 800, 5);
+    // Kadrajdaki ikinci kişi de çerçevelenir.
+    const two = closeUpCamera(cam, [man, { ...man, index: 1, x: 1200 }], false, () => false, isMan).cam;
+    expect(two.focusX).toBeCloseTo((960 - 289 * 0.35 + 1200 + 289 * 0.35) / 2, 5);
+    // Uzaktaki ikinci kişiyle yaklaşma kazancı küçük: yönetmenin kadrajı kalır.
+    const far = { zoomFrom: 2.2, zoomTo: 2.2, panX: 0, focusX: 1150, focusY: 500 };
+    expect(closeUpCamera(far, [man, { ...man, index: 1, x: 1450 }], false, () => false, isMan).cam).toBe(far);
+    // Kadrajdaki büyük duvar panosu da sığmalı: belden yukarı yaklaşılamaz.
+    const board = { ...PL, index: 2, x: 1300, y: 500, width: 500, height: 400, grounded: false };
+    expect(closeUpCamera(cam, [man, board], false, (pl) => pl.index === 2, isMan).cam.zoomTo).toBeLessThanOrEqual(1.8);
+    // Elde/masada anlatılan nesne varsa özne odur (eski yol); kişi sayılmayan özne de.
+    expect(closeUpCamera(cam, [man], false).cam).toBe(cam);
   });
 
   it("yakın çekimde özne çok küçükse zoom büyür ve özne ortalanır; büyük özne ve harita çekimi olduğu gibi", () => {

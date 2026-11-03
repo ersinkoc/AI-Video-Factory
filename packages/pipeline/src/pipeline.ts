@@ -115,6 +115,7 @@ import {
 import { existingSamples, loadStyleSamples, SAMPLE_BRIEF, STYLE_SAMPLES_ID, STYLE_SAMPLES_KEY, type StyleSample, type StyleSamples } from "./samples.ts";
 import { shortRange, shortTimeline } from "./short.ts";
 import { buildTimeline, clipSeconds, estimateWordTimings, resolveShotTimes, sceneOffsets, toSrt } from "./timing.ts";
+import { varyShotSizes } from "./variety.ts";
 import type { EpisodeReview } from "./state.ts";
 
 /** Günlük satırının önemi: aşama başlangıcı, uyarı (atlanan/başarısız alt adım) ya da bilgi. */
@@ -1242,6 +1243,13 @@ export class EpisodePipeline {
     return shots;
   }
 
+  /** Sahne sınırında aynı odada aynı kişilere aynı boyda art arda kesilmesin (variety.ts). */
+  private varyShots(state: EpisodeState): void {
+    const people = new Set(state.cast!.characters.map((c) => c.id));
+    const n = varyShotSizes(state.shots!, (id) => people.has(id));
+    if (n) this.log(msg("log.shots.varied", { n }));
+  }
+
   /** Çekim planı: sahne başına bir yönetmen çağrısı; çıktı kısa JSON, çizim, fizik ve hareket kodda. */
   private async vectorShots(state: EpisodeState, durations: Record<string, number>): Promise<void> {
     const { script, style, cast, voice } = state;
@@ -1273,6 +1281,7 @@ export class EpisodePipeline {
     delete state.shotPlanDraft;
     state.shotPlan = { scenes: script.scenes.map((s) => ({ sceneId: s.id, shots: /* v8 ignore next -- her sahne planlanır; planlanamazsa mapLimit zaten fırlatır */ planned.get(s.id) ?? [] })) };
     state.shots = resolveShotTimes(state.shotPlan, script.scenes.map((s) => s.id), voice);
+    this.varyShots(state);
     state.keyframes = {};
     state.qa = {};
     state.clips = {};
@@ -1476,6 +1485,7 @@ export class EpisodePipeline {
       if (entry) entry.shots = replanned;
     });
     state.shots = resolveShotTimes(state.shotPlan!, script.scenes.map((s) => s.id), voice);
+    this.varyShots(state);
     // Düzeltilen planın yeni nesne/mekânları çizilir.
     await this.vectorPropsDraw(state);
     // Yeniden planlanan sahnelerin eski kareleri artık geçersiz: yeni planla yeniden çıkarılır.

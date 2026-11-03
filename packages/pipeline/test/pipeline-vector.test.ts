@@ -221,6 +221,19 @@ describe("vektör çekim planı", () => {
     expect(state.shotPlanDraft).toBeUndefined();
   });
 
+  it("sahne sınırında aynı odada aynı kişiye aynı boyda art arda kesilmez: ikinci çekimin boyu değişir", async () => {
+    const h = harness({ concurrency: 1 });
+    onAgent("vectorDirector", () => ({
+      shots: [{ startWord: 0, description: "d", ambience: "none", spec: vshot({ background: "l1", layers: [{ asset: "c1", x: 500, depth: 0.5 }], camera: { zoomFrom: 1, zoomTo: 1.1, panX: 0 } }) }],
+      newProps: [],
+      newBackgrounds: [],
+    }));
+    const id = await h.seed(voiced());
+    const state = await h.pipeline.run(id, { only: "shots" });
+    expect(state.shots!.map((s) => s.vector!.camera.zoomTo)).toEqual([1.1, 1.4]);
+    expect(h.logs).toContain("  1 çekimin boyu değişti (aynı odada aynı kişilere art arda aynı boyda kesme)");
+  });
+
   it("sahnesiz senaryoda plan boş kalır", async () => {
     const h = harness();
     const id = await h.seed(voiced({}, { script: { scenes: [] } as never }));

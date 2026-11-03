@@ -129,6 +129,7 @@ export const PIPELINE_MESSAGES = {
   "log.scene.clones": { tr: ", {n} kopya karakter atıldı", en: ", {n} duplicate characters dropped" },
   "log.scene.planReused": { tr: "  {scene}: önceki çalıştırmanın planı kullanıldı", en: "  {scene}: reused the plan from the previous run" },
   "log.shots.vector": { tr: "  {shots} vektör çekim, {props} nesne/mekân", en: "  {shots} vector shots, {props} props/locations" },
+  "log.shots.varied": { tr: "  {n} çekimin boyu değişti (aynı odada aynı kişilere art arda aynı boyda kesme)", en: "  {n} shot sizes changed (same room, same people, same size in a row)" },
   "log.review.batchSkipped": { tr: "  inceleme grubu atlandı: {error}", en: "  review batch skipped: {error}" },
   "log.stills.wait": {
     tr: "  başka bir render sürüyor (süreç {pid}); kareler için sıra bekleniyor",

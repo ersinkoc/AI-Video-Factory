@@ -614,6 +614,8 @@ export function closeUpCamera(
   placed: PlacedLayer[],
   exactBackground: boolean,
   whole: (pl: PlacedLayer) => boolean = () => false,
+  /** Yerinde duran kişi: yakın çekimin öznesiyse belden yukarı kadrajlanır (portrait). */
+  person: (pl: PlacedLayer) => boolean = () => false,
 ): { cam: VectorShot["camera"]; centre: boolean } {
   const z = Math.max(cam.zoomFrom, cam.zoomTo);
   const keep = { cam, centre: false };
@@ -660,6 +662,11 @@ export function closeUpCamera(
     .filter((h) => (group.some((g) => g.heldBy === h.index) || beside(h)) && seen(h))
     .map((h) => ({ ...h, width: h.width * 0.5, height: h.height * 0.2, y: h.y - h.height * 0.8 }));
   const framed = [...group, ...extra, ...heads];
+  // Yönetmenin kadrajında görünmeyen kişiye (bilerek köşeye odaklanan kamera) portre yapılmaz.
+  if (!props.length && person(subject) && seen(subject)) {
+    const shot = portrait(cam, z, placed.filter((pl) => person(pl) && seen(pl)), extra);
+    if (shot) return shot;
+  }
   if (side * z >= small * H) {
     const fit = [...(whole(subject) ? group : []), ...extra];
     return fit.length ? fitWhole(cam, z, fit) : keep;
@@ -673,6 +680,36 @@ export function closeUpCamera(
   const y = extra.length || heads.length ? (top + bottom) / 2 : centre(subject)[1];
   // Zoom zaten tavandaysa yalnız odak düzelir.
   return { cam: { ...cam, zoomFrom: cam.zoomFrom * Math.max(1, k), zoomTo: cam.zoomTo * Math.max(1, k), focusX: x, focusY: y }, centre: true };
+}
+
+/**
+ * Kişi yakın çekimi: kafanın üstünde kare boyunun %7'si pay, kesim belde (boyunun alttan %44'ü: dirsekle bilek arası,
+ * eklem değil); omuz genişliği kutunun ortadaki %70'i.
+ */
+const PORTRAIT = { headroom: 0.07, waist: 0.44, shoulders: 0.35, width: 0.8, gain: 1.1 } as const;
+
+/**
+ * Kişi yakın çekimi (3 Kas, C# taslağı: "geniş boş duvar, altta küçük tek karakter", "yüzün yakın çekimi değil"; boş ve
+ * küçük ölçek notları 31 karenin 30'unda). Yönetmenin 1,5–2 zoom'u yerinde duran kişiyi hâlâ tam boy gösteriyor, odak
+ * kafanın üstündeki duvarda kalınca kişi kadrajın dibine iniyordu. Özne kişiyse (elde ya da masada anlatılan nesne yoksa)
+ * kamera kadrajdaki kişileri belden yukarı çerçeveler: kafa üstte küçük payla, kesim belde; yanlarındaki bütün görünen
+ * öğeler de kadrajda kalır. Yaklaşma kazancı küçükse (iki kişi uzak, büyük pano) yönetmenin kadrajı kalır.
+ */
+function portrait(cam: VectorShot["camera"], z: number, people: PlacedLayer[], extra: PlacedLayer[]): { cam: VectorShot["camera"]; centre: boolean } | undefined {
+  // Oturan render'da biraz aşağı iner (SIT_DROP).
+  const drop = (pl: PlacedLayer) => (pl.sitting ? SIT_DROP * (pl.height / RIG.height) : 0);
+  const top = Math.min(...people.map((pl) => pl.y + drop(pl) - pl.height * (1 - HEAD_TOP)), ...extra.map((pl) => pl.y - pl.height));
+  const bottom = Math.max(...people.map((pl) => pl.y + drop(pl) - pl.height * PORTRAIT.waist), ...extra.map((pl) => pl.y));
+  const left = Math.min(...people.map((pl) => pl.x - pl.width * PORTRAIT.shoulders), ...extra.map((pl) => pl.x - pl.width / 2));
+  const right = Math.max(...people.map((pl) => pl.x + pl.width * PORTRAIT.shoulders), ...extra.map((pl) => pl.x + pl.width / 2));
+  const zoom = Math.min(CLOSE_UP.maxZoom, (H * (1 - PORTRAIT.headroom)) / (bottom - top), (PORTRAIT.width * W) / (right - left));
+  if (zoom < z * PORTRAIT.gain) return undefined;
+  const k = zoom / z;
+  const view = H / zoom;
+  return {
+    cam: { ...cam, panX: 0, zoomFrom: cam.zoomFrom * k, zoomTo: cam.zoomTo * k, focusX: (left + right) / 2, focusY: top - PORTRAIT.headroom * view + view / 2 },
+    centre: true,
+  };
 }
 
 /**
@@ -1051,6 +1088,7 @@ function Layer({
   prefix,
   sketch,
   draw,
+  zoom = 1,
 }: {
   layer: VectorLayer;
   asset: VectorAsset;
@@ -1060,6 +1098,8 @@ function Layer({
   sketch: boolean;
   /** draw_on ilerlemesi (0–1); yoksa katman olduğu gibi çizilir. */
   draw?: number;
+  /** Kameranın en büyük zoom'u: 3D figür tuvali yakın çekimde buna göre keskin çizilir. */
+  zoom?: number;
 }) {
   const { width: w, height: h } = placed;
   const { tr, pose } = motion;
@@ -1105,7 +1145,7 @@ function Layer({
         <>
           {/* Temas gölgesi: 3D figür zemine bassın (oturan karakterde yok). */}
           {!placed.sitting && <div data-contact style={CONTACT_SHADOW} />}
-          <Figure3D spec={figure} pose={pose} view={{ turn: motion.turn, profile: motion.profile }} fallback={drawn} />
+          <Figure3D spec={figure} pose={pose} view={{ turn: motion.turn, profile: motion.profile }} fallback={drawn} scale={(h * zoom) / RIG.height} />
         </>
       ) : (
         drawn
@@ -1548,7 +1588,8 @@ export function VectorScene({
     [spec, placed, safe],
   );
   const { cam, centre } = useMemo(() => {
-    const close = closeUpCamera(spec.camera, heldFraming(placed, spec.layers), Boolean(bg?.meta.exact), (pl) => safe[spec.layers[pl.index]!.asset]!.kind !== "character");
+    const isPerson = (pl: PlacedLayer) => safe[spec.layers[pl.index]!.asset]!.kind === "character";
+    const close = closeUpCamera(spec.camera, heldFraming(placed, spec.layers), Boolean(bg?.meta.exact), (pl) => !isPerson(pl), (pl) => isPerson(pl) && !moving(pl.index));
     if (close.centre || bg?.meta.exact) return close;
     // Boş geniş çekim içeriğe yaklaşır; sahneye giren biri varsa yolu kadrajda kalsın diye yaklaşılmaz.
     const filled = placed.some((pl) => moving(pl.index)) ? undefined : fillWide(close.cam, placed, (pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character");
@@ -1700,6 +1741,7 @@ export function VectorScene({
                 prefix={`${visual.shotId}-${pl.index}-`}
                 sketch={lineStyle === "sketch"}
                 draw={drawOf(layer.anims, p)}
+                zoom={Math.max(cam.zoomFrom, cam.zoomTo)}
               />
             );
           })}
