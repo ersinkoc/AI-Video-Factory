@@ -9,6 +9,10 @@ overrides:
   zod@>=4 <4.6.6: 4.6.7
   deepmerge-ts@<8.0.0: 8.0.2
   esbuild@<0.25.0: 0.25.12
+  minimatch@<11.0.1: 11.0.4
+
+patchedDependencies:
+  trigger.dev@4.8.3: 8959edd87e8e207a03b7a26ae8fc7b66160515b72efb57cf574d5f4e32c2d8a9
 
 importers:
 
@@ -132,7 +136,7 @@ importers:
         version: 4.8.3(magicast@0.3.5)(supports-color@10.2.2)(typescript@7.0.2)(zod@4.6.7)
       trigger.dev:
         specifier: 4.8.3
-        version: 4.8.3(typescript@7.0.2)
+        version: 4.8.3(patch_hash=8959edd87e8e207a03b7a26ae8fc7b66160515b72efb57cf574d5f4e32c2d8a9)(typescript@7.0.2)
 
   packages/agents:
     dependencies:
@@ -1199,6 +1203,9 @@ packages:
   '@isaacs/fs-minipass@4.0.1':
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
     engines: {node: '>=18.0.0'}
+
+  '@isaacs/nonrecursive-glob-match@1.0.3':
+    resolution: {integrity: sha512-SI7kyKHq4XXDRozw+r9GlRZkia1ZkFrpLW98r2IC2Bpr8YkFGE3fvjzmxCG0x78A++69HmDNrDvSMYBZmHGpKA==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -3398,9 +3405,9 @@ packages:
   minimal-polyfills@2.2.3:
     resolution: {integrity: sha512-oxdmJ9cL+xV72h0xYxp4tP2d5/fTBpP45H8DIOn9pASuF8a3IYTf+25fMGDYGiWW+MFsuog6KD6nfmhZJQ+uUw==}
 
-  minimatch@10.2.6:
-    resolution: {integrity: sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==}
-    engines: {node: 18 || 20 || >=22}
+  minimatch@11.0.4:
+    resolution: {integrity: sha512-/UJ1dEoVQTjPNDh6SGlUo+ueLMmoHTas4q+8yaAR/5t6nLAIiBDJtoYUh20IYleix7ehiQkgczb84PE3uzHkxg==}
+    engines: {node: 20 || >=22}
 
   minipass@7.1.3:
     resolution: {integrity: sha512-tEBHqDnIoM/1rXME1zgka9g6Q2lcoCkxHLuc7ODJ5BxbP5d4c2Z5cGgtXAku59200Cx7diuHTOYfSBD8n6mm8A==}
@@ -4961,6 +4968,8 @@ snapshots:
   '@isaacs/fs-minipass@4.0.1':
     dependencies:
       minipass: 7.1.3
+
+  '@isaacs/nonrecursive-glob-match@1.0.3': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
@@ -7058,8 +7067,9 @@ snapshots:
 
   minimal-polyfills@2.2.3: {}
 
-  minimatch@10.2.6:
+  minimatch@11.0.4:
     dependencies:
+      '@isaacs/nonrecursive-glob-match': 1.0.3
       brace-expansion: 5.0.12
 
   minipass@7.1.3: {}
@@ -7687,7 +7697,7 @@ snapshots:
     dependencies:
       commander: 2.20.3
 
-  trigger.dev@4.8.3(typescript@7.0.2):
+  trigger.dev@4.8.3(patch_hash=8959edd87e8e207a03b7a26ae8fc7b66160515b72efb57cf574d5f4e32c2d8a9)(typescript@7.0.2):
     dependencies:
       '@babel/parser': 7.29.11
       '@clack/prompts': 0.11.0
@@ -7722,7 +7732,7 @@ snapshots:
       json-stable-stringify: 1.3.0
       jsonc-parser: 3.2.1
       magicast: 0.3.5
-      minimatch: 10.2.6
+      minimatch: 11.0.4
       mlly: 1.8.2
       nypm: 0.5.4
       open: 10.2.0

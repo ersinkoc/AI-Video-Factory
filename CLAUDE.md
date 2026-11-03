@@ -60,6 +60,7 @@ The README is English (`README.md`) with a Turkish copy (`README-TR.md`): when y
 
 ## Versions
 - Every dependency is at its latest version and pinned **exactly** (no `^`). Very new versions blocked by pnpm's minimumReleaseAge rule are listed in `pnpm-workspace.yaml` → `minimumReleaseAgeExclude`. Run integration tests on major version jumps (e.g. postgres 4).
+- Security overrides live in `pnpm-workspace.yaml` → `overrides`. minimatch is forced to 11 (the 10.x DoS fix was never backported); trigger.dev 4.8.3 still asks for ^10 and imports `makeRe`, which 11 removed, so `patches/trigger.dev@4.8.3.patch` replaces it with a package-name glob → RegExp (`*`, `**`, `?`; same matches as minimatch 10). When upgrading trigger.dev, redo or drop the patch and check that `trigger --help` still starts.
 - Docker: postgres 18.6, redis 8.10, rustfs 1.0.4. Ports 5433/6380/9000 so they don't clash with other projects.
 
 ## Rules

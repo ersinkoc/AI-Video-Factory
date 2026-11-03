@@ -1,0 +1,17 @@
+diff --git a/dist/esm/build/externals.js b/dist/esm/build/externals.js
+index c0d5a606bf6952ee3e2d404fcae458dbf6b40bba..5324469c2b2b03a1bd1643317e1991766402b6ff 100644
+--- a/dist/esm/build/externals.js
++++ b/dist/esm/build/externals.js
+@@ -1,4 +1,11 @@
+-import { makeRe } from "minimatch";
++// minimatch 11 removed makeRe; package-name globs only need *, ** and ?.
++function makeRe(glob) {
++    const source = glob
++        .split(/(\*\*|\*|\?)/)
++        .map((part) => (part === "**" ? ".*" : part === "*" ? "[^/]*" : part === "?" ? "[^/]" : escapeRegExp(part)))
++        .join("");
++    return new RegExp(`^${source}$`);
++}
+ import { access, mkdir, symlink } from "node:fs/promises";
+ import { dirname, join } from "node:path";
+ import { readPackageJSON, resolvePackageJSON } from "pkg-types";

@@ -32,6 +32,12 @@ overrides:
   tar@<7.5.22: 7.5.22
   zod@>=4 <4.6.6: 4.6.7
   # Güvenlik (Dependabot): Prisma config (trigger.dev) ve drizzle-kit zincirindeki geliştirme araçları; yamalı sürüm
-  # üst sürümde, CLI'lar bu sürümlerle denendi. minimatch 11 trigger.dev CLI'sını kırıyor (makeRe yok): o 10'da kalır.
+  # üst sürümde, CLI'lar bu sürümlerle denendi.
   deepmerge-ts@<8.0.0: 8.0.2
   esbuild@<0.25.0: 0.25.12
+  # Güvenlik (Dependabot): minimatch <11.0.1 glob parçalarıyla hizmet aksatma; 10.x yamalanmadı. Tek kullanan trigger.dev
+  # 4.8.3 (en son sürüm, minimatch ^10 istiyor) ve 11'de kaldırılan makeRe'yi çağırıyor: patches/trigger.dev@4.8.3.patch
+  # onu paket adı kalıbından düzenli ifadeyle değiştirir (yalnız * ** ? jokerleri).
+  minimatch@<11.0.1: 11.0.4
+patchedDependencies:
+  trigger.dev@4.8.3: patches/trigger.dev@4.8.3.patch
