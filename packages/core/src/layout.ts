@@ -87,6 +87,11 @@ const isGrounded = (layer: VectorLayer, asset: VectorAsset, floorY: number) =>
   (asset.meta.grounded === undefined && layer.y !== undefined && layer.y > floorY);
 
 const entering = (layer: VectorLayer) => layer.anims.some((a) => a.type === "walk" || a.type === "slide_in" || a.type === "move");
+/**
+ * Kişinin yüzünü örten, yere basan eşya: ayaktaki kişi kenara çekilir; oturanın önündeki eşya en çok lower kesri kadar
+ * alçaltılır (kürsü 1,5 m → 0,98 m), daha fazlası gerçek ölçüye aykırı.
+ */
+export const FURNITURE = { lower: 0.35, aside: "önündeki eşya yüzünü örtüyordu, kenara çekildi", lowered: "önündeki oturanın yüzünü örtüyordu, alçaltıldı" } as const;
 
 /**
  * Konuşma mesafesi (m, iki kişinin ortaları arası) ve geçişin sınırları: aynı derinlikte sayılan z farkı, geçişin
@@ -110,9 +115,11 @@ function converse(spec: VectorShot, assets: Record<string, VectorAsset>, list: P
   const person = (p: PlacedLayer) => assets[layer(p).asset]!.kind === "character";
   const talkers = list.filter((p) => person(p) && !p.sitting && p.heldBy === undefined && !entering(layer(p))).sort((a, b) => a.x - b.x);
   const things = list.filter((o) => !person(o) && o.heldBy === undefined);
-  // Kişi kendi dışında (öbürüne göre arkasında kalan yanda) bir nesneyi gösteriyor mu.
+  // Kişi kendi dışında (öbürüne göre arkasında kalan yanda) bir nesneyi gösteriyor mu; iş başındaki (klavye, yazı) da
+  // yerinde kalır, yoksa yanına geçtiği masadan/tahtadan uzaklaşırdı.
   const anchored = (p: PlacedLayer, outward: number) =>
     layer(p).anims.some((a) => {
+      if (working(a)) return true;
       const t = a.type === "point" && a.target !== undefined ? list.find((o) => o.index === a.target) : undefined;
       return t !== undefined && !person(t) && (t.x - p.x) * outward >= 0;
     });
@@ -146,8 +153,93 @@ function converse(spec: VectorShot, assets: Record<string, VectorAsset>, list: P
   }
 }
 
+/**
+ * Önünde iş isteyen jestler (klavye, yazı) ve ellerin bölgesi: kutunun ortadaki 2 × half genişliği, ayaktan boyun
+ * low–high kesri yükseklik. reach: kişinin işine yürüyebileceği en uzak mesafe (m).
+ */
+export const WORK = { gestures: ["typing", "writing"], half: 0.3, low: 0.38, high: 0.62, reach: 2.5, note: "iş jestinin nesnesinden uzaktı, yanına geçti" } as const;
+const working = (a: VectorLayer["anims"][number]) => (WORK.gestures as readonly string[]).includes(a.type);
+
+/** İş jestinde ellerin tuvaldeki bölgesi. */
+export function workZone(p: Pick<PlacedLayer, "x" | "y" | "width" | "height">): { l: number; r: number; t: number; b: number } {
+  return { l: p.x - p.width * WORK.half, r: p.x + p.width * WORK.half, t: p.y - p.height * WORK.high, b: p.y - p.height * WORK.low };
+}
+
+/** Ellerin bölgesine değen eşya var mı (things: kişi olmayan, elde tutulmayan katmanlar). */
+export function atWork(p: Pick<PlacedLayer, "x" | "y" | "width" | "height">, things: readonly Pick<PlacedLayer, "x" | "y" | "width" | "height">[]): boolean {
+  const z = workZone(p);
+  return things.some((o) => o.x - o.width / 2 < z.r && o.x + o.width / 2 > z.l && o.y - o.height < z.b && o.y > z.t);
+}
+
+/**
+ * İş jesti yapan ayaktaki kişi işinin başına geçer (3 Kas denetimi: kişi masadan/tahtadan 300–450 px uzakta havaya
+ * yazıyordu, 923 çekimin 15'inde). Elleri bir eşyaya değmiyorsa WORK.reach içindeki, el hizasına uzanan en yakın eşyanın
+ * yakın kenarına gelir; yoksa yerinde kalır (render jesti düşürür, sahne yeniden planlanır). Oturan, giren kişiye dokunulmaz.
+ */
+function toWork(spec: VectorShot, assets: Record<string, VectorAsset>, list: PlacedLayer[], moved: (p: PlacedLayer) => void): void {
+  const layer = (p: PlacedLayer) => spec.layers[p.index]!;
+  const person = (p: PlacedLayer) => assets[layer(p).asset]!.kind === "character";
+  const things = list.filter((o) => !person(o) && o.heldBy === undefined);
+  for (const p of list) {
+    if (!person(p) || p.sitting || p.heldBy !== undefined || entering(layer(p)) || !layer(p).anims.some(working) || atWork(p, things)) continue;
+    const zone = workZone(p);
+    // Aday eşya el hizasında ama ellere değmiyor: kişiyle aynı x'te olamaz, yakın kenarı bellidir.
+    const edge = (o: PlacedLayer) => o.x - Math.sign(o.x - p.x) * (o.width / 2);
+    const reach = WORK.reach * STAGE.pxPerMeter * p.scale;
+    const o = things
+      .filter((o) => o.y - o.height < zone.b && o.y > zone.t && Math.abs(edge(o) - p.x) <= reach)
+      .sort((a, b) => Math.abs(edge(a) - p.x) - Math.abs(edge(b) - p.x))[0];
+    if (!o) continue;
+    p.x = clamp(edge(o), p.width / 2 + 20, STAGE.width - p.width / 2 - 20);
+    moved(p);
+  }
+}
+
+/**
+ * Yanından geçme: aynı derinlikte (fark same'den az) birinin durduğu yerden geçen kişi depth kadar öne alınır (önünden
+ * geçer; kameranın dibindeyse arkasından). margin: duruş yeri yolun ucundan en az bu kadar (iki genişliğin toplamının
+ * kesri) içerideyse geçiş sayılır.
+ */
+export const PASS = { depth: 0.12, same: 0.1, margin: 0.18, note: "aynı derinlikte birinin içinden geçiyordu, önünden geçiyor" } as const;
+
+/**
+ * Yürüyen/kayarak giren kişinin derinliği (3 Kas denetimi: Hesap s3-sh7'de tahtaya yürüyen Hoff aynı derinlikteki
+ * Mazor'un içinden geçiyordu; aynı yandan kayarak giren iki kişi birbirinin içinden geçerek yerine oturuyordu). Yerleşimden
+ * önce yönetmenin konumlarıyla: katman → yeni derinlik.
+ */
+function passBy(spec: VectorShot, assets: Record<string, VectorAsset>, floorY: number): Map<number, number> {
+  const people = spec.layers.flatMap((l, i) => {
+    const a = assets[l.asset];
+    if (a?.kind !== "character" || l.on !== undefined || l.heldBy !== undefined) return [];
+    const depth = l.depth ?? (l.y !== undefined ? floorToDepth(l.y, floorY) : 0.3);
+    const w = (a.meta.realHeight ?? DEFAULT_REAL_HEIGHT.character) * STAGE.pxPerMeter * depthToFloor(depth, floorY).scale * (a.width / a.height);
+    let lo = l.x;
+    let hi = l.x;
+    let end = l.x;
+    for (const x of l.anims) {
+      if ((x.type === "walk" || x.type === "move") && x.toX !== undefined) [lo, hi, end] = [Math.min(lo, x.toX), Math.max(hi, x.toX), x.toX];
+      if (x.type === "slide_in" && (x.from ?? "left") === "left") lo = Math.min(lo, -w);
+      if (x.type === "slide_in" && x.from === "right") hi = Math.max(hi, STAGE.width + w);
+    }
+    return [{ i, depth, w, lo, hi, end }];
+  });
+  const out = new Map<number, number>();
+  for (const a of people) {
+    if (a.lo === a.hi) continue;
+    for (const b of people) {
+      const da = out.get(a.i) ?? a.depth;
+      if (b === a || Math.abs(da - (out.get(b.i) ?? b.depth)) >= PASS.same) continue;
+      const m = (a.w + b.w) * PASS.margin;
+      if (b.end <= a.lo + m || b.end >= a.hi - m) continue;
+      out.set(a.i, da >= PASS.depth ? da - PASS.depth : da + PASS.depth);
+    }
+  }
+  return out;
+}
+
 export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAsset>): PlacedLayer[] {
   const floorY = floorYOf(spec, assets);
+  const passing = passBy(spec, assets, floorY);
   const placed = new Map<number, PlacedLayer>();
   const resolving = new Set<number>();
 
@@ -196,6 +288,11 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
       if (depth === undefined) {
         depth = layer.y !== undefined ? floorToDepth(layer.y, floorY) : 0.3;
         fixes.push("piksel konumu derinliğe çevrildi");
+      }
+      const pass = passing.get(i);
+      if (pass !== undefined) {
+        depth = pass;
+        fixes.push(PASS.note);
       }
       const { y, scale } = depthToFloor(depth, floorY);
       const sized = asset.kind === "prop" ? readableHeight(real, aspect, READABLE_SIDE.floor, fixes) : real;
@@ -266,6 +363,7 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
     if (!moved) break;
   }
 
+  toWork(spec, assets, list, (p) => note(p, WORK.note));
   converse(spec, assets, list, (p) => note(p, CONVERSE.note));
 
   // Öndeki karakter arkadakinin yüzünü örtmesin (3 Kas, Pascal incelemesi: masadaki komite üyelerinin yüzü öndeki
@@ -321,6 +419,39 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
       if (qx === undefined) continue;
       q.x = qx;
       note(q, "önündeki nesne yüzünü örtüyordu, kenara çekildi");
+    }
+  }
+
+  // Önündeki yere basan eşya (tezgâh, raf, kürsü) kişinin yüzünü örtmesin (3 Kas denetimi: Apple s2-sh1'de tezgâhın
+  // panosu, s2-sh6'da dükkân tezgâhı yüzü kapatıyordu; Yapay zekâ s5-sh5'te kürsüdeki yargıcın yüzü kürsünün ardındaydı).
+  // Ayaktaki kişi yüzünü açan en yakın x'e çekilir; oturan kişinin önündeki eşya en çok FURNITURE_LOWER kadar alçalır,
+  // üstündekiler onunla iner. Giren kişiye dokunulmaz (geçerken örtülmek olağan).
+  const furniture = list.filter((o) => o.grounded && o.on === undefined && o.heldBy === undefined && assets[spec.layers[o.index]!.asset]!.kind !== "character");
+  for (const q of people) {
+    if (entering(spec.layers[q.index]!)) continue;
+    const front = furniture.filter((o) => o.z > q.z);
+    // Kenara çekilirken öndeki ayaktaki kişinin arkasına da girmesin (gövdesi kutusunun ortadaki %60'ı).
+    const ahead = people.filter((p) => p !== q && p.z > q.z && !p.sitting);
+    const hides = (x: number) =>
+      front.some((o) => faceHidden(o, { ...q, x })) || ahead.some((p) => faceHidden({ ...p, width: p.width * 0.6 }, { ...q, x }));
+    if (!hides(q.x)) continue;
+    if (!q.sitting) {
+      const half = q.width / 2;
+      const x = nearest(q.x, (x) => !hides(x), half + 20, STAGE.width - half - 20);
+      if (x === undefined) continue;
+      q.x = x;
+      note(q, FURNITURE.aside);
+      continue;
+    }
+    for (const o of front.filter((o) => faceHidden(o, q))) {
+      // Yüz bandının altı (oturan render'da boyunun ~%9'u kadar iner).
+      const h = o.y - (q.y - q.height * 0.65 + q.height * 0.09);
+      if (h < o.height * (1 - FURNITURE.lower)) continue;
+      const shift = (o.height - h) * (assets[spec.layers[o.index]!.asset]!.meta.surface ?? 1);
+      o.width *= h / o.height;
+      o.height = h;
+      for (const c of list) if (c.on === o.index && !c.sitting) c.y += shift;
+      note(o, FURNITURE.lowered);
     }
   }
 

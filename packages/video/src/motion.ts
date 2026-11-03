@@ -31,6 +31,9 @@ const RIG_ONLY: VectorAnimType[] = [
   "give",
   "shake_head",
 ];
+/** Kolu meşgul eden jestler; bunlardan biri sürerken (ya da yürürken) kendiliğinden el hareketi yapılmaz. */
+export const ARM_GESTURES: VectorAnimType[] = ["wave", "point", "explain", "think", "cheer", "shrug", "surprised", "typing", "writing", "reading", "show", "clap", "hands_on_hips", "arms_crossed", "give"];
+
 /** Nesneyi yerinden oynatan animasyonlar: elde tutulan nesnede hareket tutandan gelir. */
 const DISPLACING: VectorAnimType[] = ["move", "walk", "slide_in", "float", "sway", "shake"];
 
@@ -152,13 +155,48 @@ export function gaitOf(anims: readonly VectorAnim[], p: number, t: number, baseX
   return { steps, amount: ease(Math.max(0, amount)), dir: dx > 0.01 ? 1 : dx < -0.01 ? -1 : 0 };
 }
 
-/** Jestin kalkış ve iniş süresi (sn); ön kol üst kolu bu kadar geriden izler (örtüşen hareket). */
+/** Jestin en kısa kalkış ve iniş süresi (sn); ön kol üst kolu bu kadar geriden izler (örtüşen hareket). */
 const GESTURE_RISE = 0.45;
 const GESTURE_FALL = 0.4;
 export const FOREARM_LAG = 0.08;
 /** Kalkış: önce hafifçe ters yöne (hazırlık), sonra hedefi az geçip yerine oturur. */
 const riseCurve = Easing.inOut(Easing.back(1.4));
 const fallCurve = Easing.inOut(Easing.cubic);
+
+/**
+ * Jestin dinlenme duruşundan hedef pozuna en büyük eklem yolu (derece, yaklaşık). Kalkış ve iniş en az bu yolu ortalama
+ * GESTURE_SPEED ile alacak kadar sürer: hepsi 0,45 sn'de giriyordu, kolu başa kaldıran jestte ön kol bir karede 30–45°
+ * dönüyordu (3 Kas denetimi: sarsıntı; eğrinin ortası ortalamanın ~3 katı hızlı). Tabloda olmayan jest en kısa süreyle.
+ */
+export const GESTURE_TRAVEL: Partial<Record<VectorAnim["type"], number>> = {
+  wave: 150,
+  cheer: 150,
+  think: 175,
+  show: 135,
+  clap: 150,
+  point: 160,
+  give: 100,
+  reading: 105,
+  arms_crossed: 95,
+  hands_on_hips: 75,
+  explain: 90,
+  shrug: 85,
+  typing: 50,
+  writing: 45,
+};
+/**
+ * Bilerek hızlı jestler: irkilme (surprised) bir anda olur, yavaşlatılırsa anlamı kaybolur. En kısa süreyle girer;
+ * denetim (lint.ts) kalkışındaki hızlı eklemi sıçrama saymaz.
+ */
+export const FAST_GESTURES = new Set<VectorAnim["type"]>(["surprised"]);
+/** Jestin kalkışında/inişinde eklemin ortalama hızı (°/sn); eğrinin en dik yeri bunun ~3 katı (~450°/sn, bir karede 15°). */
+export const GESTURE_SPEED = 150;
+
+/** Jestin kalkış ve iniş süreleri (sn): en kısa süre ya da eklem yolunun GESTURE_SPEED ile alındığı süre. */
+export function gestureTimes(type: VectorAnim["type"]): { rise: number; fall: number } {
+  const travel = (GESTURE_TRAVEL[type] ?? 0) / GESTURE_SPEED;
+  return { rise: Math.max(GESTURE_RISE, travel), fall: Math.max(GESTURE_FALL, travel) };
+}
 
 /**
  * Jestin bu andaki ağırlığı. Süreler saniyedir (çekim oranı değil): eskiden 4 sn'lik çekimde 0,6 sn, 9 sn'likte 1,35 sn
@@ -170,8 +208,9 @@ export function gestureWeight(p: number, a: VectorAnim, dur: number, lag = 0): n
   const since = (p - a.start) * dur - lag;
   const left = (a.end - p) * dur + lag;
   if ((a.start > 0 && since < 0) || left < 0) return 0;
-  const up = a.start <= 0 ? 1 : riseCurve(Math.min(1, since / GESTURE_RISE));
-  const down = a.end >= 1 ? 1 : fallCurve(Math.min(1, left / GESTURE_FALL));
+  const { rise, fall } = gestureTimes(a.type);
+  const up = a.start <= 0 ? 1 : riseCurve(Math.min(1, since / rise));
+  const down = a.end >= 1 ? 1 : fallCurve(Math.min(1, left / fall));
   return up * down;
 }
 

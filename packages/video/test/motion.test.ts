@@ -1,6 +1,6 @@
 import { VectorAnim } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { gaitOf, gestureWeight, hop, paceWalks, physicalAnims, travelled, type Body } from "../src/motion.ts";
+import { FAST_GESTURES, GESTURE_SPEED, GESTURE_TRAVEL, gaitOf, gestureTimes, gestureWeight, hop, paceWalks, physicalAnims, travelled, type Body } from "../src/motion.ts";
 
 const anims = (list: object[]) => list.map((a) => VectorAnim.parse(a));
 const types = (list: VectorAnim[]) => list.map((a) => a.type);
@@ -120,7 +120,8 @@ describe("hareket fiziği: yürüyüş", () => {
   });
 
   it("jest saniyeyle girer: önce hafif ters (hazırlık), sonra hedefi geçip oturur; inişte taşma yok", () => {
-    const [g] = anims([{ type: "explain", start: 0.2, end: 0.8 }]);
+    // Eklem yolu tabloda olmayan jest en kısa sürelerle (0,45 / 0,4 sn).
+    const [g] = anims([{ type: "nod", start: 0.2, end: 0.8 }]);
     const w = (sec: number, lag = 0) => gestureWeight(sec / 10, g!, 10, lag);
     expect(w(1.9)).toBe(0);
     const rise = Array.from({ length: 46 }, (_, i) => w(2 + i * 0.01));
@@ -135,6 +136,22 @@ describe("hareket fiziği: yürüyüş", () => {
     expect(w(8.1)).toBe(0);
     // Süre saniyedir: 4 sn'lik çekimde de kalkış 0,45 sn.
     expect(gestureWeight(0.2 + 0.45 / 4, g!, 4)).toBeCloseTo(1);
+  });
+
+  it("büyük yay çizen jest eklem yoluna göre yavaş girer ve iner (eklem ortalama GESTURE_SPEED); irkilme hızlı kalır", () => {
+    expect(gestureTimes("nod")).toEqual({ rise: 0.45, fall: 0.4 });
+    expect(gestureTimes("surprised")).toEqual({ rise: 0.45, fall: 0.4 });
+    expect(FAST_GESTURES.has("surprised")).toBe(true);
+    const think = gestureTimes("think");
+    expect(think.rise).toBeCloseTo(GESTURE_TRAVEL.think! / GESTURE_SPEED, 6);
+    expect(think.fall).toBe(think.rise);
+    // Kısa yollu jestte en kısa süre.
+    expect(gestureTimes("writing")).toEqual({ rise: 0.45, fall: 0.4 });
+    // Düşünme kalkışının ortası: ağırlık bir karede (1/30 sn) en çok ~%15 değişir (150° yolda ~25°'nin altı).
+    const [g] = anims([{ type: "think", start: 0.2, end: 0.8 }]);
+    const steps = Array.from({ length: 60 }, (_, i) => gestureWeight(0.2 + i / 300, g!, 10));
+    const jump = Math.max(...steps.slice(1).map((v, i) => Math.abs(v - steps[i]!)));
+    expect(jump * GESTURE_TRAVEL.think!).toBeLessThan(25);
   });
 
   it("ön kol üst kolu geriden izler: kalkışta da inişte de gecikir", () => {

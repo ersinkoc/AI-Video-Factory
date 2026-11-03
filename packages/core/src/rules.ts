@@ -44,6 +44,13 @@ export const DRAFT_REVIEW = {
   maxShare: 0.25,
 } as const;
 
+/**
+ * Animasyon denetimi (video/src/lint.ts, 3 Kas): render'dan önce her vektör çekim render'ın kurgusuyla ölçülür (ücretsiz).
+ * İzleyicinin göreceği hatası (yarım ya da örtülen yüz, çizilemeyen nesne, gösterilemeyen iş, boş kadraj) kalan sahneler
+ * bir tur yeniden planlanır: en çok sahnelerin maxShare'i (en az 1), en çok hatalıdan başlanarak.
+ */
+export const ANIMATION_LINT = { maxShare: 0.5 } as const;
+
 /** Ekrandaki yazılar: aynı anda en çok kaç tane ve hangi dikey bant (alttaki ~%25 altyazının). */
 export const TEXT_RULES = { maxTexts: 2, top: 60, bottom: 800 } as const;
 

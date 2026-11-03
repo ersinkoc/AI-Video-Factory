@@ -155,6 +155,18 @@ export const PIPELINE_MESSAGES = {
     tr: "  {id} {n} çekimde geçiyor ve kalite kapısından geçemedi: daha sade, ikon gibi bir çizimle bir kez daha deneniyor",
     en: "  {id} appears in {n} shots and failed the quality gate: trying once more with a simpler, iconic drawing",
   },
+  "log.lint.summary": {
+    tr: "  animasyon denetimi: {shots} çekim; görünür hata {issues}, kodun düzelttiği {fixed}; yeniden planlanacak sahne: {scenes}",
+    en: "  animation check: {shots} shots; visible defects {issues}, fixed in code {fixed}; scenes to replan: {scenes}",
+  },
+  "log.lint.after": {
+    tr: "  animasyon denetimi (yeniden plandan sonra): görünür hata {issues}",
+    en: "  animation check (after replanning): visible defects {issues}",
+  },
+  "log.lint.failed": {
+    tr: "⚠ animasyon denetimi yapılamadı, denetimsiz sürüyor: {error}",
+    en: "⚠ animation check could not run, continuing without it: {error}",
+  },
   "log.props.restage": {
     tr: "⚠ ana nesne çizilemedi ({names}), {n} çekimde geçiyordu: {scenes} sahnesi onsuz yeniden planlanıyor",
     en: "⚠ key prop could not be drawn ({names}), it appeared in {n} shots: replanning scene(s) {scenes} without it",

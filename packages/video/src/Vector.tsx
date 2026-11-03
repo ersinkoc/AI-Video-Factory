@@ -42,7 +42,8 @@ import { faceOf, type Bounds, type Face } from "./rigGeometry.ts";
 import { visemeAt, visemeCues, type Viseme } from "./visemes.ts";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
-import { FOREARM_LAG, gaitOf, gestureWeight, hop, paceWalks, physicalAnims, type Gait } from "./motion.ts";
+import { ARM_GESTURES, FOREARM_LAG, gaitOf, gestureWeight, hop, paceWalks, physicalAnims, type Gait } from "./motion.ts";
+import { stageAfter, stageBefore, type StagingProblem } from "./staging.ts";
 
 /**
  * Vektör sahne: Claude'un JSON tarifini deterministik olarak çizer. Bütün hareket burada hesaplanır;
@@ -88,6 +89,30 @@ interface Transform {
   rotate: number;
   opacity: number;
 }
+
+/**
+ * Sevinç (cheer): yumruklar baş hizasında ritimle inip kalkar, gövde aynı saatle seker. Eskiden kollar ±150°'de neredeyse
+ * düz (ön kol 15°) iki çubuk gibi "Y" çiziyordu, bilek dışa kırılıyordu ve aynı çekimde sevinen herkes aynı sin(t·6) ile
+ * eş zamanlı sallanıyordu (3 Kas, PHP s4-sh6: "bu kolları neden böyle"). Eller hedefe IK ile uzanır (dirsek dışta
+ * bükülü); sol el hedefleri (iskelet tuvali; sağ el aynası): pump (yumruk kulak hizasında, dirsek omuz hizasında) ile
+ * high (ön kol dik, yumruk başın üstünde) arası pompa. Uzun sevinç sahnelemede kısalır (staging.ts BURST).
+ * tempo: rad/sn aralığı (kişiye özgü, tohumdan); lag: sağ elin sol eli geriden izlemesi (rad).
+ */
+export const CHEER = { high: [70, 114], pump: [100, 178], tempo: [5.2, 6.6], lag: 0.2 } as const;
+
+/** Kişinin sevinç saati (rad): tempo ve evre tohumdan, gövde sekmesi ile yumruk pompası aynısını kullanır. */
+export function cheerPhase(seed: string, t: number): number {
+  const [lo, hi] = CHEER.tempo;
+  return t * (lo + (hi - lo) * random(`${seed}-cheer-tempo`)) + 2 * Math.PI * random(`${seed}-cheer-phase`);
+}
+
+/**
+ * Alkış: avuçlar göğsün ortasında buluşur (meet: sol avucun değdiği yer; eller birbirini geçmez), açılınca her el open px
+ * dışa ve lift px yukarı yay çizer. Ön kollar kameraya uzanır, önden fore kesri boyunda görünür: dirsekler gövdenin
+ * yanında kalır, alkışta yalnız ~30 px oynar. Eskiden ön kol açısı sabit, ön kol tam boydu: "kapalı"da eller 18 px
+ * birbirini geçip göğüste çapraz duruyordu, "açık"ta aralarında 28 px kalıyordu (3 Kas, PHP s4-sh6).
+ */
+export const CLAP = { meet: [192, 368], open: 36, lift: 23, fore: 0.6 } as const;
 
 /** Katman/yazı düzeyindeki animasyonlar: hepsi zaman ve tohumdan türetilir. dur: çekim süresi (sn), height: katman boyu (px). */
 function layerTransform(
@@ -139,7 +164,8 @@ function layerTransform(
         }
         break;
       case "cheer":
-        tr.y -= Math.abs(Math.sin(t * 6)) * 18 * envelope(p, a);
+        // Yumruk pompasıyla aynı saatte seker.
+        tr.y -= Math.abs(Math.sin(cheerPhase(seed, t))) * 18 * envelope(p, a);
         break;
       case "surprised":
         // İrkilme: pencere başında bir kez boyunun ~%3,5'i kadar sıçrar ve yerçekimiyle iner (havada asılı kalmaz).
@@ -170,8 +196,6 @@ interface PartPose {
   ty: number;
 }
 
-/** Kolu meşgul eden jestler; bunlardan biri sürerken (ya da yürürken) kendiliğinden el hareketi yapılmaz. */
-const ARM_GESTURES: VectorAnimType[] = ["wave", "point", "explain", "think", "cheer", "shrug", "surprised", "typing", "writing", "reading", "show", "clap", "hands_on_hips", "arms_crossed", "give"];
 
 const STILL: Gait = { steps: 0, amount: 0, dir: 0 };
 
@@ -380,15 +404,22 @@ function rigPose(
   // ya da yandan görünen için yok; pozdaki kişi kendiliğinden el hareketi yapmaz.
   const rest: RestPose =
     sitting || side || attention.holding || anims.some((a) => ARM_GESTURES.includes(a.type) || a.type === "talk" || a.type === "walk") ? "relaxed" : restPoseOf(seed);
-  const armsBusy = rest !== "relaxed" || gait.amount > 0.05 || anims.some((a) => ARM_GESTURES.includes(a.type) && active(p, a));
+  // Kolların serbestliği (0–1): yürüyüş ve kol jesti girdikçe azalır, bitince yavaşça geri gelir. Eskiden açık/kapalı bir
+  // koşuldu: yürüyüş durunca ya da jestin penceresi kapanınca yarıdaki kendiliğinden el hareketi tek karede tam güçle
+  // beliriyordu (3 Kas denetimi: çekimlerin %30'unda ön kol bir karede 25–70° sıçrıyordu).
+  const armWeight = Math.max(0, ...anims.filter((a) => ARM_GESTURES.includes(a.type)).map((a) => Math.min(1, Math.max(0, gestureWeight(p, a, dur)))));
+  // Yürüyüş de: başlamadan 1 sn önce susar, bitince 0,6 sn'de geri gelir (adım genliği hızdan gelir; yürüyüş yavaş
+  // başladığı için ilk karelerde sıfırdı, kalkık el 3 karede iniyordu).
+  const walking = Math.max(0, ...anims.filter((a) => a.type === "walk").map((a) => nearness(p, a, dur, 1, 0.6)));
+  const free = rest === "relaxed" ? Math.max(0, 1 - Math.max(gait.amount, walking)) * (1 - armWeight) : 0;
   // Konuşuyor (talk penceresinde) ve kelime zamanı var: jestler sesin vurgularına bağlanır.
   const talking = Math.max(0, ...anims.filter((a) => a.type === "talk").map((a) => Math.min(1, gestureWeight(p, a, dur))));
   const voice = talking > 0 ? attention.voice : undefined;
-  if (!armsBusy) {
+  if (free > 0) {
     // Konuşurken el, öbek başındaki vurgulu kelimede en uçta olacak şekilde kalkar; yoksa ara ara (rastgele zamanlı).
     const every = 4 + r("g") * 2.5;
     const phase = (t + r("gp") * every) % every;
-    const k = voice ? voice.stroke * talking : phase < 1.4 ? Math.sin((phase / 1.4) * Math.PI) : 0;
+    const k = (voice ? voice.stroke * talking : phase < 1.4 ? Math.sin((phase / 1.4) * Math.PI) : 0) * free;
     const which = voice ? voice.strokeIndex : Math.floor((t + r("gp") * every) / every);
     if (k > 0) {
       // Sağ el nesne tutuyorsa kendiliğinden jest sol elle yapılır.
@@ -429,6 +460,14 @@ function rigPose(
     part("arm-l").rotate = -20 * s * k;
     part("forearm-r").rotate = -14 * k;
     part("forearm-l").rotate = -14 * k;
+    if (attention.holding) {
+      // Elde nesne: yakın kol öne bükülü kalır, nesne göğüs önünde taşınır (öne = eksi; ön görünüşteki tutuşla aynı
+      // açılar, 3D figür dönerken kol sıçramaz). Eskiden yan pozda tutuş yoktu: profile geçen karede ön kol 60° düşüyor,
+      // nesne elle birlikte aşağı iniyordu (3 Kas denetimi).
+      part("arm-r").rotate = -HOLD_POSE.arm + 2 * s * k;
+      part("forearm-r").rotate = -HOLD_POSE.forearm;
+      part("hand-r").rotate = 0;
+    }
     part("eyes").tx = 0;
     // Yürürken gövde öne (sağa bakan çizimde saat yönü) eğilir.
     part("torso").rotate += 4 * k;
@@ -512,7 +551,8 @@ function rigPose(
         break;
       case "point": {
         // Hedefe doğru: hedef hangi yandaysa o yandaki kol, omuzdan hedefe uzanır; baş ve gözler de hedefe döner.
-        // Hedef yoksa (boş sahne) öne-yana yatay.
+        // Hedefsiz işaret buraya gelmez (sahneleme anlatmaya çevirir); savunma olarak öne-yana yatay.
+        /* v8 ignore next -- hedefsiz point stageAfter (staging.ts) ile explain olur */
         const [ax, ay] = attention.aim ?? [RIG.width * 3, RIG.pivots["arm-r"][1]];
         const hand = ax >= RIG.width / 2 ? "r" : "l";
         const [sx, sy] = RIG.pivots[`arm-${hand}`];
@@ -630,19 +670,26 @@ function rigPose(
         mix("torso", "rotate", -2 * hand);
         break;
       }
-      case "cheer":
-        mix("arm-l", "rotate", 150 + Math.sin(t * 6) * 8);
-        mix("arm-r", "rotate", -150 - Math.sin(t * 6) * 8);
-        mix("forearm-l", "rotate", -15);
-        mix("forearm-r", "rotate", 15);
-        mix("hand-l", "rotate", -12 + Math.sin(t * 6) * 10);
-        mix("hand-r", "rotate", 12 - Math.sin(t * 6) * 10);
+      case "cheer": {
+        const phase = cheerPhase(seed, t);
+        (["l", "r"] as const).forEach((s, i) => {
+          // Yumruk sekmenin tepesinde en yukarıda; sağ el biraz geriden.
+          const u = Math.abs(Math.sin(phase - i * CHEER.lag));
+          const x = CHEER.pump[0] + (CHEER.high[0] - CHEER.pump[0]) * u;
+          const y = CHEER.pump[1] + (CHEER.high[1] - CHEER.pump[1]) * u;
+          const k = reach(RIG.pivots[`arm-${s}`], [s === "l" ? x : RIG.width - x, y], ARM.upper, ARM.reach, s === "l" ? -1 : 1);
+          mix(`arm-${s}`, "rotate", k.arm);
+          mix(`forearm-${s}`, "rotate", k.forearm);
+          // Bilek düz (yumruk ön kolun ucunda); eskiden dışa kırılıyordu.
+          mix(`hand-${s}`, "rotate", 0);
+        });
         mix("brows", "ty", -8);
         mix("mouth", "sy", 1.5);
-        // Sevinçte gövde gerilir ve kollarla birlikte sallanır.
-        mix("torso", "sy", 1.04);
-        mix("torso", "rotate", Math.sin(t * 6) * 3.5);
+        // Sevinçte gövde gerilir, pompayla hafifçe yana sallanır.
+        mix("torso", "sy", 1.03);
+        mix("torso", "rotate", Math.sin(phase) * 2.5);
         break;
+      }
       case "surprised":
         // İrkilme: sağ el göğse gider (ön kol kameraya uzanır, kısalır), sol el aşağıda yana açılır. Eskiden iki el omuz
         // hizasında açılıyordu; izleyici bunu sevinç/zafer diye okuyordu (3 Kas, C# incelemesi: "endişeli değil, kollarını
@@ -745,12 +792,15 @@ function rigPose(
       case "clap": {
         // Dirsekler dışa, eller göğüs önünde ritimle birleşir (efekt sesiyle aynı saat); açılırken eller yukarı yay çizer.
         const open = 1 - clapClosed(t);
-        mix("arm-l", "rotate", 25);
-        mix("arm-r", "rotate", -25);
-        mix("forearm-l", "rotate", -(121 + 32 * open));
-        mix("forearm-r", "rotate", 121 + 32 * open);
-        mix("hand-l", "rotate", -20);
-        mix("hand-r", "rotate", 20);
+        (["l", "r"] as const).forEach((s) => {
+          const x = CLAP.meet[0] - CLAP.open * open;
+          const k = reach(RIG.pivots[`arm-${s}`], [s === "l" ? x : RIG.width - x, CLAP.meet[1] - CLAP.lift * open], ARM.upper, ARM.reach * CLAP.fore);
+          mix(`arm-${s}`, "rotate", k.arm);
+          mix(`forearm-${s}`, "rotate", k.forearm);
+          mix(`forearm-${s}`, "sy", CLAP.fore);
+          // Parmaklar yukarı, avuçlar karşı karşıya.
+          mix(`hand-${s}`, "rotate", s === "l" ? -12 : 12);
+        });
         mix("brows", "ty", -5);
         mix("mouth", "sy", 1.35);
         mix("torso", "sy", 1.01 - 0.01 * open);
@@ -840,6 +890,19 @@ function rigPose(
     }
   }
   return pose;
+}
+
+/**
+ * Animasyon penceresine yakınlık (0–1): pencerenin içinde 1; öncesinde lead sn, sonrasında tail sn boyunca yumuşakça
+ * 0'a iner. Çekim başında başlayan ve sonuna kadar süren pencere kesmeyle sürüyordur: o yanda rampa yok.
+ */
+export function nearness(p: number, a: VectorAnim, dur: number, lead: number, tail: number): number {
+  const fade = (x: number) => (x >= 1 ? 0 : 1 - x * x * (3 - 2 * x));
+  const before = (a.start - p) * dur;
+  const after = (p - a.end) * dur;
+  if (before > 0) return fade(before / lead);
+  if (after > 0) return fade(after / tail);
+  return 1;
 }
 
 /** Kameraya doğru uzanan ön kolun önden görünen boyu (klavye, yazı, okuma). */
@@ -1234,6 +1297,77 @@ export function jointSafe(cam: VectorShot["camera"], centre: boolean, people: Pl
 }
 
 /**
+ * Yüzün iskelet tuvalindeki bölgesi (köşeler): ölçülen başın ortadaki %70'i, gözlerin üstünden (baş kutusunun üst %30'u
+ * saç, şapka) çeneye kadar. Kamera (faceSafe) ve denetim (lint.ts) aynı bölgeye bakar.
+ */
+export function faceCorners(asset: VectorAsset): [number, number][] {
+  const { head, chin } = faceFor(asset);
+  const x0 = head.x + head.w * 0.15;
+  const x1 = head.x + head.w * 0.85;
+  const y0 = head.y + head.h * 0.3;
+  const y1 = Math.max(chin[1], y0 + 1);
+  return [
+    [x0, y0],
+    [x1, y0],
+    [x0, y1],
+    [x1, y1],
+  ];
+}
+
+/** Noktaları çevreleyen kutu. */
+export function boxOf(points: readonly (readonly [number, number])[]): Box {
+  const xs = points.map((c) => c[0]);
+  const ys = points.map((c) => c[1]);
+  return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+}
+
+/**
+ * Durağan kadrajda yarım yüz olmaz: çekimin başında ve sonunda her yüz (tuval kutusu) ya en az in kesriyle kadrajda ya en
+ * çok out kesriyle; ara görünüm (kenarda yarım yüz) kusurdur. step: odak aramasının adımı (tuval px). pad: yüz kutusu her
+ * yandan genişliğinin/yüksekliğinin bu kesri kadar büyütülür (jestte gövde eğilir, baş dinlenme pozundan kayar).
+ */
+export const FACE_SAFE = { in: 0.98, out: 0.02, step: 8, pad: [0.2, 0.1] } as const;
+
+/**
+ * Yarım yüzü kadrajın kenarından kurtarma (3 Kas denetimi: yakın çekim nesneye yaklaşırken kenardaki kişinin yüzü
+ * çekimin başında %50–70 kadrajda kalıyordu, sonra kayıp çıkıyordu; 923 çekimin 13'ü). Kuralı sağlamayan kadrajda odak
+ * en az kaydırmayla uyan yere geçer: yatayda, vertical ise dikeyde de (geniş planda dikey kayma eklem kesimini bozar).
+ * Odak ekranın dörtte birinden fazla kaymaz (özne kadrajda kalır); uyan yer yoksa kamera aynı kalır. Kamera yaklaşırken
+ * yüzün kenardan geçip çıkması olağandır: yalnız başı ve sonu.
+ */
+export function faceSafe(cam: VectorShot["camera"], centre: boolean, faces: Box[], vertical: boolean): VectorShot["camera"] {
+  const ok = (c: VectorShot["camera"]) =>
+    [0, 1].every((k) => {
+      const at = cameraAt(c, k, centre);
+      const f = { x: -at.tx / at.scale - (at.panX / 100) * W, y: -at.ty / at.scale, w: W / at.scale, h: H / at.scale };
+      return faces.every((face) => {
+        const [px, py] = FACE_SAFE.pad;
+        const b = { x: face.x - face.w * px, y: face.y - face.h * py, w: face.w * (1 + 2 * px), h: face.h * (1 + 2 * py) };
+        const v = overlap(b, f) / (b.w * b.h);
+        return v >= FACE_SAFE.in || v <= FACE_SAFE.out;
+      });
+    });
+  if (ok(cam)) return cam;
+  const fx = cam.focusX ?? W / 2;
+  const fy = cam.focusY ?? H / 2;
+  const z = Math.min(cam.zoomFrom, cam.zoomTo);
+  const rx = Math.floor(W / 4 / z / FACE_SAFE.step) * FACE_SAFE.step;
+  const ry = vertical ? Math.floor(H / 4 / z / FACE_SAFE.step) * FACE_SAFE.step : 0;
+  let best = cam;
+  let cost = Infinity;
+  for (let dx = -rx; dx <= rx; dx += FACE_SAFE.step)
+    for (let dy = -ry; dy <= ry; dy += FACE_SAFE.step) {
+      const d = Math.hypot(dx, dy);
+      if (d >= cost) continue;
+      const c = { ...cam, focusX: fx + dx, focusY: fy + dy };
+      if (!ok(c)) continue;
+      best = c;
+      cost = d;
+    }
+  return best;
+}
+
+/**
  * Kameranın bu karedeki dönüşümü (sol üst köşe kökenli). Odak noktası ekranda yerinde kalarak yaklaşılır (yönetmenin
  * kadrajı); centre ile (kod özneyi yeniden çerçevelediyse) odak kadrajın ortasına gelir, tuvalin dışı görünmez. Sabit
  * odak alttaki küçük nesneyi kadrajın dibinde bırakıyordu; her çekimi ortalamak ise iyi kadrajları bozuyordu.
@@ -1261,7 +1395,7 @@ export function cameraPoint(cam: VectorShot["camera"], k: number, centre: boolea
 }
 
 /** Katmanın bu karedeki hareketi: katman dönüşümü ve (karakterse) iskelet pozu. */
-interface Motion {
+export interface Motion {
   tr: Transform;
   pose?: Partial<Record<PosePart, PartPose>>;
   /** Yürürken çizilen yan görünüş (varsa). */
@@ -1320,7 +1454,7 @@ function motionOf(
   if ((sideAsset || figure) && !placed.sitting && gait.amount > 0.2) {
     if (gait.amount >= 0.5) {
       const flip = gait.dir ? gait.dir < 0 : layer.flip;
-      const pose = rigPose(anims, p, t, prefix, false, layer.expression, gait, flip, {}, dur, true);
+      const pose = rigPose(anims, p, t, prefix, false, layer.expression, gait, flip, focus.holding ? { holding: true } : {}, dur, true);
       return { tr, flip, squash: figure ? 1 : 0.6 + 0.4 * Math.min(1, (gait.amount - 0.5) / 0.3), side: sideAsset, profile: true, turn: figure && 1, pose };
     }
     // Kısmi genlik yalnız hedefe yürürken olur (yerinde yürüyüş hemen tam genlikte): yön hep vardır.
@@ -1423,25 +1557,34 @@ export function wrapTorso(svg: string, prefix: string): string {
   return `${svg.slice(0, start)}<g id="${prefix}torso">${svg.slice(start, end)}</g>${svg.slice(end)}`;
 }
 
-function handPoint(placed: PlacedLayer, layer: VectorLayer, m: Motion): [number, number] {
+/** Elin (avucun ortasının) tuvaldeki yeri: sağ el (elde tutulan nesne onu izler) ya da sol el (denetim). */
+export function handPoint(placed: PlacedLayer, layer: VectorLayer, m: Motion, side: "l" | "r" = "r"): [number, number] {
   // Karakter hareketinde poz her zaman vardır; "?? 0" yalnız tip için (Partial).
   /* v8 ignore next */
-  const a = m.pose?.["arm-r"]?.rotate ?? 0;
+  const a = m.pose?.[`arm-${side}`]?.rotate ?? 0;
   /* v8 ignore next */
-  const f = m.pose?.["forearm-r"]?.rotate ?? 0;
+  const f = m.pose?.[`forearm-${side}`]?.rotate ?? 0;
   // Kameraya uzanan (kısalan) ön kolda el de dirseğe yakın.
   /* v8 ignore next */
-  const fs = m.pose?.["forearm-r"]?.sy ?? 1;
+  const fs = m.pose?.[`forearm-${side}`]?.sy ?? 1;
   // Kısalan üst kolda dirsek omza yakın (ön kol kendi boyunda kalır).
   /* v8 ignore next */
-  const us = m.pose?.["arm-r"]?.sy ?? 1;
-  const [sx, sy] = (m.profile ? RIG_SIDE : RIG).pivots["arm-r"];
-  const [ex, ey] = (m.profile ? RIG_SIDE : RIG).pivots["forearm-r"];
+  const us = m.pose?.[`arm-${side}`]?.sy ?? 1;
+  const [sx, sy] = (m.profile ? RIG_SIDE : RIG).pivots[`arm-${side}`];
+  const [ex, ey] = (m.profile ? RIG_SIDE : RIG).pivots[`forearm-${side}`];
   const elbow = rot([ex - sx, (ey - sy) * us], a);
   const hand = rot([0, ARM.reach * fs], a + f);
-  let rx = sx + elbow[0] + hand[0];
-  let ry = sy + elbow[1] + hand[1];
-  // Üst gövde eğildiyse el de onunla gider (CSS: kalçadan çevir, ölçekle, kaydır).
+  return rigToCanvas(placed, layer, m, [sx + elbow[0] + hand[0], sy + elbow[1] + hand[1]]);
+}
+
+/**
+ * Üst gövdedeki bir iskelet noktasının (iskelet tuvali) sahne tuvalindeki yeri: gövde eğilmesi, aynalama ve katmanın
+ * bütün dönüşümü (yürüme, ölçek, dönüş) uygulanır.
+ */
+export function rigToCanvas(placed: PlacedLayer, layer: VectorLayer, m: Motion, [x, y]: readonly [number, number]): [number, number] {
+  let rx = x;
+  let ry = y;
+  // Üst gövde eğildiyse nokta da onunla gider (CSS: kalçadan çevir, ölçekle, kaydır).
   const tp = m.pose?.torso;
   if (tp) {
     const [hx, hy] = (m.profile ? RIG_SIDE : RIG).pivots.body;
@@ -1571,7 +1714,7 @@ function Layer({
  */
 const TEXT_SIZE: Record<VectorText["style"], number> = { title: 64, number: 72, subtitle: 44, quote: 44, label: 40 };
 const FONT = "Inter, 'Noto Sans', 'Segoe UI', sans-serif";
-const CARD = { x: 72, verticalX: 300, top: 64, width: 960, gap: 12 };
+export const CARD = { x: 72, verticalX: 300, top: 64, width: 960, gap: 12 };
 
 /** Kukla tuvalinde kafanın tepesi kutunun üstünden bu oranda aşağıda (RIG: kaşlar 140, gözler 170 → tepe ~80/800). */
 const HEAD_TOP = 0.1;
@@ -1974,66 +2117,124 @@ export function VectorScene({
   const voice: Voice | undefined = speech.length
     ? { viseme: visemeAt(cues, ms), nod: pulseAt(beats, ms, BEAT.nod), brow: pulseAt(phrases, ms, BEAT.brow), stroke: stroke.k, strokeIndex: stroke.index }
     : undefined;
+  const overlay = Boolean(visual.overlay);
+  const dur = visual.durationInFrames / fps;
+  const model = useMemo(() => shotModel(visual.vector!, assets, lineStyle, width, height, overlay, dur), [visual.vector, assets, lineStyle, width, height, overlay, dur]);
+  const shot = shotFrame(model, { shotId: visual.shotId, frame, fps, durationInFrames: visual.durationInFrames, voice, width, height, insets, overlay });
+  const [c0 = "#1d2433", c1 = "#3a4a66", accent = "#ffd84d"] = palette;
+  const grain = useMemo(() => textureLayer(texture, `${visual.shotId}-tex`), [texture, visual.shotId]);
+  return <ShotStage {...model} {...shot} {...{ visual, lineStyle, ambience, grain, texture, c0, c1, accent, width, height }} />;
+}
+
+/** Çekimin kareden bağımsız kurgusu: temizlenmiş varlıklar, yerleşim ve son kamera (render ve denetim aynı sonucu görür). */
+export interface ShotModel {
+  spec: VectorShot;
+  safe: Assets;
+  placed: PlacedLayer[];
+  bg?: VectorAsset;
+  /** Geniş çekimde kadrajda kalması gerekenler (kişiler ve küçük nesneler; sahneye giren hariç). */
+  keep: PlacedLayer[];
+  cam: VectorShot["camera"];
+  centre: boolean;
+  /** Dikey kadrajda sahnenin ölçeği. */
+  fit: number;
+  /** Yönetmen planında kodun düzelttiği ya da düşürdüğü jestler (staging.ts); denetim bunları bildirir. */
+  problems: StagingProblem[];
+}
+
+/** Katman sahneye giriyor ya da yer değiştiriyor (yürüme, kayma, taşınma). */
+const movingLayer = (spec: VectorShot, i: number) => spec.layers[i]!.anims.some((a) => a.type === "walk" || a.type === "slide_in" || a.type === "move");
+
+/**
+ * Çekimin kurgusu (kareden bağımsız): temizlenmiş varlıklar, sahnelenmiş plan, yerleşim ve kamera. Render (VectorScene)
+ * ve denetim (lint.ts) aynısını kullanır. dur: çekim süresi (sn).
+ */
+export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineStyle, width: number, height: number, overlay: boolean, dur: number): ShotModel {
   // Eski planlarda aynı karakterin kopyaları olabilir; render'da da tek kalır.
-  const spec = useMemo(() => uniqueCharacters(visual.vector!, (id) => assets[id]?.kind === "character"), [visual.vector, assets]);
-  const p = Math.min(1, frame / Math.max(1, visual.durationInFrames));
-  const t = frame / fps;
+  const unique = uniqueCharacters(vector, (id) => assets[id]?.kind === "character");
   // Varlıklar üretimde temizlenir; gömmeden önce bir kez daha (savunma derinliği).
-  const safe = useMemo(
-    () =>
-      Object.fromEntries(
-        Object.entries(assets).flatMap(([id, a]) => {
-          // Arka plan da dahil bütün varlıklar aynı çizgi stiline getirilir; gerçek veriden üretilenler (harita, bayrak) hariç.
-          // Bozuk tek varlık bütün vektör çekimlerini düşürmesin: o varlık atlanır.
-          try {
-            return [[id, { ...a, svg: a.meta.exact ? sanitizeSvg(a.svg) : applyLineStyle(sanitizeSvg(a.svg), lineStyle) }]];
-          } catch {
-            return [];
-          }
-        }),
-      ),
-    [assets, lineStyle],
+  const safe: Assets = Object.fromEntries(
+    Object.entries(assets).flatMap(([id, a]) => {
+      // Arka plan da dahil bütün varlıklar aynı çizgi stiline getirilir; gerçek veriden üretilenler (harita, bayrak) hariç.
+      // Bozuk tek varlık bütün vektör çekimlerini düşürmesin: o varlık atlanır.
+      try {
+        return [[id, { ...a, svg: a.meta.exact ? sanitizeSvg(a.svg) : applyLineStyle(sanitizeSvg(a.svg), lineStyle) }]];
+      } catch {
+        return [];
+      }
+    }),
   );
-  const placed = useMemo(() => resolveLayout(spec, safe), [spec, safe]);
+  // Yönetmen planının saçma jestleri: elde tutma yerleşimi değiştirdiği için önce; işaret ve iş jesti yerleşimden sonra.
+  const before = stageBefore(unique, safe, dur);
+  const placed = resolveLayout(before.spec, safe);
+  const after = stageAfter(before.spec, placed, safe, (i) => focusOf(before.spec, placed, i, (j) => safe[before.spec.layers[j]!.asset]?.kind).aim !== undefined);
+  const spec = after.spec;
+  const problems = [...before.problems, ...after.problems];
   const bg = spec.background ? safe[spec.background] : undefined;
-  const moving = (i: number) => spec.layers[i]!.anims.some((a) => a.type === "walk" || a.type === "slide_in" || a.type === "move");
+  const moving = (i: number) => movingLayer(spec, i);
   // Geniş çekimde kadrajda kalacaklar: karakterler ve sahnedeki küçük nesneler; sahneye giren (yürüyen, kayan) hariç.
-  const keep = useMemo(
-    () =>
-      placed.filter((pl) => {
-        const layer = spec.layers[pl.index]!;
-        if (moving(pl.index)) return false;
-        return safe[layer.asset]!.kind === "character" || ((pl.grounded || pl.heldBy !== undefined) && pl.width < W * 0.4);
-      }),
-    [spec, placed, safe],
-  );
-  const { cam, centre } = useMemo(() => {
+  const keep = placed.filter((pl) => {
+    const layer = spec.layers[pl.index]!;
+    if (moving(pl.index)) return false;
+    return safe[layer.asset]!.kind === "character" || ((pl.grounded || pl.heldBy !== undefined) && pl.width < W * 0.4);
+  });
+  const { cam, centre } = (() => {
     const isPerson = (pl: PlacedLayer) => safe[spec.layers[pl.index]!.asset]!.kind === "character";
     const close = closeUpCamera(spec.camera, heldFraming(placed, spec.layers), Boolean(bg?.meta.exact), (pl) => !isPerson(pl), (pl) => isPerson(pl) && !moving(pl.index));
-    if (close.centre || bg?.meta.exact) return close;
+    if (bg?.meta.exact) return close;
+    // Yerinde duranların yüzleri (dinlenme pozunda): kadrajın kenarında yarım kalmasın (faceSafe).
+    const neutral = (pl: PlacedLayer): Motion => ({ tr: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 }, flip: spec.layers[pl.index]!.flip, squash: 1 });
+    const faces = placed
+      .filter((pl) => isPerson(pl) && !moving(pl.index))
+      .map((pl) => boxOf(faceCorners(safe[spec.layers[pl.index]!.asset]!).map((c) => rigToCanvas(pl, spec.layers[pl.index]!, neutral(pl), c))));
+    if (close.centre) return { cam: faceSafe(close.cam, true, faces, true), centre: true };
     // Boş geniş çekim içeriğe yaklaşır; sahneye giren biri varsa yolu kadrajda kalsın diye yaklaşılmaz.
     const filled = placed.some((pl) => moving(pl.index)) ? undefined : fillWide(close.cam, placed, (pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character");
     const wide = filled ?? { cam: frameWide(close.cam, keep), centre: false };
     // Son olarak ayakta duranlar eklem yerinden kesilmez (oturanın bacağı masanın ardında, ona bakılmaz).
     const people = placed.filter((pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character" && !pl.sitting);
-    return { cam: jointSafe(wide.cam, wide.centre, people, keep), centre: wide.centre };
-  }, [spec, placed, bg, safe, keep]);
+    return { cam: faceSafe(jointSafe(wide.cam, wide.centre, people, keep), wide.centre, faces, false), centre: wide.centre };
+  })();
   // Dikey kadraj: geniş çekimde kenara düşen kişi/nesne kesilmesin diye sahne gerektiği kadar küçülür (contentFit).
   // Yakın çekim bilerek kırpar; harita tuvalin tamamıdır; tahta ekrana sabittir, sahneyle aynı ölçekte kalmalı.
-  const fit = useMemo(() => {
+  const fit = (() => {
     const base = stageFit(width, height);
-    if (height <= width || visual.overlay || bg?.meta.exact || Math.max(cam.zoomFrom, cam.zoomTo) >= CLOSE_UP.zoom) return base;
+    if (height <= width || overlay || bg?.meta.exact || Math.max(cam.zoomFrom, cam.zoomTo) >= CLOSE_UP.zoom) return base;
     const xs = keep.flatMap((pl) => [0, 1].flatMap((q) => [pl.x - pl.width / 2, pl.x + pl.width / 2].map((x) => cameraPoint(cam, q, centre, [x, pl.y])[0])));
     return contentFit(width, base, xs);
-  }, [width, height, visual.overlay, bg, cam, centre, keep]);
+  })();
+  return { spec, safe, placed, ...(bg ? { bg } : {}), keep, cam, centre, fit, problems };
+}
+
+/** Çekimin bir karesi: katmanların hareketi, ekrandaki yazılar, elde tutulanların yeri ve büyütme balonu. */
+export interface ShotFrame {
+  p: number;
+  t: number;
+  /** Kamera hareketinin yumuşatılmış ilerlemesi. */
+  k: number;
+  dur: number;
+  motions: Map<number, Motion>;
+  texts: ReturnType<typeof layoutTexts>;
+  drawnAt: Map<number, PlacedLayer>;
+  inset?: { asset: VectorAsset; target: [number, number]; at: [number, number] };
+}
+
+export function shotFrame(
+  model: ShotModel,
+  o: { shotId: string; frame: number; fps: number; durationInFrames: number; voice?: Voice; width: number; height: number; insets: boolean; overlay: boolean },
+): ShotFrame {
+  const { spec, safe, placed, bg, cam, centre, fit } = model;
+  const { shotId, frame, fps, voice, width, height, insets } = o;
+  const p = Math.min(1, frame / Math.max(1, o.durationInFrames));
+  const t = frame / fps;
   const k = interpolate(p, [0, 1], [0, 1], { easing: ease });
-  const dur = visual.durationInFrames / fps;
+  const dur = o.durationInFrames / fps;
   const motions = new Map(
     placed.map((pl) => {
       const layer = spec.layers[pl.index]!;
       const asset = safe[layer.asset]!;
       const focus = asset.kind === "character" ? focusOf(spec, placed, pl.index, (i) => safe[spec.layers[i]!.asset]?.kind) : {};
-      return [pl.index, motionOf(layer, asset, pl, p, t, `${visual.shotId}-${pl.index}-`, dur, focus, safe[sideAssetId(layer.asset)], voice)] as const;
+      return [pl.index, motionOf(layer, asset, pl, p, t, `${shotId}-${pl.index}-`, dur, focus, safe[sideAssetId(layer.asset)], voice)] as const;
     }),
   );
   // Kişi etiketi yazı katmanında (kamera dışında) çizilir ama kişiye aittir: yönetmenin noktasına en yakın kafaya
@@ -2068,8 +2269,6 @@ export function VectorScene({
     if (near && !faceOnScreen([x, y], cameraPoint(cam, k, centre, near.foot))) return undefined;
     return { x, y, head: near !== undefined };
   }, tagBounds(width, height, fit), bodies);
-  const [c0 = "#1d2433", c1 = "#3a4a66", accent = "#ffd84d"] = palette;
-  const grain = useMemo(() => textureLayer(texture, `${visual.shotId}-tex`), [texture, visual.shotId]);
   // Katmanların bu karedeki yeri: elde tutulan nesne tutan karakterin elini izler (avucun ortasından tutulur).
   const drawnAt = new Map(
     placed.map((pl) => {
@@ -2081,7 +2280,7 @@ export function VectorScene({
   );
   // Büyütme balonu: anlatılan küçük nesne yuvarlak pencerede büyük; yüzleri ve yazıları örtmeyen yerde.
   const inset = (() => {
-    if (!insets || bg?.meta.exact || visual.overlay) return undefined;
+    if (!insets || bg?.meta.exact || o.overlay) return undefined;
     const index = calloutTarget(spec, placed, (i) => safe[spec.layers[i]!.asset]!.kind === "prop", Math.max(cam.zoomFrom, cam.zoomTo));
     if (index === undefined) return undefined;
     const at = drawnAt.get(index)!;
@@ -2103,7 +2302,49 @@ export function VectorScene({
     ];
     return { asset: safe[spec.layers[index]!.asset]!, target, at: calloutSpot(target, avoid) };
   })();
+  return { p, t, k, dur, motions, texts, drawnAt, ...(inset ? { inset } : {}) };
+}
 
+/** Çekimin bir karesinin çizimi (shotModel + shotFrame'in sonucu). */
+function ShotStage({
+  visual,
+  spec,
+  safe,
+  placed,
+  bg,
+  cam,
+  centre,
+  fit,
+  p,
+  t,
+  k,
+  dur,
+  motions,
+  texts,
+  drawnAt,
+  inset,
+  lineStyle,
+  ambience,
+  grain,
+  texture,
+  c0,
+  c1,
+  accent,
+  width,
+  height,
+}: ShotModel &
+  ShotFrame & {
+    visual: Visual;
+    lineStyle: LineStyle;
+    ambience: Visual["ambience"];
+    grain: ReturnType<typeof textureLayer>;
+    texture: Texture;
+    c0: string;
+    c1: string;
+    accent: string;
+    width: number;
+    height: number;
+  }) {
   const stage = (
     <AbsoluteFill style={{ overflow: "hidden", background: `linear-gradient(160deg, ${c0}, ${c1})` }}>
       {lineStyle === "sketch" && (

@@ -1,4 +1,4 @@
-import { QUALITY_GATE, READABLE_SIDE, TEXT_RULES } from "@ys/core/rules";
+import { ANIMATION_LINT, QUALITY_GATE, READABLE_SIDE, TEXT_RULES } from "@ys/core/rules";
 import { getI18n } from "../../lib/locale";
 import type { MessageKey } from "../../lib/i18n";
 
@@ -39,6 +39,7 @@ export default async function RulesPage() {
         ["rules.stage.readable", { held: cm(READABLE_SIDE.held), surface: cm(READABLE_SIDE.surface), floor: cm(READABLE_SIDE.floor) }],
         ["rules.stage.text", { n: TEXT_RULES.maxTexts }],
         ["rules.stage.faces"],
+        ["rules.stage.lint", { share: Math.round(ANIMATION_LINT.maxShare * 100) }],
       ],
     },
     { title: "rules.money", rules: [["rules.money.consent"], ["rules.money.estimate"], ["rules.money.cap"]] },

@@ -4,8 +4,10 @@ import { STYLE_PACKS, styleFromPack, stylePackOf } from "../src/styles.ts";
 import { Texture, textureLayer } from "../src/texture.ts";
 
 describe("stil paketleri", () => {
-  it("en az 20 paket, kimlikler benzersiz, renkler geçerli, çizgi stili bilinen", () => {
-    expect(STYLE_PACKS.length).toBeGreaterThanOrEqual(20);
+  it("en az 48 paket (3 Kas: 28 + 24), kimlikler ve adlar benzersiz, renkler geçerli, çizgi stili bilinen", () => {
+    expect(STYLE_PACKS.length).toBeGreaterThanOrEqual(48);
+    expect(new Set(STYLE_PACKS.map((p) => p.name.tr)).size).toBe(STYLE_PACKS.length);
+    expect(new Set(STYLE_PACKS.map((p) => p.name.en)).size).toBe(STYLE_PACKS.length);
     expect(new Set(STYLE_PACKS.map((p) => p.id)).size).toBe(STYLE_PACKS.length);
     expect(new Set(STYLE_PACKS.map((p) => p.artStyle)).size).toBe(STYLE_PACKS.length);
     for (const p of STYLE_PACKS) {

@@ -9,6 +9,10 @@ vi.mock("@ys/video/render", async () => {
   const f = await import("./pipeline-fakes.ts");
   return f.renderModule();
 });
+// Animasyon denetimi kendi testlerinde (video/test/lint.test.ts); burada bulguların pipeline'da ne yaptığı.
+type LintFinding = { code: string; shotId: string; layer?: number; detail: string; replan: boolean };
+const lint = vi.hoisted(() => ({ shot: vi.fn((_v: { shotId: string; vector?: unknown }): LintFinding[] => []) }));
+vi.mock("@ys/video/lint", () => ({ lintShot: (v: { shotId: string; vector?: unknown }) => lint.shot(v) }));
 vi.mock("../src/reference.ts", async (orig) => {
   const f = await import("./pipeline-fakes.ts");
   return {
@@ -71,6 +75,8 @@ const afterCast = (input: object = {}, extra: Partial<EpisodeState> = {}) =>
 
 beforeEach(() => {
   resetFakes();
+  lint.shot.mockReset();
+  lint.shot.mockImplementation(() => []);
   refs.find.mockResolvedValue({ images: [], sources: [], keys: [] });
   refs.vectors.mockResolvedValue([]);
   refs.rasterize.mockResolvedValue({ data: new Uint8Array([1]), mimeType: "image/png" });
@@ -696,6 +702,97 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     const id = await keyframeReady(h, {}, { vectorProps: {} });
     const state = await h.pipeline.run(id, { only: "keyframes" });
     expect(state.draftReview).toMatchObject({ avg: 0, revisedScenes: [] });
+  });
+});
+
+describe("animasyon denetimi", () => {
+  const director = () =>
+    onAgent("vectorDirector", () => ({
+      shots: [{ startWord: 0, description: "fixed", ambience: "none", spec: vshot({ background: "l1", layers: [{ asset: "c1", x: 900, depth: 0.5 }] }) }],
+      newProps: [],
+      newBackgrounds: [],
+    }));
+  const summary = (h: Harness) => h.logs.find((l) => l.startsWith("  animasyon denetimi:"));
+  // Yeniden planlama sahnenin planını değiştirir; öbür sahneler planlarından yeniden kurulur.
+  const planned = (vector: object) => ({ startWord: 0, characterIds: [], locationId: "", kind: "still_motion", description: "d", imagePrompt: "", motionPrompt: "", camera: "static", ambience: "none", vector: vshot(vector) });
+  const plan = (s1: object[], s2: object[] = []) => ({ shotPlan: { scenes: [{ sceneId: "s1", shots: s1 }, { sceneId: "s2", shots: s2 }] } as never });
+
+  it("hatasız planda yeniden planlama yok; sonuç duruma yazılır", async () => {
+    const h = harness();
+    agents();
+    const id = await keyframeReady(h, { qa: false });
+    const state = await h.pipeline.run(id, { only: "keyframes" });
+    expect(state.lint).toEqual({ found: 0, revisedScenes: [], issues: [] });
+    expect(summary(h)).toMatch(/görünür hata 0, kodun düzelttiği 0; yeniden planlanacak sahne: 0$/);
+    expect(lint.shot).toHaveBeenCalled();
+    expect(callsOf("vectorDirector")).toHaveLength(0);
+  });
+
+  it("görünür hatası olan sahne bulgularla bir tur yeniden planlanır; kodun düzelttikleri ders olarak söylenir", async () => {
+    const h = harness();
+    agents();
+    director();
+    lint.shot.mockImplementation((v) => {
+      const spec = JSON.stringify(v.vector ?? {});
+      if (spec.includes("p-cup"))
+        return [
+          { code: "missing_asset", shotId: v.shotId, layer: 1, detail: "layer asset p-cup is not drawn", replan: true },
+          { code: "point_at_nothing", shotId: v.shotId, layer: 0, detail: "points with nothing beside it", replan: false },
+        ];
+      return spec.includes("b-room") ? [{ code: "face_cut", shotId: v.shotId, detail: "only 50% of the face is in frame", replan: true }] : [];
+    });
+    const id = await keyframeReady(h, { qa: false }, plan([]));
+    const state = await h.pipeline.run(id, { only: "keyframes" });
+    const feedback = (callsOf("vectorDirector")[0]!.args[0] as { feedback: string }).feedback;
+    expect(feedback.split("\n")).toEqual([
+      "- shot 1: missing_asset (layer 1): layer asset p-cup is not drawn; code fixed: point_at_nothing (layer 0): points with nothing beside it",
+      "- shot 2: face_cut: only 50% of the face is in frame",
+    ]);
+    expect(callsOf("vectorDirector")).toHaveLength(1);
+    expect(summary(h)).toMatch(/görünür hata 2, kodun düzelttiği 1; yeniden planlanacak sahne: 1$/);
+    expect(h.logs).toContain("  animasyon denetimi (yeniden plandan sonra): görünür hata 0");
+    expect(state.lint).toEqual({ found: 2, revisedScenes: ["s1"], issues: [] });
+    expect(state.shots!.filter((s) => s.sceneId === "s1").map((s) => s.id)).toEqual(["s1-sh1"]);
+  });
+
+  it("en çok sahnelerin yarısı, en çok hatalıdan başlanarak; kalan bulgular duruma yazılır", async () => {
+    const h = harness();
+    agents();
+    director();
+    const one = { code: "empty_frame", detail: "visible content covers 1% of the frame", replan: true };
+    lint.shot.mockImplementation((v) => {
+      const spec = JSON.stringify(v.vector ?? {});
+      if (spec.includes("b-room")) return [{ ...one, shotId: v.shotId }];
+      return spec.includes("p-cup") ? [{ ...one, shotId: v.shotId }, { ...one, code: "missing_asset", shotId: v.shotId }] : [];
+    });
+    const room = { background: "b-room", layers: [{ asset: "c1", x: 900, depth: 0.5 }] };
+    const cup = { background: "l1", layers: [{ asset: "p-cup", x: 600, depth: 0.4 }] };
+    const shot = (id: string, sceneId: string, startMs: number, vector: object): PlannedShotState => ({ id, sceneId, kind: "still_motion", startMs, endMs: startMs + 1000, description: id, imagePrompt: "", motionPrompt: "", camera: "static", vector: vshot(vector) });
+    const calm = { background: "l1", layers: [{ asset: "c1", x: 900, depth: 0.5 }] };
+    const id = await keyframeReady(h, { qa: false }, { ...plan([planned(room)], [planned(cup)]), shots: [shot("s1-sh1", "s1", 0, room), shot("s2-sh1", "s2", 2400, cup), shot("s2-sh2", "s2", 3400, calm)] });
+    const state = await h.pipeline.run(id, { only: "keyframes" });
+    expect(callsOf("vectorDirector")).toHaveLength(1);
+    // Bulgusu olmayan çekim nota girmez.
+    expect((callsOf("vectorDirector")[0]!.args[0] as { feedback: string }).feedback.split("\n")).toEqual([
+      "- shot 1: empty_frame: visible content covers 1% of the frame; missing_asset: visible content covers 1% of the frame",
+    ]);
+    expect(state.lint!.revisedScenes).toEqual(["s2"]);
+    expect(state.lint!.found).toBe(3);
+    expect(state.lint!.issues).toEqual([{ ...one, shotId: "s1-sh1" }]);
+    expect(h.logs).toContain("  animasyon denetimi (yeniden plandan sonra): görünür hata 1");
+  });
+
+  it("denetim çalışamazsa üretim durmaz", async () => {
+    const h = harness();
+    agents();
+    lint.shot.mockImplementation(() => {
+      throw new Error("ölçülemedi");
+    });
+    const id = await keyframeReady(h, { qa: false });
+    const state = await h.pipeline.run(id, { only: "keyframes" });
+    expect(h.logs.some((l) => l.startsWith("⚠ animasyon denetimi yapılamadı, denetimsiz sürüyor: ") && l.includes("ölçülemedi"))).toBe(true);
+    expect(state.lint).toBeUndefined();
+    expect(state.done.keyframes).toBeDefined();
   });
 });
 

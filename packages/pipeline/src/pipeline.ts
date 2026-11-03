@@ -45,6 +45,7 @@ import {
   gatePasses,
   keepShotLayers,
   uniqueCharacters,
+  ANIMATION_LINT,
   DRAFT_REVIEW,
   errorText,
   LocalizedError,
@@ -94,6 +95,7 @@ import { detectSilences, mapLimit, normalizeClip, probeDurationMs } from "./medi
 import { anonymizeNames, castAliases } from "./names.ts";
 import { generateFlag, generateMap } from "./geo.ts";
 import { boardAccent, cleanMath, renderBoard } from "./manim.ts";
+import { lintShot } from "@ys/video/lint";
 import { MUSIC_RATE, musicTrack } from "@ys/video/music";
 import { mixSfx, sfxEvents, wavFile } from "@ys/video/sfx";
 import { findReferences, findVectorSources, rasterizeSvg, searchQuery, type References } from "./reference.ts";
@@ -1548,6 +1550,54 @@ export class EpisodePipeline {
   }
 
   /**
+   * Animasyon denetimi (3 Kas, kullanıcı: "SVG ve animasyonda sıfır hata, anlamsız hata olmasın; gerektiğinde sahneleri
+   * yeniden kur"): planın her çekimi render'ın kurgusuyla ölçülür (@ys/video/lint; model yok, ücretsiz). İzleyicinin
+   * göreceği hatası olan sahneler bulgularla bir tur yeniden planlanır (en çok hatalıdan, en çok ANIMATION_LINT.maxShare);
+   * kodun anlamı koruyarak düzelttikleri (yakındaki kitap ele verilir, hedefsiz işaret anlatmaya döner) yönetmene ders
+   * olarak söylenir. Kalanları render kodun yedeğiyle çizer (saçma poz gösterilmez); bulgular state.lint'e yazılır.
+   * Denetim çalışamazsa üretim durmaz.
+   */
+  private async lintRevise(state: EpisodeState): Promise<void> {
+    const check = async () => {
+      const timeline = buildTimeline(state, (key) => key, await this.vectorAssets(state, "keyframes"));
+      return { shots: timeline.visuals.length, issues: timeline.visuals.flatMap((v) => lintShot(v, timeline.vectorAssets, { fps: timeline.fps })) };
+    };
+    try {
+      const first = await check();
+      const sceneOf = new Map(state.shots!.map((s) => [s.id, s.sceneId]));
+      const visible = (list: typeof first.issues) => list.filter((i) => i.replan);
+      const weight = (sceneId: string) => visible(first.issues).filter((i) => sceneOf.get(i.shotId) === sceneId).length;
+      const limit = Math.max(1, Math.ceil(state.script!.scenes.length * ANIMATION_LINT.maxShare));
+      const scenes = state
+        .script!.scenes.filter((sc) => weight(sc.id) > 0)
+        .sort((a, b) => weight(b.id) - weight(a.id))
+        .slice(0, limit);
+      const found = visible(first.issues).length;
+      this.log(msg("log.lint.summary", { shots: first.shots, issues: found, fixed: first.issues.length - found, scenes: scenes.length }));
+      let issues = first.issues;
+      if (scenes.length) {
+        await this.replanScenes(state, scenes, topLessons(await loadLessons(this.deps.store), "director"), (shots) =>
+          shots
+            .map((s, n) => {
+              const lines = first.issues
+                .filter((i) => i.shotId === s.id)
+                .map((i) => `${i.replan ? "" : "code fixed: "}${i.code}${i.layer === undefined ? "" : ` (layer ${i.layer})`}: ${i.detail}`);
+              return lines.length ? `- shot ${n + 1}: ${lines.join("; ")}` : "";
+            })
+            .filter(Boolean)
+            .join("\n"),
+        );
+        issues = (await check()).issues;
+        this.log(msg("log.lint.after", { issues: visible(issues).length }));
+      }
+      state.lint = { found, revisedScenes: scenes.map((s) => s.id), issues };
+      await this.save(state);
+    } catch (e) {
+      this.log(msg("log.lint.failed", { error: errorText(e) }));
+    }
+  }
+
+  /**
    * Ana nesne kapıdan geçemedi: bir kez daha, sade ve ikon gibi bir tarifle (aynı referans aramasıyla) çizilir. Reddedilen
    * ana nesnelerin çizimleri kapıda 5–6/10 ile kalmıştı (ayrıntılı çizimde bir parça yanlış: "daktilo gibi", "arka plan
    * siyah değil"); izleyicinin bir bakışta tanıması için sade biçim yeter. Yeni tarif yeni anahtara gider, bölümde bir
@@ -1588,6 +1638,7 @@ export class EpisodePipeline {
   private async vectorProps(state: EpisodeState): Promise<void> {
     await this.vectorPropsDraw(state, true);
     await this.restageMissing(state);
+    await this.lintRevise(state);
     if (state.input.qa !== false) await this.vectorRevise(state);
     else {
       state.stills = {};

@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./lint": "./src/lint.ts",
     "./render": "./src/render.ts",
     "./music": "./src/music.ts",
     "./sfx": "./src/sfx.ts",

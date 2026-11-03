@@ -1,3 +1,4 @@
+import type { LintIssue } from "@ys/video/lint";
 import type { CastOut, LessonTarget, MotionMode, ScriptOut, ShotPlanOut, StoryOut, StyleBibleOut } from "@ys/agents";
 import type { Ambience, AssetCheck, BudgetTier, FlagSpec, LineStyle, MapSpec, Msg, Timeline, VectorShot, WordTiming } from "@ys/core";
 import { stylePackOf } from "@ys/core";
@@ -247,6 +248,11 @@ export interface EpisodeState {
   short?: { path: string; title: string; scenes: string[]; sec: number; at: string };
   /** Render öncesi taslak kontrolü: ortalama puan ve yeniden planlanan sahneler. */
   draftReview?: EpisodeReview & { avg: number; revisedScenes: string[] };
+  /**
+   * Animasyon denetimi (@ys/video/lint): ilk bakışta bulunan görünür hata sayısı, yeniden planlanan sahneler ve son
+   * plandaki bulgular (replan: false olanları render kodla düzeltir).
+   */
+  lint?: { found: number; revisedScenes: string[]; issues: LintIssue[] };
   /** Senaryo doktorunun düzelttiği sorunlar (bölümler arası öğrenme için saklanır). */
   scriptNotes?: string[];
   /** Vektör modunda çekimlerin kullandığı nesneler: kimlik → tarif ve çizildiyse SVG anahtarı. */
