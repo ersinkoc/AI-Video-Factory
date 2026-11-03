@@ -12,7 +12,11 @@ const CUP: Body = { kind: "prop", grounded: false, held: true, sitting: false };
 
 describe("hareket fiziği: animasyonların ayıklanması", () => {
   it("nesne karakter jesti yapamaz; yürüyebilir (sürü, at)", () => {
-    const all = anims(["wave", "nod", "talk", "point", "shrug", "explain", "think", "cheer", "surprised", "sit", "walk", "pulse"].map((type) => ({ type })));
+    const all = anims(
+      ["wave", "nod", "talk", "point", "shrug", "explain", "think", "cheer", "surprised", "sit", "typing", "writing", "reading", "show", "clap", "hands_on_hips", "arms_crossed", "walk", "pulse"].map(
+        (type) => ({ type }),
+      ),
+    );
     expect(types(physicalAnims(all, DESK))).toEqual(["walk", "pulse"]);
     expect(types(physicalAnims(all, { ...PERSON, sitting: true }))).toHaveLength(all.length);
   });

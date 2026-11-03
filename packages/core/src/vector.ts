@@ -238,6 +238,14 @@ export const VectorAnimType = z.enum([
   "cheer",
   "surprised",
   "sit",
+  // iş jestleri (3 Kas: inceleme "anlatılan eylem yapılmıyor, karakter kaskatı duruyor")
+  "typing",
+  "writing",
+  "reading",
+  "show",
+  "clap",
+  "hands_on_hips",
+  "arms_crossed",
   // yazı
   "typewriter",
   "count_up",

@@ -33,6 +33,7 @@ vi.mock("../src/Figure3D.tsx", () => ({
   ),
 }));
 
+const { clapClosed, penDown, typingTaps } = await import("../src/gesture-timing.ts");
 const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, heldFraming, fillWide, wrapTorso, mouthOpen, stageFit, tagBounds, contentFit } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
@@ -314,6 +315,37 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(g("shin-l").sy).toBeCloseTo(1 / lift(s), 2);
     // Yer değiştirmeden yürürken yön yok: bacak yana açılmaz.
     expect(g("leg-l").rotate).toBeCloseTo(0, 5);
+  });
+
+  it("iş jestleri: klavye, yazı, okuma, gösterme, alkış, eller belde, kollar kavuşuk", () => {
+    const at = (type: string) => {
+      const r = heroAt(150, { anims: [{ type }] });
+      cleanup();
+      return r.get;
+    };
+    const t = 5;
+    let g = at("typing");
+    // Eller gövdenin önünde yan yana; ön kol kameraya uzandığı için kısalır; parmaklar sırayla iner.
+    expect([g("arm-l").rotate, g("arm-r").rotate, g("forearm-l").rotate, g("forearm-r").rotate, g("forearm-r").sy]).toEqual([-8, 8, -47, 47, 0.5]);
+    expect(g("hand-l").rotate).toBeCloseTo(-6 + 10 * typingTaps(t)[0], 1);
+    expect(g("hand-r").rotate).toBeCloseTo(6 - 10 * typingTaps(t)[1], 1);
+    g = at("writing");
+    expect(g("forearm-r").rotate).toBeCloseTo(42 + Math.sin(t * 17) * 5 * penDown(t), 1);
+    expect([g("forearm-l").rotate, g("forearm-l").sy, g("head").ty]).toEqual([-34, 0.55, 5]);
+    g = at("reading");
+    expect([g("arm-l").rotate, g("forearm-l").rotate, g("forearm-r").rotate, g("eyes").sy]).toEqual([10, -104, 104, 0.85]);
+    expect(g("eyes").tx).toBeCloseTo(Math.sin(t * 2.4) * 4, 1);
+    g = at("show");
+    expect(g("arm-r").rotate).toBeCloseTo(-132 + Math.sin(t * 2) * 3, 1);
+    expect([g("forearm-r").rotate, g("brows").ty, g("mouth").sy]).toEqual([-12, -6, 1.3]);
+    g = at("clap");
+    expect(g("forearm-r").rotate).toBeCloseTo(121 + 32 * (1 - clapClosed(t)), 1);
+    expect(g("forearm-l").rotate).toBeCloseTo(-(121 + 32 * (1 - clapClosed(t))), 1);
+    expect([g("arm-l").rotate, g("arm-r").rotate]).toEqual([25, -25]);
+    g = at("hands_on_hips");
+    expect([g("arm-l").rotate, g("arm-r").rotate, g("forearm-l").rotate, g("forearm-r").rotate]).toEqual([30, -30, -65, 65]);
+    g = at("arms_crossed");
+    expect([g("arm-l").rotate, g("arm-r").rotate, g("forearm-l").rotate, g("forearm-r").rotate, g("hand-l").rotate, g("brows").ty]).toEqual([-6, 6, -90, 84, -50, 3]);
   });
 
   it("yürüyüşte adımlar alınan yoldan gelir: yol iki katına çıkınca adım sayısı da iki katına çıkar", () => {
@@ -840,6 +872,17 @@ describe("vektör sahne: elde tutulan nesne", () => {
     expect(pose(c, "forearm-r").rotate).toBeCloseTo(-HOLD_POSE.forearm, -1);
     cleanup();
     expect(held({ anims: [{ type: "think" }] }).top).toBeCloseTo(held({}).top, -1);
+  });
+
+  it("show nesneyi elle birlikte başın üstüne kaldırır; reading göğsün önüne, gövdenin ortasına getirir", () => {
+    const rest = held({});
+    const shown = held({ anims: [{ type: "show" }] });
+    expect(shown.top).toBeLessThan(rest.top - 100);
+    const read = held({ anims: [{ type: "reading" }] });
+    // Elde tutulan nesne yandan (HOLD_POSE) gövdenin ortasına gelir.
+    expect(Math.abs(read.left + read.width / 2 - 960)).toBeLessThan(Math.abs(rest.left + rest.width / 2 - 960));
+    // Ön kol kameraya uzanıp kısaldığı için el dirseğe yakın: nesne gövdenin sağ yarısında kalır, öbür yana geçmez.
+    expect(read.left + read.width / 2).toBeGreaterThan(960);
   });
 
   it("nesne tutan karakter nesneyi gösterir: ön kol kalkar, kendiliğinden jest sol elle yapılır", () => {

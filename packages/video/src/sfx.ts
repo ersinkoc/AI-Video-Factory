@@ -1,4 +1,5 @@
 import type { Timeline, VectorAnim } from "@ys/core";
+import { GESTURE_RHYTHM } from "./gesture-timing.ts";
 import { KINETIC, kineticLength } from "./kinetic-timing.ts";
 
 /**
@@ -7,7 +8,7 @@ import { KINETIC, kineticLength } from "./kinetic-timing.ts";
  * kaymaz: aynı timeline her zaman aynı sesi verir.
  */
 
-export type Sound = "pop" | "tick" | "type" | "ding" | "whoosh" | "scratch";
+export type Sound = "pop" | "tick" | "type" | "ding" | "whoosh" | "scratch" | "clap";
 
 export interface SfxEvent {
   /** Bölüm başından kare. */
@@ -35,6 +36,7 @@ export function sfxEvents(timeline: Timeline): SfxEvent[] {
         if (a.type === "slide_in" || a.type === "spin") out.push({ frame: at(a.start), sound: "whoosh" });
         // Kalem konturları çizdiği sürece (draw_on ilerlemesinin %80'i) cızırdar.
         if (a.type === "draw_on") out.push({ frame: at(a.start), sound: "scratch", frames: Math.max(1, at(a.start + span(a) * 0.8) - at(a.start)) });
+        out.push(...gestureSounds(a, v.fromFrame, v.durationInFrames, timeline.fps));
       }
     }
     for (const text of v.vector.texts) {
@@ -81,6 +83,29 @@ export function sfxEvents(timeline: Timeline): SfxEvent[] {
   return out.sort((a, b) => a.frame - b.frame);
 }
 
+/**
+ * İş jestlerinin sesi, pozla aynı saatte (gesture-timing.ts): alkışta eller birleşince, klavyede parmak inince (her
+ * beşinci vuruş atlanır, tekdüze olmasın), yazarken kalem her satırda. Jestin girişi ve çıkışı (ilk/son %8) sessiz.
+ */
+function gestureSounds(a: VectorAnim, from: number, frames: number, fps: number): SfxEvent[] {
+  if ((a.type !== "clap" && a.type !== "typing" && a.type !== "writing") || a.end <= a.start) return [];
+  const dur = frames / fps;
+  const t0 = (a.start + (a.end - a.start) * 0.08) * dur;
+  const t1 = (a.end - (a.end - a.start) * 0.08) * dur;
+  const frame = (t: number) => from + Math.round(t * fps);
+  const out: SfxEvent[] = [];
+  const { clapHz, typingHz, strokeSec, pauseSec } = GESTURE_RHYTHM;
+  if (a.type === "clap") for (let n = Math.ceil(t0 * clapHz); n / clapHz <= t1; n++) out.push({ frame: frame(n / clapHz), sound: "clap", pitch: 1 + (n % 3) * 0.04 });
+  if (a.type === "typing") {
+    for (let n = Math.ceil(t0 * typingHz * 2); n / (typingHz * 2) <= t1; n++) if (n % 5 !== 3) out.push({ frame: frame(n / (typingHz * 2) + 1 / (typingHz * 4)), sound: "type", pitch: 0.85 + (n % 4) * 0.06 });
+  }
+  if (a.type === "writing") {
+    const cycle = strokeSec + pauseSec;
+    for (let n = Math.ceil(t0 / cycle); n * cycle + strokeSec <= t1; n++) out.push({ frame: frame(n * cycle), sound: "scratch", frames: Math.round(strokeSec * fps) });
+  }
+  return out;
+}
+
 /** Ses iz örnekleme hızı: efektler için yeterli, dosya küçük. */
 export const SFX_RATE = 24000;
 
@@ -119,6 +144,18 @@ export function synth(e: SfxEvent, fps: number, seed: number): Float32Array {
       const f = (e.sound === "tick" ? 2400 : 1700) * pitch;
       const g = e.sound === "tick" ? 0.32 : 0.2;
       return make(0.03, (t) => (Math.sin(2 * Math.PI * f * t) * Math.exp(-t * 220) + rnd() * 0.4 * Math.exp(-t * 500)) * g);
+    }
+    case "clap": {
+      // El çırpma: 1–2,5 kHz bandında gürültü; avuçlar 6 ms arayla iki kez çarpar, ardından kısa oda kuyruğu.
+      let slow = 0;
+      let band = 0;
+      return make(0.14, (t) => {
+        const x = rnd();
+        slow += 0.06 * (x - slow);
+        band += 0.45 * (x - slow - band);
+        const hit = Math.exp(-t * 70) + (t > 0.006 ? 0.7 * Math.exp(-(t - 0.006) * 70) : 0);
+        return band * (hit + 0.12 * Math.exp(-t * 14)) * 0.5 * pitch;
+      });
     }
     case "ding":
       return make(0.7, (t) => (Math.sin(2 * Math.PI * 1318.5 * t) + 0.45 * Math.sin(2 * Math.PI * 1977.8 * t)) * Math.exp(-t * 6) * 0.25);

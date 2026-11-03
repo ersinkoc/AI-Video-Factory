@@ -10,7 +10,25 @@ import { Easing } from "remotion";
  */
 
 /** Yalnız iskeletli karakterin yapabildiği jestler; nesnede anlamsızdır (nesne çizilmiş insan olsa da). */
-const RIG_ONLY: VectorAnimType[] = ["wave", "nod", "talk", "point", "shrug", "explain", "think", "cheer", "surprised", "sit"];
+const RIG_ONLY: VectorAnimType[] = [
+  "wave",
+  "nod",
+  "talk",
+  "point",
+  "shrug",
+  "explain",
+  "think",
+  "cheer",
+  "surprised",
+  "sit",
+  "typing",
+  "writing",
+  "reading",
+  "show",
+  "clap",
+  "hands_on_hips",
+  "arms_crossed",
+];
 /** Nesneyi yerinden oynatan animasyonlar: elde tutulan nesnede hareket tutandan gelir. */
 const DISPLACING: VectorAnimType[] = ["move", "walk", "slide_in", "float", "sway", "shake"];
 

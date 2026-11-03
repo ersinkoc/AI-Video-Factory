@@ -32,6 +32,7 @@ import { drawCss, drawPlan } from "./drawOn.ts";
 import { Ambience } from "./Ambience.tsx";
 import { CALLOUT, calloutScale, calloutSpot, calloutTarget, overlap, type Box } from "./callout.ts";
 import { Figure3D } from "./Figure3D.tsx";
+import { clapClosed, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
@@ -164,7 +165,7 @@ interface PartPose {
 }
 
 /** Kolu meşgul eden jestler; bunlardan biri sürerken (ya da yürürken) kendiliğinden el hareketi yapılmaz. */
-const ARM_GESTURES: VectorAnimType[] = ["wave", "point", "explain", "think", "cheer", "shrug", "surprised"];
+const ARM_GESTURES: VectorAnimType[] = ["wave", "point", "explain", "think", "cheer", "shrug", "surprised", "typing", "writing", "reading", "show", "clap", "hands_on_hips", "arms_crossed"];
 
 const STILL: Gait = { steps: 0, amount: 0, dir: 0 };
 
@@ -435,6 +436,107 @@ function rigPose(
         // Omuzlar kalkınca baş omuzların arasına iner.
         mix("head", "ty", 6);
         break;
+      // --- iş jestleri. Kol açıları ekranda saat yönü artı: sağ kol (r) artıda içe, sol kol (l) artıda dışa döner. Açılar
+      // iskeletten hesaplı (omuz x 140/260, dirsek +100, bilek +90 px): eller gövdenin önünde buluşur, çaprazlanmaz (ilk
+      // denemede ön kollar X çiziyordu). Masada ön kol kameraya doğru uzanır: önden bakışta kısalır (sy).
+      case "typing": {
+        // Eller dirsek hizasının biraz altında yan yana klavyede (masanın üstünde görünür; daha aşağıda masa örtüyordu),
+        // parmaklar sırayla iner; baş ve gözler ekrana/klavyeye eğik.
+        const [l, rr] = typingTaps(t);
+        mix("arm-l", "rotate", -8);
+        mix("arm-r", "rotate", 8);
+        mix("forearm-l", "rotate", -47);
+        mix("forearm-r", "rotate", 47);
+        mix("forearm-l", "sy", FORESHORTEN - 0.05);
+        mix("forearm-r", "sy", FORESHORTEN - 0.05);
+        mix("forearm-l", "ty", 3 * l);
+        mix("forearm-r", "ty", 3 * rr);
+        mix("hand-l", "rotate", -6 + 10 * l);
+        mix("hand-r", "rotate", 6 - 10 * rr);
+        mix("head", "ty", 4);
+        mix("brows", "ty", 2);
+        mix("torso", "rotate", Math.sin(t * 1.7) * 0.8);
+        break;
+      }
+      case "writing": {
+        // Kalemli el gövdenin önünde masada, satır boyunca küçük hızlı kıvrımlar; öbür el kâğıdı tutar; baş eğik.
+        const pen = penDown(t);
+        mix("arm-r", "rotate", 8 + Math.sin(t * 0.9) * 2);
+        mix("forearm-r", "rotate", 42 + Math.sin(t * 17) * 5 * pen);
+        mix("forearm-r", "sy", FORESHORTEN);
+        mix("hand-r", "rotate", 10 + Math.sin(t * 23) * 8 * pen);
+        mix("arm-l", "rotate", -8);
+        mix("forearm-l", "rotate", -34);
+        mix("forearm-l", "sy", FORESHORTEN);
+        mix("hand-l", "rotate", -8);
+        mix("head", "ty", 5);
+        mix("head", "rotate", 4);
+        mix("eyes", "tx", -3);
+        break;
+      }
+      case "reading": {
+        // Kitap/sayfa iki elle göğüs önünde (dirsekler hafif açık, ön kollar öne uzanır); baş eğik, gözler satırları izler.
+        mix("arm-l", "rotate", 10);
+        mix("arm-r", "rotate", -10);
+        mix("forearm-l", "rotate", -104);
+        mix("forearm-r", "rotate", 104);
+        mix("forearm-l", "sy", FORESHORTEN);
+        mix("forearm-r", "sy", FORESHORTEN);
+        mix("hand-l", "rotate", -10);
+        mix("hand-r", "rotate", 10);
+        mix("head", "ty", 4);
+        mix("eyes", "tx", Math.sin(t * 2.4) * 4);
+        mix("eyes", "sy", 0.85);
+        break;
+      }
+      case "show":
+        // Elindeki nesneyi herkes görsün diye sağ elle yukarı kaldırır; gövde öbür yana yaslanır, yüz açılır.
+        mix("arm-r", "rotate", -132 + Math.sin(t * 2) * 3);
+        mix("forearm-r", "rotate", -12);
+        mix("hand-r", "rotate", 0);
+        mix("arm-l", "rotate", 6);
+        mix("brows", "ty", -6);
+        mix("mouth", "sy", 1.3);
+        mix("torso", "rotate", -4);
+        break;
+      case "clap": {
+        // Dirsekler dışa, eller göğüs önünde ritimle birleşir (efekt sesiyle aynı saat); açılırken eller yukarı yay çizer.
+        const open = 1 - clapClosed(t);
+        mix("arm-l", "rotate", 25);
+        mix("arm-r", "rotate", -25);
+        mix("forearm-l", "rotate", -(121 + 32 * open));
+        mix("forearm-r", "rotate", 121 + 32 * open);
+        mix("hand-l", "rotate", -20);
+        mix("hand-r", "rotate", 20);
+        mix("brows", "ty", -5);
+        mix("mouth", "sy", 1.35);
+        mix("torso", "sy", 1.01 - 0.01 * open);
+        break;
+      }
+      case "hands_on_hips":
+        // Dirsekler dışa, eller kalçada: kendinden emin, kafa tutan duruş.
+        mix("arm-l", "rotate", 30);
+        mix("arm-r", "rotate", -30);
+        mix("forearm-l", "rotate", -65);
+        mix("forearm-r", "rotate", 65);
+        mix("hand-l", "rotate", -12);
+        mix("hand-r", "rotate", 12);
+        mix("torso", "sy", 1.02);
+        mix("head", "rotate", Math.sin(t * 0.8) * 2);
+        break;
+      case "arms_crossed":
+        // Ön kollar göğsün altında yatay, üst üste; eller karşı kolun altına kıvrılır. Şüpheci, bekleyen; kaş çatık.
+        mix("arm-l", "rotate", -6);
+        mix("arm-r", "rotate", 6);
+        mix("forearm-l", "rotate", -90);
+        mix("forearm-r", "rotate", 84);
+        mix("forearm-l", "sy", 0.9);
+        mix("forearm-r", "sy", 0.9);
+        mix("hand-l", "rotate", -50);
+        mix("hand-r", "rotate", 50);
+        mix("brows", "ty", 3);
+        mix("head", "rotate", -5);
+        break;
       case "nod":
         part("head").rotate += Math.sin(t * 6) * 7 * w;
         break;
@@ -454,6 +556,9 @@ function rigPose(
   }
   return pose;
 }
+
+/** Kameraya doğru uzanan ön kolun önden görünen boyu (klavye, yazı, okuma). */
+const FORESHORTEN = 0.55;
 
 /** Nesne tutan sağ kolun duruşu (derece, dışa): üst kol hafif açık, ön kol yataya yakın. */
 export const HOLD_POSE = { arm: 12, forearm: 72 };
@@ -853,10 +958,13 @@ function handPoint(placed: PlacedLayer, layer: VectorLayer, m: Motion): [number,
   const a = m.pose?.["arm-r"]?.rotate ?? 0;
   /* v8 ignore next */
   const f = m.pose?.["forearm-r"]?.rotate ?? 0;
+  // Kameraya uzanan (kısalan) ön kolda el de dirseğe yakın.
+  /* v8 ignore next */
+  const fs = m.pose?.["forearm-r"]?.sy ?? 1;
   const [sx, sy] = (m.profile ? RIG_SIDE : RIG).pivots["arm-r"];
   const [ex, ey] = (m.profile ? RIG_SIDE : RIG).pivots["forearm-r"];
   const elbow = rot([ex - sx, ey - sy], a);
-  const hand = rot([0, 112], a + f);
+  const hand = rot([0, 112 * fs], a + f);
   let rx = sx + elbow[0] + hand[0];
   let ry = sy + elbow[1] + hand[1];
   // Üst gövde eğildiyse el de onunla gider (CSS: kalçadan çevir, ölçekle, kaydır).

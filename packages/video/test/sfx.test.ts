@@ -1,5 +1,6 @@
 import { Timeline } from "@ys/core";
 import { describe, expect, it } from "vitest";
+import { GESTURE_RHYTHM } from "../src/gesture-timing.ts";
 import { KINETIC, kineticLength } from "../src/kinetic-timing.ts";
 import { mixSfx, SFX_RATE, sfxEvents, synth, wavFile, type SfxEvent } from "../src/sfx.ts";
 
@@ -65,9 +66,43 @@ describe("efekt sesi olayları", () => {
   });
 });
 
+describe("iş jestlerinin sesi", () => {
+  // Çekim 100 kare (30 fps, 3,33 sn), bölümün 100. karesinden başlar; jestin ilk ve son %8'i sessiz.
+  const gesture = (type: string, start = 0, end = 1) => sfxEvents(tl([vec({ layers: [{ asset: "hero", x: 1, anims: [{ type, start, end }] }] })]));
+  const dur = 100 / 30;
+
+  it("alkış: eller birleştiği her anda, perdesi üçlü döngüde oynayan şaplak", () => {
+    const ev = gesture("clap");
+    const { clapHz } = GESTURE_RHYTHM;
+    const first = Math.ceil(0.08 * dur * clapHz);
+    expect(ev[0]).toEqual({ frame: 100 + Math.round((first / clapHz) * 30), sound: "clap", pitch: 1 + (first % 3) * 0.04 });
+    expect(ev.every((e) => e.sound === "clap")).toBe(true);
+    expect(ev.at(-1)!.frame).toBeLessThanOrEqual(100 + Math.round(0.92 * dur * 30));
+    expect(ev).toHaveLength(Math.floor(0.92 * dur * clapHz) - first + 1);
+  });
+
+  it("klavye: parmak indikçe tuş, her beşinci vuruş boş; kısa jestte sessiz", () => {
+    const ev = gesture("typing");
+    const { typingHz } = GESTURE_RHYTHM;
+    const taps = Math.floor(0.92 * dur * typingHz * 2) - Math.ceil(0.08 * dur * typingHz * 2) + 1;
+    expect(ev.length).toBeLessThan(taps);
+    expect(ev.length).toBeGreaterThan(taps * 0.7);
+    expect(ev.every((e) => e.sound === "type")).toBe(true);
+    expect(gesture("typing", 0.5, 0.5)).toEqual([]);
+  });
+
+  it("yazı: kalem her satırda yazma süresince cızırdar; satırı bitmeyen son vuruş yok; diğer jestler sessiz", () => {
+    const ev = gesture("writing");
+    const { strokeSec, pauseSec } = GESTURE_RHYTHM;
+    expect(ev[0]).toEqual({ frame: 100 + Math.round((strokeSec + pauseSec) * 30), sound: "scratch", frames: Math.round(strokeSec * 30) });
+    expect(ev).toHaveLength(2);
+    expect(gesture("arms_crossed")).toEqual([]);
+  });
+});
+
 describe("efekt sesi sentezi", () => {
   it("her ses kısa, sınırlı ve tohumla aynı; kalem verilen süre kadar", () => {
-    const sounds: SfxEvent[] = [{ frame: 0, sound: "pop" }, { frame: 0, sound: "tick" }, { frame: 0, sound: "type" }, { frame: 0, sound: "ding" }, { frame: 0, sound: "whoosh", pitch: 2 }, { frame: 0, sound: "scratch", frames: 15 }, { frame: 0, sound: "scratch" }];
+    const sounds: SfxEvent[] = [{ frame: 0, sound: "pop" }, { frame: 0, sound: "tick" }, { frame: 0, sound: "type" }, { frame: 0, sound: "ding" }, { frame: 0, sound: "whoosh", pitch: 2 }, { frame: 0, sound: "scratch", frames: 15 }, { frame: 0, sound: "scratch" }, { frame: 0, sound: "clap" }];
     for (const e of sounds) {
       const s = synth(e, 30, 7);
       expect(s.length).toBeGreaterThan(0);
