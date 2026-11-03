@@ -1,6 +1,6 @@
 import type { Timeline, VectorAnim } from "@ys/core";
 import { GESTURE_RHYTHM } from "./gesture-timing.ts";
-import { KINETIC, kineticLength } from "./kinetic-timing.ts";
+import { KINETIC, kineticLength, revealWindow } from "./kinetic-timing.ts";
 
 /**
  * Kareye kilitli efekt sesleri: olaylar timeline'daki animasyonlardan çıkarılır (render'ın kullandığı zamanlamalarla),
@@ -40,7 +40,8 @@ export function sfxEvents(timeline: Timeline): SfxEvent[] {
       }
     }
     for (const text of v.vector.texts) {
-      for (const a of text.anims) {
+      // Yazı animasyonları render'daki gibi doğal hızında oynar (revealWindow): sesler de o pencerede.
+      for (const a of text.anims.map((x) => revealWindow(x, text.text, v.durationInFrames / timeline.fps))) {
         if (a.type === "kinetic") {
           const words = text.text.split(/\s+/).filter(Boolean).length;
           const total = kineticLength(words);

@@ -1037,8 +1037,11 @@ describe("vektör sahne: yazılar", () => {
 
   it("typewriter metni harf harf yazar; boşken plaka çizilmez", () => {
     expect(textAt({ text: "abcdefgh", anims: [{ type: "typewriter" }] }, 0).shown).toBeNull();
-    expect(textAt({ text: "abcdefgh", anims: [{ type: "typewriter" }] }, 150).shown).toBe("abcd");
-    expect(textAt({ text: "abcdefgh", anims: [{ type: "typewriter" }] }, 300).shown).toBe("abcdefgh");
+    // Doğal hızda (saniyede 16 harf): pencere bütün çekim olsa da 8 harf yarım saniyede (15 kare) yazılır, sonra durur.
+    expect(textAt({ text: "abcdefgh", anims: [{ type: "typewriter" }] }, 7).shown).toBe("abcd");
+    expect(textAt({ text: "abcdefgh", anims: [{ type: "typewriter" }] }, 150).shown).toBe("abcdefgh");
+    // Pencere doğal süreden kısaysa pencereye sığar.
+    expect(textAt({ text: "abcdefgh", anims: [{ type: "typewriter", start: 0, end: 0.02 }] }, 3).shown).toBe("abcd");
   });
 
   it("kinetic (GSAP): plaka soldan açılır, kelimeler maskenin altından sırayla yükselir, sonunda özgün hal", () => {
@@ -1052,10 +1055,12 @@ describe("vektör sahne: yazılar", () => {
     };
     // Pencereden önce plaka kapalı, kelimeler görünmez; metin bozulmadan kelimelere bölünür.
     expect(at(0)).toEqual({ clip: "inset(0% 100% 0% 0%)", text: "Altair 8800 doğdu", opacity: ["0", "0", "0"], masks: 3 });
-    // Ortada plaka açık, ilk kelime son kelimeden önde.
-    const mid = at(90);
+    // Doğal hızın 1,25 katı (~0,9 sn, 28 kare): açılırken plaka açık, ilk kelime son kelimeden önde.
+    const mid = at(46);
     expect(mid.clip).toBe("inset(0% 0% 0% 0%)");
     expect(Number(mid.opacity[0])).toBeGreaterThan(Number(mid.opacity[2]));
+    // Pencere (kare 30–150) bitmeden yazı yerine oturur ve öyle kalır: karelerin çoğunda yarım yazı görünmüyordu.
+    expect(at(90)).toMatchObject({ clip: "inset(0% 0% 0% 0%)", opacity: ["1", "1", "1"] });
     expect(at(300)).toMatchObject({ clip: "inset(0% 0% 0% 0%)", opacity: ["1", "1", "1"] });
     // Kinetik olmayan yazı bölünmez, plakasına dokunulmaz.
     expect(at(0, [])).toEqual({ clip: "", text: "Altair 8800 doğdu", opacity: [], masks: 0 });
@@ -1066,8 +1071,8 @@ describe("vektör sahne: yazılar", () => {
   });
 
   it("count_up sayıyı biçimini koruyarak sıfırdan sayar", () => {
-    const up = (text: string, frame = 150) => textAt({ text, anims: [{ type: "count_up" }] }, frame).shown;
-    // Kare 150: ease-out(0,5) = 0,875
+    // Sayaç en çok 2,2 sn (66 kare) sürer: kare 33'te ease-out(0,5) = 0,875.
+    const up = (text: string, frame = 33) => textAt({ text, anims: [{ type: "count_up" }] }, frame).shown;
     expect(up("60.000 $")).toBe("52.500 $");
     expect(up("1971")).toBe("1725");
     expect(up("3.14")).toBe("2.75");

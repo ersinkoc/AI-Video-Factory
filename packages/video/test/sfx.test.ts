@@ -1,7 +1,7 @@
 import { Timeline } from "@ys/core";
 import { describe, expect, it } from "vitest";
 import { GESTURE_RHYTHM } from "../src/gesture-timing.ts";
-import { KINETIC, kineticLength } from "../src/kinetic-timing.ts";
+import { KINETIC, kineticLength, revealWindow, TEXT_PACE } from "../src/kinetic-timing.ts";
 import { mixSfx, SFX_RATE, sfxEvents, synth, wavFile, type SfxEvent } from "../src/sfx.ts";
 
 const tl = (visuals: object[]) => Timeline.parse({ episodeId: "e", lang: "tr", durationInFrames: 300, visuals, audio: [] });
@@ -37,17 +37,20 @@ describe("efekt sesi olayları", () => {
     const ticks = ev.filter((e) => e.sound === "tick");
     expect(ticks.map((e) => e.pitch)).toEqual([1, 1.04, 1.08]);
     const total = kineticLength(3);
-    expect(ticks[0]!.frame).toBe(Math.round(100 + ((KINETIC.words + KINETIC.word * 0.55) / total) * 100));
-    expect(ticks[2]!.frame - ticks[1]!.frame).toBe(Math.round(100 + ((KINETIC.words + 2 * KINETIC.stagger + KINETIC.word * 0.55) / total) * 100) - ticks[1]!.frame);
+    // Yazı doğal hızında oynar: pencere bütün çekim (3,3 sn) olsa da çizelge 1,25 kat yavaşta (~0,9 sn) biter.
+    const span = (total * TEXT_PACE.kinetic) / (100 / 30);
+    expect(ticks[0]!.frame).toBe(Math.round(100 + ((KINETIC.words + KINETIC.word * 0.55) / total) * span * 100));
+    expect(ticks[2]!.frame - ticks[1]!.frame).toBe(Math.round(100 + ((KINETIC.words + 2 * KINETIC.stagger + KINETIC.word * 0.55) / total) * span * 100) - ticks[1]!.frame);
     expect(kineticLength(0)).toBe(KINETIC.words + KINETIC.word);
   });
 
   it("daktilo: her harf bir tuş, boşluk sessiz, en az 2 kare arayla", () => {
     const slow = sfxEvents(tl([vec({ texts: [text("ab c", [{ type: "typewriter", start: 0, end: 0.4 }])] })]));
+    // Saniyede 16 harf: 4 karakter 0,25 sn'de (7,5 kare) yazılır, pencere daha uzun olsa da.
     expect(slow.map((e) => [e.frame, e.sound])).toEqual([
-      [105, "type"],
-      [115, "type"],
-      [135, "type"],
+      [101, "type"],
+      [103, "type"],
+      [107, "type"],
     ]);
     const fast = sfxEvents(tl([vec({ texts: [text("abcdefghij", [{ type: "typewriter", start: 0, end: 0.1 }])] })]));
     const gaps = fast.slice(1).map((e, i) => e.frame - fast[i]!.frame);
@@ -63,6 +66,19 @@ describe("efekt sesi olayları", () => {
     expect(gaps.at(-1)!).toBeGreaterThan(gaps[0]!);
     expect(ticks.at(-1)!.pitch!).toBeGreaterThan(ticks[0]!.pitch!);
     expect(ev.at(-1)).toEqual({ frame: 160, sound: "ding" });
+  });
+});
+
+describe("yazı animasyonunun gerçek penceresi", () => {
+  it("kinetik, daktilo ve sayaç doğal hızında biter; kısa pencereye sığar; diğer animasyonların penceresi aynı", () => {
+    const words = { type: "kinetic", start: 0.1, end: 0.9 } as const;
+    expect(revealWindow(words, "Altair 8800 doğdu", 10).end).toBeCloseTo(0.1 + (kineticLength(3) * TEXT_PACE.kinetic) / 10, 9);
+    expect(revealWindow({ type: "typewriter", start: 0, end: 1 }, "abcdefgh", 10).end).toBeCloseTo(0.05, 9);
+    expect(revealWindow({ type: "count_up", start: 0.5, end: 1 }, "1975", 10).end).toBeCloseTo(0.72, 9);
+    const short = { type: "typewriter", start: 0, end: 0.01 } as const;
+    expect(revealWindow(short, "abcdefgh", 10)).toBe(short);
+    const fade = { type: "fade_in", start: 0, end: 1 } as const;
+    expect(revealWindow(fade, "x", 10)).toBe(fade);
   });
 });
 

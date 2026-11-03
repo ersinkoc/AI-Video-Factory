@@ -34,6 +34,7 @@ import { CALLOUT, calloutScale, calloutSpot, calloutTarget, overlap, type Box } 
 import { Figure3D } from "./Figure3D.tsx";
 import { clapClosed, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
+import { revealWindow } from "./kinetic-timing.ts";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
 import { FOREARM_LAG, gaitOf, gestureWeight, hop, paceWalks, physicalAnims, type Gait } from "./motion.ts";
@@ -1381,18 +1382,20 @@ function countUp(text: string, k: number): string {
   return text.replace(raw, frac ? `${grouped}${decimal}${frac}` : grouped);
 }
 
-function Text({ placed, p, t, seed, accent }: { placed: PlacedText; p: number; t: number; seed: string; accent: string }) {
+function Text({ placed, p, t, seed, accent, dur }: { placed: PlacedText; p: number; t: number; seed: string; accent: string; /** Çekim süresi (sn). */ dur: number }) {
   const { text, y, size, card, right } = placed;
   // Sağdaki kart: x kutunun sağ kenarı, yazı sağa yaslı.
   const x = right ? placed.x - CARD.width : placed.x;
   const tr = layerTransform(text.anims, p, t, seed, { x, y });
   let shown = text.text;
+  // Yazı animasyonları doğal hızında oynar, sonra yazı durur (revealWindow).
+  const reveal = (a: VectorAnim) => local(p, revealWindow(a, text.text, dur));
   for (const a of text.anims) {
-    if (a.type === "typewriter") shown = shown.slice(0, Math.round(shown.length * local(p, a)));
-    if (a.type === "count_up") shown = countUp(shown, Easing.out(Easing.cubic)(local(p, a)));
+    if (a.type === "typewriter") shown = shown.slice(0, Math.round(shown.length * reveal(a)));
+    if (a.type === "count_up") shown = countUp(shown, Easing.out(Easing.cubic)(reveal(a)));
   }
   const kinetic = text.anims.find((a) => a.type === "kinetic");
-  const q = kinetic && local(p, kinetic);
+  const q = kinetic && reveal(kinetic);
   const plate = useKinetic(q, wordCount(shown));
   const bar = readable(accent) ?? "#ffd84d";
   const primary = text.style === "title" || text.style === "number";
@@ -1774,7 +1777,7 @@ export function VectorScene({
       {/* Yazılar kamera hareketinin dışında: zoom onları altyazı bölgesine itmesin. */}
       <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>
         {texts.map((placed, i) => (
-          <Text key={i} placed={placed} p={p} t={t} seed={`${visual.shotId}-t${i}`} accent={accent} />
+          <Text key={i} placed={placed} p={p} t={t} seed={`${visual.shotId}-t${i}`} accent={accent} dur={dur} />
         ))}
       </div>
     </AbsoluteFill>
