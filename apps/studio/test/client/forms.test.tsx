@@ -143,6 +143,24 @@ describe("NewEpisodeForm", () => {
     expect(screen.queryByText(en("form.gallery"))).toBeNull();
   });
 
+  it("selects every registered style pack with its palette and line style", () => {
+    mockApi();
+    renderIn(<NewEpisodeForm />, "en");
+    const select = field<HTMLSelectElement>("stylePack");
+    // Seçenek doğrudan aranır: getByRole erişilebilirlik ağacını her pakette yeniden kuruyor, 64 pakette tam test
+    // turunun yükü altında 39 sn sürüp zaman aşımına düşüyordu (tek başına 1 sn).
+    const options = new Map([...select.options].map((o) => [o.value, o.textContent]));
+    for (const pack of STYLE_PACKS) {
+      expect(options.get(pack.id)).toBe(pack.name.en);
+      fireEvent.change(select, { target: { value: pack.id } });
+      expect(select.value).toBe(pack.id);
+      expect(screen.getByText(en("form.stylePack.line", { line: en(`line.${pack.lineStyle}`) }))).toBeTruthy();
+      for (const colour of pack.palette) {
+        expect(document.querySelector(`[title="${colour}"]`), pack.id).not.toBeNull();
+      }
+    }
+  });
+
   it("stil galerisi: örneği olan paketler küçük resim; tıklayınca seçilir, seçilinin örneği büyük görünür", async () => {
     mockApi();
     const samples = {
