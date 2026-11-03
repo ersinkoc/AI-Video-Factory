@@ -210,7 +210,7 @@ const MAX_SVG_BYTES = 300_000;
 const MAX_ELEMENTS = 600;
 /** Nesne çizimi olmayan Commons dosyaları (şema, logo, arma, yazı tipi, harita…): kapıya hiç gönderilmez. */
 const NOT_OBJECT =
-  /diagram|schema|scheme|схема|logo|icon|coat of arms|coa|emblem|flag|map|font|sample|layout|keyboard|pattern|chart|graph|plot|point|sign|cypher|seal|badge|symbol|network|axle|crease/i;
+  /diagram|schema|scheme|схема|logo|icon|coat of arms|bcoab|emblem|flag|mapb|font|sample|layout|keyboard|pattern|chart|graph|plot|point|signb|cypher|seal|badge|symbol|network|axle|crease/i;
 const STOP = new Set(["the", "a", "an", "of", "and", "with", "in", "on", "for", "to", "front", "view", "side"]);
 
 /**
@@ -241,7 +241,8 @@ export async function findVectorSources(
     failed = true;
     deps.log?.(msg("log.ref.vectorSearchFailed", { error: errorText(e) }));
   }
-  const wanted = words(q).filter((w) => !STOP.has(w));
+  // Sayı (yıl) konu kelimesi değildir: "Java fincan logosu 1996" araması "Plaza Tunjungan 1996.svg" getiriyordu (3 Kas).
+  const wanted = words(q).filter((w) => !STOP.has(w) && !/^\d+$/.test(w));
   const out: VectorSource[] = [];
   const items: { key: string; source: ReferenceSource }[] = [];
   for (const p of pages) {
@@ -259,10 +260,17 @@ export async function findVectorSources(
         if (res.status === 429 || res.status >= 500) failed = true;
         continue;
       }
-      const svg = sanitizeSvg(await res.text());
+      const raw = await res.text();
+      const svg = sanitizeSvg(raw);
       svgSize(svg);
       // Temizlenmiş SVG her zaman <svg ile başlar: eşleşme vardır.
       if (svg.match(/</g)!.length > MAX_ELEMENTS) continue;
+      // Yazıdan ibaret çizim (takvim, tablo, metin) nesne değildir; temizleyici <text>'i attığı için kapıda boş görünür
+      // (3 Kas, Java: "2013 calendar.svg" 601 <text>, 0 şekil; "boş beyaz görüntü", 0/10): kapıya gönderilmez. Yazılar
+      // ham dosyadan, şekiller temizlenmişten sayılır.
+      const shapes = svg.match(/<(path|rect|circle|ellipse|polygon|polyline|line|image)\b/g)?.length ?? 0;
+      const texts = raw.match(/<text\b/g)?.length ?? 0;
+      if (!shapes || texts > shapes) continue;
       const key = `${dir}/${items.length}.svg`;
       await deps.store.put(key, new TextEncoder().encode(svg), "image/svg+xml");
       const source = { title, url: info.descriptionurl ?? info.url, license };

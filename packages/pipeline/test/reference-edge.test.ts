@@ -206,6 +206,23 @@ describe("hazır SVG: kenar durumlar", () => {
     expect(await indexKey(store, "library/vector-source/")).toHaveLength(1);
   });
 
+  it("yazıdan ibaret ya da şekilsiz çizim ve yalnız sayıyla (yıl) eşleşen başlık atlanır", async () => {
+    const store = tempStore();
+    const pages = {
+      1: page("Plaza 1996.svg", info("Plaza 1996.svg"), 1),
+      2: page("Cup calendar.svg", info("Cup calendar.svg"), 2),
+      3: page("Cup empty.svg", info("Cup empty.svg"), 3),
+      4: page("Cup ok.svg", info("Cup ok.svg"), 4),
+    };
+    const bodies: Record<string, string> = {
+      "calendar.svg": '<svg viewBox="0 0 10 10"><rect width="9" height="9"/><text>1</text><text>2</text></svg>',
+      "empty.svg": '<svg viewBox="0 0 10 10"><g/></svg>',
+    };
+    const { fn } = fakeFetch((url) => (url.includes("api.php") ? wiki(pages) : new Response(bodies[url.split(" ").at(-1)!] ?? svgOk)));
+    const found = await drive(findVectorSources("cup 1996", { store, fetch: fn }, 5));
+    expect(found.map((f) => f.source.title)).toEqual(["Cup ok.svg"]);
+  });
+
   it("indirme 404 atlanır; 5xx, ağ hatası ve arama hatası önbelleğe yazdırmaz; bozuk SVG yalnız atlanır", async () => {
     const pages = {
       1: page("Cart 404.svg", info("Cart 404.svg"), 1),
