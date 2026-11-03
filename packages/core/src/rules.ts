@@ -23,6 +23,13 @@ export const QUALITY_GATE = {
   hopelessAtMost: 4,
   /** Referans görsel sayısı üst sınırı (Wikipedia + Commons). */
   maxReferences: 3,
+  /**
+   * Ana nesne: en az bu kadar çekimde geçen nesne reddedilirse bir kez daha, sade ve ikon gibi bir tarifle çizilir; o da
+   * geçemezse onu kullanan sahneler onsuz yeniden planlanır. Eskiden sessizce çekimlerden düşüyordu (3 Kas üretim
+   * verisi: BASIC'in teleprinter'ı 14, Gural'ın tabağı 12, DNA'nın röntgeni 7 çekimde planlıydı; kapıda 5–6/10 ile
+   * kalmışlardı, sahneler "boş odada kolları açık iki kişi"ye döndü).
+   */
+  keyPropShots: 2,
 } as const;
 
 /**

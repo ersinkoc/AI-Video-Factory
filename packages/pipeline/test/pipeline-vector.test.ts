@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AssetRejectedError, type EpisodeState, type PlannedShotState } from "../src/index.ts";
+import { ICONIC_PROP } from "../src/pipeline.ts";
 import { callsOf, geo, onAgent, refs, render, resetFakes } from "./pipeline-fakes.ts";
 import { CAST, CHARACTER_SVG, harness, makeState, PROP_SVG, ROOM_SVG, SCRIPT, STYLE, voiceOf, vshot, type Harness } from "./pipeline-harness.ts";
 
@@ -432,6 +433,96 @@ describe("vektör nesneleri ve önizleme (kare denetimi kapalı)", () => {
     });
     const failing = await keyframeReady(h, { qa: false }, { vectorProps: { "p-cup": { description: "another cup" } } });
     await expect(h.pipeline.run(failing, { only: "keyframes" })).rejects.toThrow("ağ hatası");
+  });
+
+  describe("ana nesne (en az iki çekimde) kapıdan geçemezse", () => {
+    const KEY_PROP = { description: "a mid-century teleprinter" };
+    // s1'in üç çekimi: ikisinde ana nesne var; biri arka plansız.
+    const keyShots = (h: Harness, gate: (description: string) => number) => {
+      agents();
+      onAgent("assetGate", (g: { name: string; description: string }) => ({ recognizable: g.name === "p-key" ? gate(g.description) : 9, fidelity: null, defects: ["looks like a typewriter"] }));
+      const shot = (id: string, startMs: number, vector: unknown): PlannedShotState =>
+        ({ id, sceneId: "s1", kind: "still_motion", startMs, endMs: startMs + 500, description: id, imagePrompt: "", motionPrompt: "", camera: "static", vector: vshot(vector) }) as PlannedShotState;
+      return keyframeReady(
+        h,
+        { qa: false },
+        {
+          vectorProps: { "p-key": { ...KEY_PROP }, "b-room": { description: "empty office", kind: "background" } },
+          shotPlan: { scenes: [{ sceneId: "s1", shots: [] }, { sceneId: "s2", shots: [] }] } as never,
+          shots: [
+            shot("s1-sh1", 0, { background: "b-room", layers: [{ asset: "p-key", x: 600, depth: 0.4 }, { asset: "c1", x: 1100, depth: 0.4 }] }),
+            shot("s1-sh2", 500, { layers: [{ asset: "p-key", x: 600, depth: 0.4 }] }),
+            shot("s1-sh3", 1000, { background: "b-room", layers: [{ asset: "c1", x: 900, depth: 0.5 }] }),
+            // Vektörsüz çekim (s2): ana nesneyi kullanmaz.
+            { id: "s2-sh1", sceneId: "s2", kind: "still_motion", startMs: 2400, endMs: 3000, description: "s2", imagePrompt: "", motionPrompt: "", camera: "static" } as PlannedShotState,
+          ],
+        },
+      );
+    };
+
+    it("bir kez sade, ikon gibi bir tarifle (aynı referans aramasıyla) yeniden çizilir; geçerse çekimde kalır", async () => {
+      const h = harness({ concurrency: 1 });
+      const id = await keyShots(h, (d) => (d.includes(ICONIC_PROP) ? 9 : 2));
+      const state = await h.pipeline.run(id, { only: "keyframes" });
+      const p = state.vectorProps!["p-key"]!;
+      expect(p.key).toMatch(/^library\/vector\/prop\//);
+      expect(p.rejected).toBeUndefined();
+      expect(p.retried).toBe(true);
+      expect(h.logs).toContain("  p-key 2 çekimde geçiyor ve kalite kapısından geçemedi: daha sade, ikon gibi bir çizimle bir kez daha deneniyor");
+      expect(h.logs.some((l) => l.includes("nesne çizilemedi"))).toBe(false);
+      // İkinci denemenin tarifi sade; referans araması aynı.
+      const keyDraws = callsOf("vectorDesigner").filter((c) => (c.args[0] as { name: string }).name === "p-key");
+      expect((keyDraws.at(-1)!.args[0] as { description: string }).description).toBe(`${KEY_PROP.description} ${ICONIC_PROP}`);
+      const queries = refs.find.mock.calls.map((c) => c[0]);
+      expect(new Set(queries.filter((q) => /teleprinter/i.test(String(q)))).size).toBe(1);
+      expect(callsOf("vectorDirector")).toHaveLength(0);
+    });
+
+    it("sade çizim de geçemezse onu kullanan sahne onsuz yeniden planlanır; bölümde ikinci kez denenmez", async () => {
+      const h = harness({ concurrency: 1 });
+      const id = await keyShots(h, () => 2);
+      let feedback = "";
+      // Yönetmen bir çekimde nesneyi yine kullanır: tek çekimde kalan nesne yeniden denenmez, çekimden düşer.
+      onAgent("vectorDirector", (input: { scene: { id: string }; feedback?: string; props: Record<string, string> }) => {
+        feedback = input.feedback ?? "";
+        expect(input.props["p-key"]).toBeUndefined();
+        return {
+          shots: [
+            { startWord: 0, description: "without", ambience: "none", spec: vshot({ background: "b-room", layers: [{ asset: "c1", x: 900, depth: 0.5 }] }) },
+            { startWord: 1, description: "still", ambience: "none", spec: vshot({ background: "b-room", layers: [{ asset: "p-key", x: 600, depth: 0.4 }] }) },
+          ],
+          newProps: [],
+          newBackgrounds: [],
+        };
+      });
+      const state = await h.pipeline.run(id, { only: "keyframes" });
+      expect(state.vectorProps!["p-key"]).toMatchObject({ rejected: true, retried: true });
+      expect(state.vectorProps!["p-key"]!.key).toBeUndefined();
+      expect(h.logs).toContain("⚠ ana nesne çizilemedi (p-key), 2 çekimde geçiyordu: s1 sahnesi onsuz yeniden planlanıyor");
+      expect(callsOf("vectorDirector")).toHaveLength(1);
+      // Yalnız nesneyi kullanan çekimler için not; tarifiyle.
+      expect(feedback.split("\n")).toHaveLength(2);
+      expect(feedback).toContain("- shot 1: p-key (a mid-century teleprinter) could not be drawn and is not available.");
+      expect(feedback).toContain("- shot 2: p-key");
+      expect(state.shotPlan!.scenes[0]!.shots.map((s) => s.description)).toEqual(["without", "still"]);
+      expect(state.shots!.map((s) => s.description)).toEqual(["without", "still"]);
+      // Sade tarifle tek deneme turu: aynı bölümde yeniden çizilmedi.
+      const iconic = callsOf("vectorDesigner").filter((c) => (c.args[0] as { description: string }).description.includes(ICONIC_PROP));
+      expect(iconic.length).toBeGreaterThan(0);
+      expect(iconic.length).toBeLessThanOrEqual(2);
+      expect(h.logs.filter((l) => l.includes("ikon gibi bir çizimle"))).toHaveLength(1);
+    });
+
+    it("sade çizimde ağ hatası aşamayı durdurur; denenmiş sayılmaz", async () => {
+      const h = harness({ concurrency: 1 });
+      const id = await keyShots(h, (d) => {
+        if (d.includes(ICONIC_PROP)) throw new Error("ağ hatası");
+        return 2;
+      });
+      await expect(h.pipeline.run(id, { only: "keyframes" })).rejects.toThrow("ağ hatası");
+      expect((await h.load(id)).vectorProps!["p-key"]).toMatchObject({ rejected: true });
+      expect((await h.load(id)).vectorProps!["p-key"]!.retried).toBeUndefined();
+    });
   });
 
   it("çizim sürerken varlıkları hazır olan çekimin karesi hemen çıkarılır; ilk hatadan sonra denenmez", async () => {

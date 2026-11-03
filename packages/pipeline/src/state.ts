@@ -261,6 +261,8 @@ export interface EpisodeState {
       reference?: string;
       /** Kalite kapısı bu tarifi reddetti: yönetmene sunulmaz, yeniden çizilmez (insan kararı ya da yeni tarif gerekir). */
       rejected?: boolean;
+      /** Ana nesne (birden çok çekimde) reddedildi ve sade, ikon gibi bir çizimle bir kez daha denendi. */
+      retried?: boolean;
     }
   >;
   /**

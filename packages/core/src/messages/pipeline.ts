@@ -151,6 +151,14 @@ export const PIPELINE_MESSAGES = {
     tr: "  {n} nesne çizilemedi, sahnelerden çıkarılacak:\n  {list}",
     en: "  {n} props could not be drawn and will be removed from the scenes:\n  {list}",
   },
+  "log.props.keyRetry": {
+    tr: "  {id} {n} çekimde geçiyor ve kalite kapısından geçemedi: daha sade, ikon gibi bir çizimle bir kez daha deneniyor",
+    en: "  {id} appears in {n} shots and failed the quality gate: trying once more with a simpler, iconic drawing",
+  },
+  "log.props.restage": {
+    tr: "⚠ ana nesne çizilemedi ({names}), {n} çekimde geçiyordu: {scenes} sahnesi onsuz yeniden planlanıyor",
+    en: "⚠ key prop could not be drawn ({names}), it appeared in {n} shots: replanning scene(s) {scenes} without it",
+  },
   "log.geo.fromLibrary": { tr: "  {id}: kütüphaneden (gerçek veri)", en: "  {id}: from the library (real data)" },
   "log.geo.map": { tr: "  {id}: harita gerçek veriden üretildi ({kb} KB)", en: "  {id}: map generated from real data ({kb} KB)" },
   "log.package.done": { tr: "  yayın paketi (başlık, açıklama, bölümler, etiketler): {path}", en: "  publishing package (title, description, chapters, tags): {path}" },

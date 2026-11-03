@@ -140,6 +140,10 @@ const GEO_VERSION = "geo2";
 
 const ASSET_VERSION: Record<VectorAssetBrief["kind"], string> = { character: "rig2", background: "shell2", prop: "meta1" };
 
+/** Kapıdan geçemeyen ana nesnenin ikinci denemesinde tarife eklenir (tasarımcı ve kapı aynı tarifi görür). */
+export const ICONIC_PROP =
+  "Draw a simple, iconic version: one bold, clear silhouette with only the few parts that make it recognisable at a glance; big flat shapes, little fine detail.";
+
 interface GateResult {
   scores: GateScores;
   /** Adı bilmeyen denetçinin tahmini. */
@@ -1467,11 +1471,8 @@ export class EpisodePipeline {
     state.draftReview = { ...review, avg, revisedScenes: scenesToFix.map((s) => s.id) };
     if (!scenesToFix.length) return;
 
-    const lessons = topLessons(book, "director");
-    const durations = Object.fromEntries(script.scenes.map((s) => [s.id, (voice[s.id]?.durationMs ?? 0) / 1000]));
-    await mapLimit(scenesToFix, this.deps.concurrency ?? 3, async (scene) => {
-      const shots = state.shots!.filter((s) => s.sceneId === scene.id);
-      const feedback = shots
+    await this.replanScenes(state, scenesToFix, topLessons(book, "director"), (shots) =>
+      shots
         .map((s, n) => {
           const r = review.shots[s.id];
           const lines = [
@@ -1481,7 +1482,31 @@ export class EpisodePipeline {
           return lines.length ? `- shot ${n + 1} (score ${r?.score ?? "?"}): ${lines.join("; ")}` : "";
         })
         .filter(Boolean)
-        .join("\n");
+        .join("\n"),
+    );
+    // Yeniden planlanan sahnelerin eski kareleri artık geçersiz: yeni planla yeniden çıkarılır.
+    const revised = new Set(scenesToFix.map((s) => s.id));
+    const redo = new Set(state.shots!.filter((s) => revised.has(s.sceneId)).map((s) => s.id));
+    const live = new Set(state.shots!.map((s) => s.id));
+    for (const id of Object.keys(/* v8 ignore next -- kareler yukarıda state.stills'e yazıldı */ state.stills ?? {})) if (redo.has(id) || !live.has(id)) delete state.stills![id];
+    await this.vectorPreviews(state, redo);
+  }
+
+  /**
+   * Sahneleri geri bildirimle yönetmene yeniden planlatır (taslak denetimi, çizilemeyen ana nesne): çekim zamanları
+   * yeniden kurulur, boy çeşitliliği yeniden uygulanır, yeni planın nesne/mekânları çizilir.
+   */
+  private async replanScenes(
+    state: EpisodeState,
+    scenes: NonNullable<EpisodeState["script"]>["scenes"],
+    lessons: string[],
+    feedbackOf: (shots: PlannedShotState[]) => string,
+  ): Promise<void> {
+    const script = state.script!;
+    const voice = state.voice!;
+    const durations = Object.fromEntries(script.scenes.map((s) => [s.id, (voice[s.id]?.durationMs ?? 0) / 1000]));
+    await mapLimit(scenes, this.deps.concurrency ?? 3, async (scene) => {
+      const feedback = feedbackOf(state.shots!.filter((s) => s.sceneId === scene.id));
       const replanned = await this.planVectorScene(state, scene, /* v8 ignore next -- süreler senaryonun bütün sahnelerinden kurulur */ durations[scene.id] ?? 0, lessons, feedback);
       const entry = state.shotPlan!.scenes.find((s) => s.sceneId === scene.id);
       if (entry) entry.shots = replanned;
@@ -1490,12 +1515,56 @@ export class EpisodePipeline {
     this.varyShots(state);
     // Düzeltilen planın yeni nesne/mekânları çizilir.
     await this.vectorPropsDraw(state);
-    // Yeniden planlanan sahnelerin eski kareleri artık geçersiz: yeni planla yeniden çıkarılır.
-    const revised = new Set(scenesToFix.map((s) => s.id));
-    const redo = new Set(state.shots.filter((s) => revised.has(s.sceneId)).map((s) => s.id));
-    const live = new Set(state.shots.map((s) => s.id));
-    for (const id of Object.keys(/* v8 ignore next -- kareler yukarıda state.stills'e yazıldı */ state.stills ?? {})) if (redo.has(id) || !live.has(id)) delete state.stills![id];
-    await this.vectorPreviews(state, redo);
+  }
+
+  /**
+   * Ana nesne (en az QUALITY_GATE.keyPropShots çekimde) kapıdan geçemedi ve sade çizimi de geçemedi: onu kullanan
+   * sahneler onsuz yeniden planlanır. Eskiden nesne render'da sessizce düşüyor, hikâyesi onun üstüne kurulu çekimler boş
+   * odada kolları açık kişilere dönüyordu (BASIC bölümü, 3 Kas: teleprinter 14 çekimde). Yönetmene reddedilen nesne
+   * zaten sunulmaz (planVectorScene); yeni bir tarif getirirse o taze çizilir.
+   */
+  private async restageMissing(state: EpisodeState): Promise<void> {
+    const props = state.vectorProps ?? {};
+    /* v8 ignore next -- kare aşaması çekim ister */
+    const shots = state.shots ?? [];
+    const assetsOf = (s: PlannedShotState) => (s.vector ? [s.vector.background, ...s.vector.layers.map((l) => l.asset)] : []);
+    const uses = (id: string) => shots.filter((s) => s.vector?.layers.some((l) => l.asset === id)).length;
+    const missing = new Set(Object.keys(props).filter((id) => props[id]!.rejected && uses(id) >= QUALITY_GATE.keyPropShots));
+    if (!missing.size) return;
+    const hit = shots.filter((s) => assetsOf(s).some((a) => a !== undefined && missing.has(a)));
+    const scenes = state.script!.scenes.filter((sc) => hit.some((s) => s.sceneId === sc.id));
+    this.log(msg("log.props.restage", { names: [...missing].join(", "), n: hit.length, scenes: scenes.map((s) => s.id).join(", ") }));
+    await this.replanScenes(state, scenes, topLessons(await loadLessons(this.deps.store), "director"), (list) =>
+      list
+        .map((s, n) => {
+          const gone = assetsOf(s).filter((a): a is string => a !== undefined && missing.has(a));
+          return gone.length
+            ? `- shot ${n + 1}: ${gone.map((id) => `${id} (${props[id]!.description})`).join(", ")} could not be drawn and is not available. Stage the shot without it: show the narrated idea with the listed props and characters (or an on-screen text), and drop gestures that only make sense with it (typing needs a keyboard, reading needs a page).`
+            : "";
+        })
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
+  /**
+   * Ana nesne kapıdan geçemedi: bir kez daha, sade ve ikon gibi bir tarifle (aynı referans aramasıyla) çizilir. Reddedilen
+   * ana nesnelerin çizimleri kapıda 5–6/10 ile kalmıştı (ayrıntılı çizimde bir parça yanlış: "daktilo gibi", "arka plan
+   * siyah değil"); izleyicinin bir bakışta tanıması için sade biçim yeter. Yeni tarif yeni anahtara gider, bölümde bir
+   * kez denenir (retried). Geçerse true.
+   */
+  private async retryKeyProp(state: EpisodeState, id: string, p: NonNullable<EpisodeState["vectorProps"]>[string], uses: number): Promise<boolean> {
+    if (p.retried || uses < QUALITY_GATE.keyPropShots) return false;
+    this.log(msg("log.props.keyRetry", { id, n: uses }));
+    try {
+      p.key = (await this.designAsset(state, "keyframes", { kind: "prop", id, name: id, description: `${p.description} ${ICONIC_PROP}`, reference: p.reference ?? searchQuery(p.description) })).key;
+      delete p.rejected;
+    } catch (e) {
+      if (!(e instanceof AssetRejectedError)) throw e;
+    }
+    p.retried = true;
+    await this.save(state);
+    return p.key !== undefined;
   }
   /** Defter şişince benzer dersler birleştirilir; küratör başarısız olursa defter olduğu gibi kalır. */
   private async curate(state: EpisodeState, book: LessonBook): Promise<void> {
@@ -1518,6 +1587,7 @@ export class EpisodePipeline {
    */
   private async vectorProps(state: EpisodeState): Promise<void> {
     await this.vectorPropsDraw(state, true);
+    await this.restageMissing(state);
     if (state.input.qa !== false) await this.vectorRevise(state);
     else {
       state.stills = {};
@@ -1575,7 +1645,9 @@ export class EpisodePipeline {
           // durdurur ki devam edince yeniden denensin; yoksa nesne sessizce videodan kaybolurdu.
           if (!(e instanceof AssetRejectedError) && !p.map && !p.flag) throw e;
           if (e instanceof AssetRejectedError) p.rejected = true;
-          failed.push(msg("log.item", { id, error: errorText(e) }));
+          // Ana nesne (birden çok çekimde) bir kez sade, ikon gibi bir çizimle yeniden denenir.
+          const uses = shots.filter((s) => s.vector?.layers.some((l) => l.asset === id)).length;
+          if (!(e instanceof AssetRejectedError) || !(await this.retryKeyProp(state, id, p, uses))) failed.push(msg("log.item", { id, error: errorText(e) }));
         }
         // Aşamayı durduran hatada kare çıkarılmaz (nesnesi eksik çekim yanıltır).
         waiting.delete(id);
