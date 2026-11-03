@@ -10,7 +10,7 @@ const GROUPS: { title: MessageKey; roles: AgentRole[] }[] = [
   { title: "models.group.story", roles: ["style-picker", "art-director", "story-architect", "screenwriter", "script-doctor", "casting-director", "pronouncer"] },
   {
     title: "models.group.vector",
-    roles: ["vector-director", "asset-planner", "vector-designer:character", "vector-designer:background", "vector-designer:prop", "vector-designer:redraw", "prop-physics", "figure-designer"],
+    roles: ["vector-director", "asset-planner", "likeness-analyst", "vector-designer:character", "vector-designer:background", "vector-designer:prop", "vector-designer:redraw", "prop-physics", "figure-designer"],
   },
   { title: "models.group.check", roles: ["asset-guess", "asset-gate", "scene-critic", "frame-inspector", "lesson-curator"] },
   { title: "models.group.publish", roles: ["packager"] },

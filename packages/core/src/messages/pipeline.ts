@@ -78,6 +78,15 @@ export const PIPELINE_MESSAGES = {
     en: "  ✗ REJECTED {name}: failed the quality gate in {draws} attempts ({score}): {defects}",
   },
   "log.asset.drawn": { tr: "  {name}: çizildi ({kb} KB, {draws} deneme)", en: "  {name}: drawn ({kb} KB, {draws} attempts)" },
+  "log.likeness.done": { tr: "  {name}: benzerlik ölçüldü ({features})", en: "  {name}: likeness measured ({features})" },
+  "log.likeness.rejected": {
+    tr: "  {name}: referanslardan benzerlik ölçülmedi ({reason}), çizim onsuz sürüyor",
+    en: "  {name}: no likeness from the references ({reason}), drawing goes on without it",
+  },
+  "log.likeness.failed": {
+    tr: "  {name}: benzerlik analizi yapılamadı, çizim onsuz sürüyor ({error})",
+    en: "  {name}: likeness analysis failed, drawing goes on without it ({error})",
+  },
   "log.figure.done": { tr: "  {name}: 3D figür hazır ({hair} saç, {top})", en: "  {name}: 3D figure ready ({hair} hair, {top})" },
   "log.figure.previews": { tr: "  3D figür önizlemesi: {n} figür", en: "  3D figure previews: {n} figures" },
   "log.figure.previewBusy": { tr: "  3D figür önizlemesi sonraya kaldı: makine başka bir render yapıyor", en: "  3D figure previews postponed: the machine is busy with another render" },

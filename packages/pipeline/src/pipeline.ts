@@ -21,6 +21,7 @@ import {
   chapterLines,
   figureDesigner,
   fullDescription,
+  likenessAnalyst,
   packager,
   pronouncer,
   type AgentImage,
@@ -39,6 +40,8 @@ import {
   AssetPlan,
   betterGate,
   FigureSpec,
+  Likeness,
+  likenessBlock,
   STYLE_CUSTOM,
   STYLE_PACKS,
   styleFromPack,
@@ -250,6 +253,11 @@ export const FRAME_RULES =
   "Single full-bleed cinematic frame filling the entire canvas edge to edge, one moment from one camera angle. No borders, no frames, no panels, no comic layout, no collage, no inset images, no split screen, no diptych, no page or paper margins. No text, no letters, no signs with writing, no watermark.";
 const FRAME_NEGATIVE =
   "border, frame, panel, comic layout, collage, inset, split screen, diptych, page margin, text, letters, writing, watermark";
+
+/** Gerçek kişinin benzerlik kaydının kütüphane anahtarı: referans sorgusundan (stil ve bölümden bağımsız). */
+export function likenessKey(query: string): string {
+  return `library/likeness/${createHash("sha256").update(query.trim().toLowerCase()).digest("hex").slice(0, 32)}.json`;
+}
 
 export class EpisodePipeline {
   /** Günlük satırı: çevrilebilir mesaj (`msg(...)`) ya da düz metin; CLI'ye Türkçesi gider. */
@@ -630,6 +638,7 @@ export class EpisodePipeline {
   /**
    * Kalite kapısı: çizim PNG'ye çevrilir, önce adı bilmeyen denetçi ne olduğunu söyler, sonra amaçlanan özneyle (ve
    * varsa gerçek referanslarla) puanlanır. Denetim yapılamazsa hata fırlatılır: denetlenmemiş çizim kullanılmaz.
+   * Gerçek kişide benzerlik kaydının ipuçları da aranır.
    */
   private async gateCheck(
     state: EpisodeState,
@@ -638,6 +647,7 @@ export class EpisodePipeline {
     svg: string,
     references: AgentImage[] | undefined,
     plan?: AssetPlan,
+    likeness?: Likeness,
   ): Promise<GateResult> {
     const drawing = await rasterizeSvg(svg);
     const guess = await this.agent(state, stage, assetGuess(drawing, this.agentDeps));
@@ -648,7 +658,7 @@ export class EpisodePipeline {
         {
           kind: brief.kind,
           name: brief.name,
-          description: gateDescription(brief.description, plan),
+          description: gateDescription(brief.description, plan, likeness),
           guess,
           drawing,
           references,
@@ -737,6 +747,29 @@ export class EpisodePipeline {
       }
       return plan;
     };
+    // Gerçek kişinin benzerlik kaydı (Daedalus analizi): konu (referans sorgusu) başına bir kez, kütüphanede; başka
+    // stilde ya da bölümde aynı kişi ücretsiz. Yalnız karakterde, referans varken ve gerçeklik açıkken.
+    let likeness: Likeness | undefined;
+    const likely = () => brief.kind === "character" && query !== undefined && state.input.realism !== false;
+    const storedLikeness = async () => (likely() ? Likeness.safeParse(await getJson(this.deps.store, likenessKey(query!))).data : undefined);
+    const makeLikeness = async (references: AgentImage[] | undefined) => {
+      if (!likely() || !references) return;
+      likeness = await storedLikeness();
+      if (likeness) return;
+      try {
+        const out = Likeness.parse(await this.agent(state, stage, likenessAnalyst({ references, description: brief.description }, this.agentDeps)));
+        await putJson(this.deps.store, likenessKey(query!), out);
+        likeness = out;
+        this.log(
+          out.observation
+            ? msg("log.likeness.done", { name: brief.name, features: out.observation.distinctive.join("; ") || "-" })
+            : msg("log.likeness.rejected", { name: brief.name, reason: out.rejection ?? out.status }),
+        );
+      } catch (e) {
+        // Benzerlik yardımcıdır: ölçülemezse plan ve referanslarla çizilir.
+        this.log(msg("log.likeness.failed", { name: brief.name, error: errorText(e) }));
+      }
+    };
     const record = (check: AssetCheck) => ((state.assetChecks ??= {})[key] = check);
     const checkOf = (r: GateResult, attempts: number): AssetCheck => ({
       kind: brief.kind,
@@ -769,7 +802,7 @@ export class EpisodePipeline {
         this.log(msg("log.asset.fromLibrary", { name: brief.name }));
         return ref;
       }
-      const res = await this.gateCheck(state, stage, brief, new TextDecoder().decode(cached), await loadRefs(), plan);
+      const res = await this.gateCheck(state, stage, brief, new TextDecoder().decode(cached), await loadRefs(), plan, await storedLikeness());
       const check = checkOf(res, 0);
       if (check.passed) {
         await putJson(this.deps.store, `${key}.json`, { ...meta, check, identity: meta.identity ?? identity });
@@ -825,6 +858,8 @@ export class EpisodePipeline {
       }
       references = await loadRefs();
     }
+    // Benzerlik planlayıcının doğruladığı referanslardan ölçülür (alakasız görselden ölçmesin).
+    await makeLikeness(references);
     let best: { svg: string; out: VectorAssetOut; res: GateResult } | undefined;
     let lastError: unknown;
     let draws = 0;
@@ -838,7 +873,7 @@ export class EpisodePipeline {
       const lessons = topLessons(await loadLessons(this.deps.store), "designer");
       let out: VectorAssetOut;
       try {
-        out = await this.agent(state, stage, vectorDesigner({ ...brief, lessons, references, fix, plan, previous: lastDrawing }, state.style!, this.agentDeps));
+        out = await this.agent(state, stage, vectorDesigner({ ...brief, lessons, references, fix, plan, likeness, previous: lastDrawing }, state.style!, this.agentDeps));
       } catch (e) {
         // Tasarımcının kendi hatası (uzun SVG'de şema denemesi tükendi, tur sınırı) bir çizim hakkını yer; plan ve önceki
         // kapı çağrıları boşa gitmesin diye varlık hemen düşürülmez. Diğer hatalar (iptal vb.) yukarı çıkar.
@@ -861,7 +896,7 @@ export class EpisodePipeline {
         this.log(msg("log.asset.invalidSvg", { name: brief.name, attempt, error: errorText(e) }));
         continue;
       }
-      const res = await this.gateCheck(state, stage, brief, svg, references, plan);
+      const res = await this.gateCheck(state, stage, brief, svg, references, plan, likeness);
       const passed = gatePasses(brief.kind, res.scores);
       if (betterGate(brief.kind, res.scores, best?.res.scores)) best = { svg, out, res };
       this.log(msg("log.asset.attempt", { name: brief.name, attempt, score: scoreText(res), mark: passed ? "✓" : "✗" }));
@@ -1060,7 +1095,10 @@ export class EpisodePipeline {
         const data = await this.deps.store.get(ref);
         if (data) references.push({ data, mimeType: "image/jpeg" });
       }
-      const out = await this.agent(state, stage, figureDesigner({ name, description, drawing, references }, this.agentDeps));
+      // Fotoğraflardan ölçülen benzerlik (varsa): çizimin belirsiz kaldığı yerde (saç rengi, yapı, gözlük).
+      const query = meta.check!.query;
+      const sheet = query ? likenessBlock(Likeness.safeParse(await getJson(this.deps.store, likenessKey(query))).data) : "";
+      const out = await this.agent(state, stage, figureDesigner({ name, description, drawing, references, ...(sheet ? { likeness: sheet } : {}) }, this.agentDeps));
       const figure = FigureSpec.parse({ ...out, finish });
       // Tarif değişti: eski önizleme artık bu figürü göstermez.
       await putJson(this.deps.store, `${key}.json`, { ...meta, figure, figurePreview: undefined });

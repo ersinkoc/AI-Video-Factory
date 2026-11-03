@@ -6,3 +6,4 @@ export * from "./review.ts";
 export * from "./package.ts";
 export * from "./figure.ts";
 export * from "./pronounce.ts";
+export * from "./likeness.ts";

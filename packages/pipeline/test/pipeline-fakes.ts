@@ -30,6 +30,7 @@ export const AGENT_NAMES = [
   "vectorDesigner",
   "propPhysics",
   "assetGate",
+  "likenessAnalyst",
   "assetPlanner",
   "assetGuess",
   "vectorDirector",

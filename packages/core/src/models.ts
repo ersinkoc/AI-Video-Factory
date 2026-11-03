@@ -28,6 +28,7 @@ export const AGENT_ROLES = {
   "frame-inspector": "cheap",
   "vector-director": "fast",
   "asset-planner": "fast",
+  "likeness-analyst": "fast",
   "vector-designer:character": "creative",
   "vector-designer:background": "fast",
   "vector-designer:prop": "fast",

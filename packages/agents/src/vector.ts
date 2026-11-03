@@ -1,4 +1,4 @@
-import { FlagSpec, MapSpec, RIG, RIG_SIDE, VectorShot, type AssetPlan, type LineStyle } from "@ys/core";
+import { FlagSpec, likenessBlock, likenessCues, MapSpec, RIG, RIG_SIDE, VectorShot, type AssetPlan, type Likeness, type LineStyle } from "@ys/core";
 import { z } from "zod";
 import { indexWords } from "./agents.ts";
 import { lessonsBlock, models, runStructured, type AgentDeps, type AgentImage, type AgentResult } from "./runner.ts";
@@ -74,6 +74,8 @@ export interface VectorAssetBrief {
   previous?: string;
   /** Çizimden önce hazırlanan plan (assetPlanner); tarifle çeliştiği yerde plan geçerlidir. */
   plan?: AssetPlan;
+  /** Gerçek kişinin referanslarından ölçülen benzerlik kaydı (likenessAnalyst). */
+  likeness?: Likeness;
   /** Karakterin yan görünüşü: front onaylı ön çizimdir (aynı kişi yandan çizilir; references ön çizimin görüntüsü). */
   view?: "side";
   front?: string;
@@ -170,11 +172,15 @@ export function planBlock(plan: AssetPlan): string {
  * de yanında gider: plan nesnenin türünü değiştirirse (dergi kapağı → kapaktaki bilgisayar) kapı bunu yakalasın; eskiden
  * yalnız plana bakıyor, "dergi" diye Altair panelini geçiriyordu (1 Kas).
  */
-export function gateDescription(description: string, plan?: AssetPlan): string {
-  if (!plan) return description;
+export function gateDescription(description: string, plan?: AssetPlan, likeness?: Likeness): string {
+  // Gerçek kişide referanslardan ölçülen benzerlik ipuçları da aranır: kusur listesi yeniden çizime somut not olur.
+  const cues = likenessCues(likeness);
+  const looks = cues.length ? `Likeness measured from the reference photos (the drawing should show these, simplified): ${cues.join("; ")}` : "";
+  if (!plan) return [description, looks].filter(Boolean).join("\n");
   return [
     plan.subject,
     plan.cues.length && `Must show: ${plan.cues.join("; ")}`,
+    looks,
     plan.moved.length && `Deliberately NOT in this asset (do not penalise their absence): ${plan.moved.join("; ")}`,
     `Original request (the drawing must still be this kind of thing): ${description}`,
   ]
@@ -231,7 +237,7 @@ ${LINE_STYLE_RULES[brief.lineStyle ?? "outline"]}${
 ${canvas}${isolated}
 ${SVG_RULES}${lessonsBlock(brief.lessons)}`,
       prompt: `${brief.kind === "character" ? "Character" : brief.kind === "background" ? "Location" : "Object"}: ${brief.name}
-${brief.description}${brief.plan ? `\n\n${planBlock(brief.plan)}` : ""}${brief.variation ? `\nThis is variation #${brief.variation}: make a clearly different design while keeping the same identity.` : ""}${
+${brief.description}${brief.plan ? `\n\n${planBlock(brief.plan)}` : ""}${brief.likeness && likenessBlock(brief.likeness) ? `\n\n${likenessBlock(brief.likeness)}` : ""}${brief.variation ? `\nThis is variation #${brief.variation}: make a clearly different design while keeping the same identity.` : ""}${
         // Yan görünüşte ekli görsel gerçek özne değil, onaylı ön çizimin görüntüsüdür.
         side
           ? `\n\nThis is the approved FRONT view of this character (the attached image shows it rendered). Draw the same person in profile facing right: keep the identity (face shape, hair, headgear, outfit, colours, accessories, line weight) exactly.\n<front_svg>\n${brief.front}\n</front_svg>`

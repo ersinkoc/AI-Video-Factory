@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AssetRejectedError, type AssetRef, type EpisodeState } from "../src/index.ts";
+import { styleFromPack, stylePackOf } from "@ys/core";
+import { AssetRejectedError, likenessKey, type AssetRef, type EpisodeState } from "../src/index.ts";
 import { callsOf, onAgent, refs, resetFakes } from "./pipeline-fakes.ts";
 import { CHARACTER_SVG, harness, makeState, PROP_SVG, ROOM_SVG, STYLE, type Harness } from "./pipeline-harness.ts";
 
@@ -484,5 +485,100 @@ describe("designAsset: tasarımcı hatası", () => {
     });
     await expect(design(h, vstate(), { kind: "prop", id: "p-pen", name: "p-pen", description: "a pen" })).rejects.toThrow("error_max_turns");
     expect(callsOf("vectorDesigner")).toHaveLength(3);
+  });
+});
+
+describe("designAsset: gerçek kişinin benzerliği", () => {
+  const BRUNEL: Brief = { kind: "character", id: "c2", name: "Brunel", description: "bearded Victorian engineer", reference: "Isambard Kingdom Brunel" };
+  const none = { value: null, confidence: 0 };
+  const LIKENESS = {
+    status: "ok",
+    rejection: null,
+    observation: {
+      image: { medium: "bw_photo", view: "frontal", quality: "medium" },
+      apparentAge: none,
+      build: { weight: none, muscle: none, shoulders: none },
+      head: { shape: none, faceLength: none, faceWidth: none, foreheadHeight: { value: 0.85, confidence: 0.8 }, jawWidth: none, jawDefinition: none, chin: none, chinProjection: none },
+      eyes: { size: none, spacing: none, tilt: none, depth: none, shape: none, color: none },
+      brows: { thickness: none, arch: none, shape: none, gap: none, heightAboveEyes: none, color: { hex: null, confidence: 0 } },
+      nose: { size: none, length: none, bridgeWidth: none, tipWidth: none, tip: none, profile: none },
+      mouth: { width: none, upperLip: none, lowerLip: none },
+      ears: { size: none, protrusion: none },
+      skin: { tone: { hex: null, confidence: 0 }, wrinkles: none },
+      hair: { length: { value: "short", confidence: 0.9 }, texture: none, volume: none, baldness: none, hairline: none, part: none, style: [], color: { hex: null, confidence: 0 }, gray: none },
+      facialHair: { beard: none, moustache: none, color: { hex: null, confidence: 0 } },
+      accessories: { glasses: none, glassesShape: none, glassesFrame: none, headwear: { value: "top_hat", confidence: 0.9 } },
+      distinctive: ["tall stovepipe hat", "high forehead"],
+      notes: [],
+    },
+  };
+  const briefOf = (name: "vectorDesigner" | "likenessAnalyst" | "assetGate", i = 0) => callsOf(name)[i]!.args[0] as Record<string, unknown>;
+  const clay = () => makeState({ motionMode: "vector" }, { style: styleFromPack(stylePackOf("clay")!) });
+
+  it("referanslı karakterde bir kez ölçülür ve konu başına saklanır; tasarımcı kaydı, kapı ipuçlarını alır; başka stilde yeniden ölçülmez", async () => {
+    const h = harness();
+    agents({ fidelity: 8 });
+    onAgent("likenessAnalyst", () => LIKENESS);
+    refs.find.mockResolvedValue({ images: [IMG], sources: [{ title: "Brunel", url: "u" }], keys: ["library/ref/b.jpg"] });
+    const key = (await design(h, vstate(), BRUNEL)).key;
+    expect(briefOf("likenessAnalyst")).toEqual({ references: [IMG], description: "bearded Victorian engineer" });
+    expect(h.store.json(likenessKey("Isambard Kingdom Brunel"))).toMatchObject({ status: "ok", observation: { distinctive: ["tall stovepipe hat", "high forehead"] } });
+    expect(briefOf("vectorDesigner").likeness).toMatchObject({ status: "ok" });
+    expect(briefOf("assetGate").description).toContain(
+      "Likeness measured from the reference photos (the drawing should show these, simplified): tall stovepipe hat; high forehead; hair: short; headwear: top hat",
+    );
+    expect(h.logs).toContain("  Brunel: benzerlik ölçüldü (tall stovepipe hat; high forehead)");
+
+    // Aynı kişi başka stil paketinde: yeni çizim, ölçü kütüphaneden.
+    await design(h, clay(), BRUNEL);
+    expect(callsOf("vectorDesigner")).toHaveLength(2);
+    expect(callsOf("likenessAnalyst")).toHaveLength(1);
+    expect(briefOf("vectorDesigner", 1).likeness).toMatchObject({ status: "ok" });
+
+    // Kütüphanedeki çizim yeniden denetlenirken (güvenilmeyen kayıt) kayıtlı ölçü kapıya gider, yeniden ölçülmez.
+    const meta = h.store.json(`${key}.json`);
+    h.store.putJsonSync(`${key}.json`, { ...meta, check: { ...meta.check, passed: false } });
+    const gates = callsOf("assetGate").length;
+    await design(h, vstate(), BRUNEL);
+    expect((callsOf("assetGate")[gates]!.args[0] as { description: string }).description).toContain("tall stovepipe hat");
+    expect(callsOf("likenessAnalyst")).toHaveLength(1);
+  });
+
+  it("ret (reşit olmayabilir) ve hata çizimi durdurmaz; reddedilen kayıt saklanır, yeniden sorulmaz", async () => {
+    const h = harness();
+    agents();
+    refs.find.mockResolvedValue({ images: [IMG], sources: [], keys: [] });
+    onAgent("likenessAnalyst", () => ({ status: "rejected", rejection: "possible_minor", observation: null }));
+    await design(h, vstate(), BRUNEL);
+    expect(h.logs).toContain("  Brunel: referanslardan benzerlik ölçülmedi (possible_minor), çizim onsuz sürüyor");
+    expect(briefOf("assetGate").description).not.toContain("Likeness");
+    await design(h, clay(), BRUNEL);
+    expect(callsOf("likenessAnalyst")).toHaveLength(1);
+    // Ret nedeni yoksa durum yazılır.
+    onAgent("likenessAnalyst", () => ({ status: "rejected", rejection: null, observation: null }));
+    await design(h, vstate(), { ...BRUNEL, reference: "Brunel portrait" });
+    expect(h.logs).toContain("  Brunel: referanslardan benzerlik ölçülmedi (rejected), çizim onsuz sürüyor");
+
+    onAgent("likenessAnalyst", () => {
+      throw new Error("görsel okunamadı");
+    });
+    expect((await design(h, vstate(), { ...BRUNEL, reference: "Brunel engraving" })).key).toMatch(/\.svg$/);
+    expect(h.logs).toContain("  Brunel: benzerlik analizi yapılamadı, çizim onsuz sürüyor (görsel okunamadı)");
+    // En belirgin özelliği olmayan kayıtta günlükte tire.
+    onAgent("likenessAnalyst", () => ({ ...LIKENESS, observation: { ...LIKENESS.observation, distinctive: [] } }));
+    await design(h, vstate(), { ...BRUNEL, reference: "Brunel statue" });
+    expect(h.logs).toContain("  Brunel: benzerlik ölçüldü (-)");
+  });
+
+  it("gerçeklik kapalı bölüm, referanssız karakter ve nesne ölçülmez", async () => {
+    const h = harness();
+    agents({ fidelity: 8 });
+    onAgent("likenessAnalyst", () => LIKENESS);
+    refs.find.mockResolvedValue({ images: [IMG], sources: [], keys: [] });
+    await design(h, vstate({ realism: false }), BRUNEL);
+    await design(h, vstate(), HORSE);
+    refs.find.mockResolvedValue({ images: [], sources: [], keys: [] });
+    await design(h, vstate(), { ...BRUNEL, reference: "nobody" });
+    expect(callsOf("likenessAnalyst")).toHaveLength(0);
   });
 });

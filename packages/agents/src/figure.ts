@@ -39,6 +39,8 @@ export interface FigureInput {
   drawing: AgentImage;
   /** Gerçek kişinin referans fotoğrafları (en çok iki); çizimin belirsiz kaldığı yerde. */
   references?: AgentImage[];
+  /** Fotoğraflardan ölçülen benzerlik kaydı (likenessBlock metni); çizimin belirsiz kaldığı yerde. */
+  likeness?: string;
 }
 
 export function figureDesigner(input: FigureInput, deps?: AgentDeps): Promise<AgentResult<FigureOut>> {
@@ -51,7 +53,7 @@ export function figureDesigner(input: FigureInput, deps?: AgentDeps): Promise<Ag
       schema: FigureOut,
       system:
         "You convert an approved flat vector drawing of a character into the parameters of a code-built, stylised 3D toy figure (soft rounded shapes, a big head). Copy what the drawing shows: skin tone, hair style and colour, facial hair, glasses, the outer top garment and its colour, the shirt or lining under it, the bottom garment, the shoe colour and the body build. Pick the nearest option for each and take the colours from the drawing as #rrggbb. The first image is the drawing; any further images are real photos of the same person, use them only where the drawing is unclear.",
-      prompt: `Character: ${input.name}\n${input.description}`,
+      prompt: `Character: ${input.name}\n${input.description}${input.likeness ? `\n\n${input.likeness}\nUse it only where the drawing is unclear; the drawing wins.` : ""}`,
       images: [input.drawing, ...refs],
     },
     deps,

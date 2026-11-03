@@ -7,7 +7,7 @@ import type { QueryFn } from "@ys/agents";
 import { styleFromPack, stylePackOf, VectorAssetMeta } from "@ys/core";
 import { InMemoryLedger, MediaGateway } from "@ys/media-gateway";
 import { FsAssetStore, getJson, putJson, type AssetStore } from "@ys/storage";
-import { acceptAsset, EpisodePipeline, newEpisodeState, rejectAsset, type EpisodeInput, type EpisodeState } from "../src/index.ts";
+import { acceptAsset, EpisodePipeline, likenessKey, newEpisodeState, rejectAsset, type EpisodeInput, type EpisodeState } from "../src/index.ts";
 
 // Remotion yok: 3D figür önizlemesi küçük dosya olarak yazılır; makine meşgul ya da render hatası taklit edilebilir.
 const previews = vi.hoisted(() => ({ calls: [] as string[][], mode: "ok" as "ok" | "busy" | "fail" }));
@@ -28,6 +28,14 @@ vi.mock("@ys/video/render", () => ({
   },
 }));
 
+// Referans araması (Wikimedia) sahte: gerçek kişinin fotoğrafı istenince verilir, varsayılan boş.
+const found = vi.hoisted(() => ({ images: [] as { data: Uint8Array; mimeType: string }[] }));
+vi.mock("../src/reference.ts", async (orig) => ({
+  ...(await orig<object>()),
+  findReferences: async () => ({ images: found.images, sources: found.images.map(() => ({ title: "Commons", url: "https://commons" })), keys: found.images.map((_, i) => `library/refs/r${i}.jpg`) }),
+  findVectorSources: async () => [],
+}));
+
 /**
  * Konsept aşaması uçtan uca, sahte Claude ile (para harcamaz): plan → çizim → kör tahmin → kapı → kütüphane; ret, insan
  * kararı ve yeniden çizim akışları. Sahte ajan, istenen JSON şemasının alanlarından hangi ajan olduğunu anlar.
@@ -46,6 +54,45 @@ interface Calls {
   figure: number[];
   /** true: figür ajanı geçersiz renk döndürür (tarif kurulamaz). */
   figureBroken?: boolean;
+  /** Benzerlik ajanına gelen istek sayısı. */
+  likeness?: number;
+  /** Görselli isteklerin metni, ajan türüyle (şemanın ilk alanı). */
+  seen?: { agent: string; text: string }[];
+}
+
+const LIKENESS_OUT = (() => {
+  const none = { value: null, confidence: 0 };
+  const noColor = { hex: null, confidence: 0 };
+  return {
+    status: "ok",
+    rejection: null,
+    observation: {
+      image: { medium: "color_photo", view: "frontal", quality: "high" },
+      apparentAge: { value: 45, confidence: 0.8 },
+      build: { weight: { value: 0.75, confidence: 0.8 }, muscle: none, shoulders: none },
+      head: { shape: none, faceLength: none, faceWidth: none, foreheadHeight: none, jawWidth: none, jawDefinition: none, chin: none, chinProjection: none },
+      eyes: { size: none, spacing: none, tilt: none, depth: none, shape: none, color: none },
+      brows: { thickness: { value: 0.9, confidence: 0.9 }, arch: none, shape: none, gap: none, heightAboveEyes: none, color: { hex: "#2B1D14", confidence: 0.8 } },
+      nose: { size: none, length: none, bridgeWidth: none, tipWidth: none, tip: none, profile: none },
+      mouth: { width: none, upperLip: none, lowerLip: none },
+      ears: { size: none, protrusion: none },
+      skin: { tone: noColor, wrinkles: none },
+      hair: { length: none, texture: none, volume: none, baldness: { value: 0.75, confidence: 0.9 }, hairline: none, part: none, style: [], color: noColor, gray: none },
+      facialHair: { beard: { value: "full", confidence: 0.9 }, moustache: none, color: noColor },
+      accessories: { glasses: none, glassesShape: none, glassesFrame: none, headwear: none },
+      distinctive: ["bald crown", "bushy black brows"],
+      notes: [],
+    },
+  };
+})();
+
+/** Görselli isteğin (async iterable) metni ve görsel sayısı. */
+async function inspect(prompt: unknown): Promise<{ text: string; images: number }> {
+  let text = "";
+  let images = 0;
+  for await (const m of prompt as AsyncIterable<{ message: { content: { type: string; text?: string }[] } }>)
+    for (const c of m.message.content) c.type === "image" ? images++ : (text += c.text ?? "");
+  return { text, images };
 }
 
 const FIGURE = {
@@ -58,13 +105,6 @@ const FIGURE = {
   shoes: "#5a3a26",
   build: "slim",
 };
-
-/** Görselli isteğin (async iterable) içindeki görsel sayısı. */
-async function imagesIn(prompt: unknown): Promise<number> {
-  let n = 0;
-  for await (const m of prompt as AsyncIterable<{ message: { content: { type: string }[] } }>) n += m.message.content.filter((c) => c.type === "image").length;
-  return n;
-}
 
 function fakeClaude(score: () => number, calls: Calls): QueryFn {
   return ((params: { prompt: unknown; options?: { outputFormat?: { schema?: { properties?: Record<string, unknown> } }; systemPrompt?: string } }) => {
@@ -86,11 +126,17 @@ function fakeClaude(score: () => number, calls: Calls): QueryFn {
     } else if (props.includes("shoes")) {
       out = calls.figureBroken ? { ...FIGURE, skin: "ten rengi" } : FIGURE;
       return (async function* () {
-        calls.figure.push(await imagesIn(params.prompt));
+        const seen = await inspect(params.prompt);
+        calls.figure.push(seen.images);
+        calls.seen?.push({ agent: "figure", text: seen.text });
         yield { type: "result", subtype: "success", duration_ms: 10, total_cost_usd: 0.001, structured_output: out };
       })();
+    } else if (props.includes("observation")) {
+      calls.likeness = (calls.likeness ?? 0) + 1;
+      out = LIKENESS_OUT;
     } else throw new Error(`bilinmeyen ajan: ${props.join(",")}`);
     return (async function* () {
+      if (typeof params.prompt !== "string") calls.seen?.push({ agent: props[0]!, text: (await inspect(params.prompt)).text });
       yield { type: "result", subtype: "success", duration_ms: 10, total_cost_usd: 0.001, structured_output: out };
     })();
   }) as unknown as QueryFn;
@@ -109,9 +155,9 @@ const input: EpisodeInput = {
   motionMode: "vector",
 };
 
-async function setup(score: () => number, pack = "flat-explainer") {
+async function setup(score: () => number, pack = "flat-explainer", reference?: string) {
   const store: AssetStore = new FsAssetStore(mkdtempSync(join(tmpdir(), "ys-concept-")));
-  const calls: Calls = { designer: [], planner: 0, gate: 0, figure: [] };
+  const calls: Calls = { designer: [], planner: 0, gate: 0, figure: [], seen: [] };
   const pipeline = new EpisodePipeline({
     gateway: new MediaGateway({ providers: [], store, ledger: new InMemoryLedger() }),
     store,
@@ -124,7 +170,7 @@ async function setup(score: () => number, pack = "flat-explainer") {
     style: styleFromPack(stylePackOf(pack)!),
     script: { title: "t", scenes: [] } as never,
     cast: {
-      characters: [{ id: "c1", name: "Rider", kind: "person", role: "rider", visualDescription: "young rider", scenes: [] }],
+      characters: [{ id: "c1", name: "Rider", kind: "person", role: "rider", visualDescription: "young rider", scenes: [], ...(reference ? { reference } : {}) }],
       locations: [{ id: "l1", name: "Station", visualDescription: "relay station", scenes: [] }] as never,
     },
     done: { style: "x", story: "x", script: "x", cast: "x" },
@@ -279,5 +325,32 @@ describe("konsept akışı (sahte Claude)", () => {
     // İnsan reddedileni kabul eder: yeni anahtara yazılır ve seçilir.
     await acceptAsset(store, state, second[0]);
     expect(state.concept!.selected.c1?.key).toBe(second[0]);
+  });
+  it("gerçek kişi: referanslardan benzerlik bir kez ölçülür; tasarımcı kaydı, kapı ipuçlarını, 3D figür ajanı ölçüyü alır", async () => {
+    previews.mode = "ok";
+    found.images = [{ data: new Uint8Array([255, 216, 255]), mimeType: "image/jpeg" }];
+    try {
+      const { store, calls, pipeline, id } = await setup(() => 9, "clay", "Pony Express rider photo");
+      await store.put("library/refs/r0.jpg", new Uint8Array([255, 216, 255]), "image/jpeg");
+      let state = await pipeline.run(id, { until: "concept" });
+      expect(calls.likeness).toBe(1);
+      expect(await getJson(store, likenessKey("Pony Express rider photo"))).toMatchObject({ status: "ok" });
+      const text = (agent: string) => calls.seen!.filter((s) => s.agent === agent).map((s) => s.text);
+      // Tasarımcı (görselli istek: şemanın ilk alanı svg) kaydı, kapı ipuçlarını alır.
+      expect(text("svg").some((t) => t.includes("Likeness sheet") && t.includes("- Brows: very thick, #2B1D14") && t.includes("- Hair: marked baldness"))).toBe(true);
+      expect(text("recognizable").some((t) => t.includes("Likeness measured from the reference photos") && t.includes("bald crown; bushy black brows"))).toBe(true);
+      // 3D figür ajanı çizim + fotoğraf ve ölçülen benzerlik.
+      expect(text("figure").at(-1)).toContain("- Build: heavy");
+      expect(calls.figure).toEqual([2]);
+      expect(state.activity!.some((a) => a.msg.includes("Rider: benzerlik ölçüldü (bald crown; bushy black brows)"))).toBe(true);
+
+      // Konsept yeniden: kütüphanede çizim ve ölçü var, ajan yeniden sorulmaz.
+      delete state.done.concept;
+      await pipeline.save(state);
+      state = await pipeline.run(id, { until: "concept" });
+      expect(calls.likeness).toBe(1);
+    } finally {
+      found.images = [];
+    }
   });
 });
