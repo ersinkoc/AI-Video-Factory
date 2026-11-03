@@ -648,11 +648,11 @@ describe("POST /api/episodes/[id]/action", () => {
     }
     expect((await load("job-2")).approvals?.script).toBeDefined();
     expect((await load("job-3")).approvals?.concept).toBeDefined();
-    // Bozuk gövde: çekim listesi ve not metin değilse boş sayılır (önce not istenir).
+    // Bozuk gövde: çekim listesi ve not metin değilse boş sayılır.
     await saveEpisode("job-bad", { shots: [{ id: "sh1", sceneId: "s1" }] as unknown as EpisodeState["shots"] }, { motionMode: "vector" });
-    await fail("job-bad", { type: "replan", shotIds: "sh1", note: 5 }, "Ne değişsin");
+    await fail("job-bad", { type: "replan", shotIds: "sh1", note: 5 }, "çekim yok");
     const replanned = await load("job-5");
-    expect(replanned.replans).toEqual({ s1: { note: "Harita 1453 olsun", shots: ["sh1"], at: expect.any(String) } });
+    expect(replanned.replans).toEqual({ s1: { note: "Harita 1453 olsun", shots: ["sh1"], findings: [], at: expect.any(String) } });
     expect(replanned.done.render).toBeUndefined();
     const redrawn = await load("job-4");
     expect(redrawn.redraws).toEqual({ sh1: 1 });

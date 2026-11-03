@@ -695,22 +695,38 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
       vectorProps: {},
       shotPlan: { scenes: [{ sceneId: "s1", shots: [] }, { sceneId: "s2", shots: [planned] }] } as never,
       shots: [shot("s1-sh1", "s1", 0, "wide map"), shot("s1-sh2", "s1", 700, "close-up"), shot("s2-sh1", "s2", 2400, "other")] as never,
-      replans: { s1: { note: "Harita 1453 olsun", shots: ["s1-sh2"], at: "2026-11-04T00:00:00Z" } },
+      replans: {
+        s1: { note: "Harita 1453 olsun", shots: ["s1-sh2"], findings: ["- shot 2 (3/10): empty: bare wall"], at: "2026-11-04T00:00:00Z" },
+        // Notsuz toplu düzeltme: yalnız bulgular (eski kayıtta bulgu alanı yok).
+        s2: { note: "", shots: ["s2-sh1"], at: "2026-11-04T00:00:00Z" },
+      },
+      review: { at: "t", lessons: [], shots: { "s1-sh2": { score: 3, issues: [{ type: "empty", detail: "bare wall" }] }, "s0-x": { score: 9, issues: [] } } },
+      draftReview: { at: "t", lessons: [], avg: 5, revisedScenes: [], shots: { "s1-sh1": { score: 5, issues: [] } } },
     });
     const state = await h.pipeline.run(id, { only: "keyframes" });
 
     const calls = callsOf("vectorDirector");
-    expect(calls.map((c) => (c.args[0] as { scene: { id: string } }).scene.id)).toEqual(["s1"]);
-    const feedback = (calls[0]!.args[0] as { feedback: string }).feedback;
-    expect(feedback).toContain('asks for these changes:\n"Harita 1453 olsun"\nThe current plan:\n- shot 1: wide map\n- shot 2 (pointed at): close-up\n');
-    expect(feedback).toContain("give it under a new id");
-    expect(h.logs).toContain("  yapımcının notuyla yeniden planlanıyor: s1");
+    expect(calls.map((c) => (c.args[0] as { scene: { id: string } }).scene.id).sort()).toEqual(["s1", "s2"]);
+    const feedbackOf = (scene: string) => (calls.find((c) => (c.args[0] as { scene: { id: string } }).scene.id === scene)!.args[0] as { feedback: string }).feedback;
+    expect(feedbackOf("s1")).toContain(
+      '(follow them exactly):\n"Harita 1453 olsun"\nA reviewer scored the rendered frames of this scene and found these problems; fix them where they make sense:\n- shot 2 (3/10): empty: bare wall\nThe current plan:\n- shot 1: wide map\n- shot 2 (pointed at): close-up\n',
+    );
+    expect(feedbackOf("s1")).toContain("give it under a new id");
+    expect(feedbackOf("s2")).toMatch(/^The current plan:\n- shot 1 \(pointed at\): other\n/);
+    expect(h.logs).toContain("  yapımcının notuyla yeniden planlanıyor: s1, s2");
+    // Yeniden planlanan sahnelerin eski kare incelemeleri silinir, diğerleri kalır.
+    expect(state.review!.shots).toEqual({ "s0-x": { score: 9, issues: [] } });
+    expect(state.draftReview!.shots).toEqual({});
     expect(callsOf("sceneCritic")).toHaveLength(0);
     expect(lint.shot).not.toHaveBeenCalled();
     expect(state.replans).toBeUndefined();
     expect(state.shots!.map((s) => s.id)).toEqual(["s1-sh1", "s2-sh1"]);
     expect(Object.keys(state.stills!).sort()).toEqual(["s1-sh1", "s2-sh1"]);
     expect(state.done.keyframes).toBeDefined();
+    // İnceleme kaydı olmayan bölüm de yeniden planlanır.
+    const bare = await keyframeReady(h, {}, { vectorProps: {}, shotPlan: { scenes: [{ sceneId: "s1", shots: [] }, { sceneId: "s2", shots: [] }] } as never, review: undefined, draftReview: undefined, replans: { s1: { note: "x", shots: [], at: "t" } } });
+    await h.pipeline.run(bare, { only: "keyframes" });
+    expect(h.logs.filter((l) => l.startsWith("  yapımcının notuyla"))).toHaveLength(2);
   });
 
   it("yalnız en kötü sahneler yeniden planlanır: en kötüden başlanır, sahnelerin en çok çeyreği", async () => {

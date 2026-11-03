@@ -1547,10 +1547,21 @@ export class EpisodePipeline {
     const asks = state.replans!;
     const scenes = state.script!.scenes.filter((s) => asks[s.id]);
     this.log(msg("log.replan.user", { scenes: scenes.map((s) => s.id).join(", ") }));
+    // Eski kare incelemeleri yeni plana ait değil: yeniden planlanan sahnelerin kayıtları silinir (Stüdyo yanlış rozet göstermesin).
+    for (const s of state.shots!.filter((x) => asks[x.sceneId])) {
+      delete state.review?.shots[s.id];
+      delete state.draftReview?.shots[s.id];
+    }
     await this.replanScenes(state, scenes, topLessons(await loadLessons(this.deps.store), "director"), (shots, scene) => {
       const ask = asks[scene.id]!;
       const plan = shots.map((s, n) => `- shot ${n + 1}${ask.shots.includes(s.id) ? " (pointed at)" : ""}: ${s.description}`).join("\n");
-      return `The channel's producer reviewed this scene and asks for these changes:\n"${ask.note}"\nThe current plan:\n${plan}\nFollow the request exactly and keep what it does not mention. To change how an existing prop, background or map looks, give it under a new id with a new description (an existing id keeps its old drawing).`;
+      const asked = [
+        ask.note ? `The channel's producer reviewed this scene and asks for these changes (follow them exactly):\n"${ask.note}"` : "",
+        ask.findings?.length ? `A reviewer scored the rendered frames of this scene and found these problems; fix them where they make sense:\n${ask.findings.join("\n")}` : "",
+        `The current plan:\n${plan}`,
+        "Keep what works and is not mentioned. To change how an existing prop, background or map looks, give it under a new id with a new description (an existing id keeps its old drawing).",
+      ].filter(Boolean);
+      return asked.join("\n");
     });
     delete state.replans;
     await this.restageMissing(state);

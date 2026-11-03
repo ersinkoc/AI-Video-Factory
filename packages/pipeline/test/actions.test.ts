@@ -148,7 +148,10 @@ describe("replanShots", () => {
     s.done = { ...s.done, shots: "x", keyframes: "x", render: "x", package: "x" };
     s.lastError = { stage: "render", message: "eski hata", at: "" };
     replanShots(s, ["a", "c", "yok"], "  Harita 1453 olsun  ");
-    expect(s.replans).toEqual({ s1: { note: "Harita 1453 olsun", shots: ["a"], at: expect.any(String) }, s2: { note: "Harita 1453 olsun", shots: ["c"], at: expect.any(String) } });
+    expect(s.replans).toEqual({
+      s1: { note: "Harita 1453 olsun", shots: ["a"], findings: [], at: expect.any(String) },
+      s2: { note: "Harita 1453 olsun", shots: ["c"], findings: [], at: expect.any(String) },
+    });
     replanShots(s, ["b", "a"], "Mehmed haritanın önünde");
     expect(s.replans!.s1).toMatchObject({ note: "Harita 1453 olsun\nMehmed haritanın önünde", shots: ["a", "b"] });
     expect(s.done).toMatchObject({ shots: "x" });
@@ -166,6 +169,24 @@ describe("replanShots", () => {
     s.shots = [shot("a", "s1")];
     expect(() => replanShots(s, ["a"], "   ")).toThrow(/not yazın/);
     expect(s.replans).toBeUndefined();
+  });
+
+  it("toplu düzeltme: not olmadan da, seçilenlerin inceleme bulgularıyla (yoksa taslak denetiminin); numara sahne içi sıra", () => {
+    const s = baseState();
+    s.input.motionMode = "vector";
+    s.shots = [shot("a", "s1"), shot("b", "s1"), shot("c", "s2"), shot("d", "s2")];
+    s.review = { at: "t", lessons: [], shots: { b: { score: 3, issues: [{ type: "empty", detail: "bare wall" }, { type: "off_story", detail: "no map" }] }, c: { score: 8, issues: [] } } };
+    s.draftReview = { at: "t", lessons: [], avg: 5, revisedScenes: [], shots: { d: { score: 4, issues: [{ type: "character_cut_off", detail: "cut" }] } } };
+    // Bulgusuz çekimler ve notsuz istek reddedilir.
+    expect(() => replanShots(s, ["a", "c"], "")).toThrow(/not yazın/);
+    replanShots(s, ["b", "c", "d"], "");
+    expect(s.replans).toEqual({
+      s1: { note: "", shots: ["b"], findings: ["- shot 2 (3/10): empty: bare wall", "- shot 2 (3/10): off_story: no map"], at: expect.any(String) },
+      s2: { note: "", shots: ["c", "d"], findings: ["- shot 2 (4/10): character_cut_off: cut"], at: expect.any(String) },
+    });
+    // İkinci istek: not eklenir, aynı bulgu yinelenmez.
+    replanShots(s, ["b"], "daha sade");
+    expect(s.replans!.s1).toMatchObject({ note: "daha sade", findings: ["- shot 2 (3/10): empty: bare wall", "- shot 2 (3/10): off_story: no map"] });
   });
 });
 

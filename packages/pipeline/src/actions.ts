@@ -133,22 +133,40 @@ export function redrawShots(state: EpisodeState, shotIds: string[]): void {
 }
 
 /**
- * Yapımcının notuyla yeniden oluşturma (vektör): seçilen çekimlerin sahnelerine not yazılır ve üretim kare
- * aşamasından yeniden açılır (render öncesi ya da sonrası). Kare aşaması yalnız bu sahneleri notla yeniden planlatır;
- * render ve paket yeniden alınır. Aynı sahneye ikinci not öncekinin altına eklenir.
+ * Çekimin kare incelemesi (render sonrası inceleme, yoksa render öncesi taslak denetimi): yönetmene "sahnenin N.
+ * çekimi" diye gider; numara sahne içindeki sıradır (yeniden planlamada yönetmene gösterilen planla aynı).
+ */
+function findingsOf(state: EpisodeState, shot: { id: string; sceneId: string }): string[] {
+  const review = state.review?.shots[shot.id] ?? state.draftReview?.shots[shot.id];
+  if (!review?.issues.length) return [];
+  const n = state.shots!.filter((s) => s.sceneId === shot.sceneId).findIndex((s) => s.id === shot.id) + 1;
+  return review.issues.map((i) => `- shot ${n} (${review.score}/10): ${i.type}: ${i.detail}`);
+}
+
+/**
+ * Notla yeniden oluşturma (vektör): seçilen çekimlerin sahnelerine yapımcının notu ve o çekimlerin inceleme bulguları
+ * yazılır, üretim kare aşamasından yeniden açılır (render öncesi ya da sonrası). Kare aşaması yalnız bu sahneleri
+ * yeniden planlatır; render ve paket yeniden alınır. Bulgu varsa not isteğe bağlıdır (toplu "sorunluları düzelt").
+ * Aynı sahneye ikinci istek öncekinin altına eklenir.
  */
 export function replanShots(state: EpisodeState, shotIds: string[], note: string): void {
   if (motionModeOf(state.input) !== "vector") throw new LocalizedError(msg("err.action.replanVector"));
   const text = note.trim();
-  if (!text) throw new LocalizedError(msg("err.action.noNote"));
   const picked = (state.shots ?? []).filter((s) => shotIds.includes(s.id));
   if (!picked.length) throw new LocalizedError(msg("err.action.noShots"));
+  const findings = new Map(picked.map((s) => [s.id, findingsOf(state, s)]));
+  if (!text && ![...findings.values()].some((f) => f.length)) throw new LocalizedError(msg("err.action.noNote"));
   state.replans ??= {};
   const at = new Date().toISOString();
   for (const sceneId of new Set(picked.map((s) => s.sceneId))) {
     const prev = state.replans[sceneId];
-    const shots = picked.filter((s) => s.sceneId === sceneId).map((s) => s.id);
-    state.replans[sceneId] = { note: prev ? `${prev.note}\n${text}` : text, shots: [...new Set([...(prev?.shots ?? []), ...shots])], at };
+    const shots = picked.filter((s) => s.sceneId === sceneId);
+    state.replans[sceneId] = {
+      note: [prev?.note, text].filter(Boolean).join("\n"),
+      shots: [...new Set([...(prev?.shots ?? []), ...shots.map((s) => s.id)])],
+      findings: [...new Set([...(prev?.findings ?? []), ...shots.flatMap((s) => findings.get(s.id)!)])],
+      at,
+    };
   }
   delete state.lastError;
   invalidateFrom(state, "keyframes");

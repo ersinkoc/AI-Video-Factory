@@ -1,7 +1,7 @@
 "use client";
 
 import type { EpisodeState, PlannedShotState } from "@ys/pipeline/light";
-import { QUALITY_GATE } from "@ys/core/rules";
+import { DRAFT_REVIEW, QUALITY_GATE } from "@ys/core/rules";
 import { stylePackOf } from "@ys/core/styles";
 import { Check, CheckSquare, ChevronLeft, ChevronRight, Clapperboard, Mic, RefreshCw, Square, Undo2, Wand2, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -574,6 +574,12 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
   const current = open ? shots.find((s) => s.id === open) : undefined;
   const scenesPicked = new Set(shots.filter((s) => picked.has(s.id)).map((s) => s.sceneId)).size;
   const pending = Object.keys(state.replans ?? {});
+  // Kare incelemesi (render sonrası, yoksa taslak denetimi): zayıflar toplu seçilir, bulguları nota kendiliğinden eklenir.
+  const reviewOf = (id: string) => state.review?.shots[id] ?? state.draftReview?.shots[id];
+  const weak = shots.filter((s) => (reviewOf(s.id)?.score ?? 10) <= DRAFT_REVIEW.badAtMost).map((s) => s.id);
+  const findings = [...picked].some((id) => reviewOf(id)?.issues.length);
+  const shotsRow = data.estimates[modeOf(state.input)].rows.find((r) => r.stage === "shots");
+  const perScene = shotsRow && shotsRow.quantity ? shotsRow.costUsd / shotsRow.quantity : 0;
 
   return (
     <div className="grid gap-4">
@@ -625,7 +631,14 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
       {!imageMode && (
         // Notla yeniden oluşturma (render öncesi ya da sonrası): yönetmen seçilen çekimlerin sahnelerini notla yeniden planlar.
         <div className="grid gap-2 rounded-lg border border-line bg-panel-2 p-3 text-sm">
-          <p className="text-xs text-muted">{t("prod.replanHint")}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="flex-1 text-xs text-muted">{t("prod.replanHint")}</p>
+            {weak.length > 0 && (
+              <button className="btn-ghost py-1 text-xs" disabled={busy} onClick={() => setPicked(new Set(weak))}>
+                {t("prod.pickWeak", { max: DRAFT_REVIEW.badAtMost })} ({weak.length})
+              </button>
+            )}
+          </div>
           {pending.length > 0 && <p className="text-xs text-run">{t("prod.replanPending", { scenes: pending.join(", ") })}</p>}
           {picked.size > 0 && (
             <>
@@ -644,14 +657,14 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
                 </button>
                 <button
                   className="btn-primary py-1 text-xs"
-                  disabled={busy || !note.trim()}
+                  disabled={busy || (!note.trim() && !findings)}
                   onClick={async () => {
                     if (!(await act({ type: "replan", shotIds: [...picked], note }))) return;
                     setPicked(new Set());
                     setNote("");
                   }}
                 >
-                  <Wand2 size={14} /> {t("prod.replan", { n: scenesPicked })}
+                  <Wand2 size={14} /> {t("prod.replan", { n: scenesPicked, usd: usd(perScene * scenesPicked) })}
                 </button>
               </div>
             </>
