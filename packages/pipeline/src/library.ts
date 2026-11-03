@@ -23,6 +23,8 @@ export interface LibraryCharacter {
   bank?: boolean;
   /** Maskotu olduğu seriler. */
   mascotOf: string[];
+  /** 3D figür önizlemesi (PNG anahtarı; 3D paketlerde). */
+  figurePreview?: string;
 }
 
 export const libraryIdOf = (key: string) => key.slice(CHARACTER_DIR.length).replace(/\.svg$/, "");
@@ -40,13 +42,13 @@ export async function listLibraryCharacters(
   for (const metaKey of keys) {
     const parsed = VectorAssetMeta.safeParse(await getJson(store, metaKey));
     if (!parsed.success) continue;
-    const { identity, check } = parsed.data;
+    const { identity, check, figurePreview } = parsed.data;
     if (!identity || !check?.passed || check.override?.decision === "rejected") continue;
     // Gerçeklik kapalı bölümde sadakatsiz geçmiş karakter, gerçeklik açık bölüme önerilmez (insan kabul etmediyse).
     if (style?.realism && check.fidelitySkipped && check.override?.decision !== "accepted") continue;
     if (style && (identity.artStyle !== style.artStyle || identity.lineStyle !== style.lineStyle)) continue;
     const key = metaKey.replace(/\.json$/, "");
-    out.push({ id: libraryIdOf(key), key, ...identity });
+    out.push({ id: libraryIdOf(key), key, ...identity, ...(figurePreview ? { figurePreview } : {}) });
   }
   return out.sort((a, b) => b.episodes.length - a.episodes.length || a.name.localeCompare(b.name));
 }

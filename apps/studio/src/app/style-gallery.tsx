@@ -5,7 +5,7 @@ import { textureLayer } from "@ys/core/texture";
 import { useI18n } from "./locale-provider";
 
 /** Stil paketi → örnek karakter ve mekânın kütüphane anahtarı (yalnız örneği olan paketler). */
-export type SampleKeys = Record<string, { character?: string; background?: string }>;
+export type SampleKeys = Record<string, { character?: string; background?: string; figure?: string }>;
 
 /** Örneğin SVG'si: sunucu paketin çizgi stilini uygular; anahtar yalnız önbelleği tazeler. */
 const sample = (pack: string, kind: "character" | "background", key: string) => `/api/styles/${pack}/sample?kind=${kind}&v=${encodeURIComponent(key)}`;
@@ -30,7 +30,7 @@ function Preview({ pack, keys }: { pack: StylePack; keys: SampleKeys[string] }) 
       )}
       {keys.character && (
         <img
-          src={sample(pack.id, "character", keys.character)}
+          src={keys.figure ? `/api/assets/${keys.figure}` : sample(pack.id, "character", keys.character)}
           alt={pack.name[locale]}
           loading="lazy"
           className="absolute bottom-[6%] left-1/2 h-[66%] -translate-x-1/2 object-contain"

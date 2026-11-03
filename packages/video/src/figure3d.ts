@@ -75,8 +75,8 @@ const FINISH = {
   faceted: { roughness: 0.75, sheen: 0, clearcoat: 0, flatShading: true },
 } as const;
 
-/** Geometri bölüm sayısı: köşeli yüzeyde üçte biri (en az 4), yüzler seçilir. */
-const segments = (spec: FigureSpec) => (n: number) => (spec.finish === "faceted" ? Math.max(4, Math.round(n / 3)) : n);
+/** Geometri bölüm sayısı: köşeli yüzeyde dörtte biri (en az 5), yüzler seçilir. */
+const segments = (spec: FigureSpec) => (n: number) => (spec.finish === "faceted" ? Math.max(5, Math.round(n / 4)) : n);
 
 /** Profil noktalarından yumuşak eğri (gövde, etek): köşeli silüet olmasın. */
 const smooth = (points: readonly (readonly [number, number])[], k: number, n: number) => new SplineCurve(points.map(([r, y]) => new Vector2(r * k, y))).getPoints(n);

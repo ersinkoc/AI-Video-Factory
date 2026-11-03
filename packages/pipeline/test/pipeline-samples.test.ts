@@ -81,6 +81,40 @@ describe("stil örnekleri", () => {
     expect(h.logs.filter((l) => l.startsWith("⚠ stil örneği çizilemedi: flat-explainer /"))).toHaveLength(2);
   });
 
+  it("3D pakette örnek karakter 3D figür olur, galeri için önizlemesi dizine yazılır; düz pakette figür yok", async () => {
+    const h = harness();
+    // Kil: bölümden gelen (kimliksiz) karakter; yumuşak 3D: örnek için çizilen bank karakteri.
+    putAsset(h, `${CHAR}${"9".repeat(32)}.svg`, { passed: true, refs: [] });
+    await episodeIn(h, "2026-11-02-clay", "clay", { c1: `${CHAR}${"9".repeat(32)}.svg` });
+    passingAgents();
+    onAgent("figureDesigner", () => ({
+      skin: "#e0b08c",
+      hair: { style: "short", color: "#3a2a20" },
+      beard: "short",
+      glasses: false,
+      top: { style: "vest", color: "#c9694a", inner: "#f4efe4" },
+      bottom: { style: "trousers", color: "#4a5a78" },
+      shoes: "#5a3a26",
+      build: "average",
+    }));
+    const out = await h.pipeline.drawStyleSamples(["clay", "soft-3d", "noir"]);
+    expect(out.clay!.figure).toBe(`${CHAR}${"9".repeat(32)}.figure.png`);
+    expect(out["soft-3d"]!.figure).toBe(out["soft-3d"]!.character!.replace(/\.svg$/, ".figure.png"));
+    expect(out.noir!.figure).toBeUndefined();
+    expect(metaOf(h, `${out.clay!.character}.json`).figure).toMatchObject({ finish: "clay" });
+    expect(metaOf(h, `${out["soft-3d"]!.character}.json`).figure).toMatchObject({ finish: "matte" });
+    expect(callsOf("figureDesigner").map((c) => (c.args[0] as { name: string }).name)).toEqual([SAMPLE_BRIEF.character.name, SAMPLE_BRIEF.character.name]);
+    expect((await loadStyleSamples(h.store)).clay!.figure).toBe(out.clay!.figure);
+
+    // Figür hazırlanamazsa örnek SVG ile kalır.
+    onAgent("figureDesigner", () => {
+      throw new Error("model yok");
+    });
+    const toy = await h.pipeline.drawStyleSamples(["vinyl-toy"]);
+    expect(toy["vinyl-toy"]!.character).toBeDefined();
+    expect(toy["vinyl-toy"]!.figure).toBeUndefined();
+  });
+
   it("yarım örnek tamamlanır; kapıdan geçemeyen atlanır, hiçbiri yoksa kaydedilmez; bilinmeyen paket hata", async () => {
     const h = harness();
     await expect(h.pipeline.drawStyleSamples(["yok"])).rejects.toThrow("Bilinmeyen stil paketi: yok");

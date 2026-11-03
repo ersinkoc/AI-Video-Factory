@@ -136,6 +136,16 @@ describe("ConceptTab", () => {
     expect(screen.getByText(tr("concept.preparing"))).toBeTruthy();
   });
 
+  it("3D figürü olan aday kartta figür önizlemesiyle ve 3D rozetiyle görünür", () => {
+    const state = conceptState({ figurePreviews: { "c1-a.svg": "c1-a.figure.png" } });
+    renderIn(<ConceptTab data={makeData(state)} busy={false} act={okAct()} />);
+    const first = screen.getByAltText(tr("concept.candidate", { name: "Sultan", n: 1 }));
+    expect(first.getAttribute("src")).toBe("/api/assets/c1-a.figure.png");
+    expect(first.className).toContain("object-contain");
+    expect(screen.getByAltText(tr("concept.candidate", { name: "Sultan", n: 2 })).getAttribute("src")).toBe("/api/assets/c1-b.svg");
+    expect(screen.getByText(tr("concept.figure")).getAttribute("title")).toBe(tr("concept.figureHint"));
+  });
+
   it("adaylar, seçim, kütüphaneden kullanma, ses ve hareket modu eylemleri", () => {
     const act = okAct();
     const state = conceptState();
@@ -150,6 +160,8 @@ describe("ConceptTab", () => {
     // Aday seçimi
     const candidate = screen.getByAltText(tr("concept.candidate", { name: "Sultan", n: 2 }));
     expect(candidate.className).toContain("object-contain");
+    // 3D paket önizlemesi yoksa SVG, rozet yok.
+    expect(screen.queryByText(tr("concept.figure"))).toBeNull();
     expect(screen.getByAltText(tr("concept.candidate", { name: "Kahvehane", n: 1 })).className).toContain("object-cover");
     fireEvent.click(candidate.closest("button")!);
     expect(act).toHaveBeenLastCalledWith({ type: "select", entityId: "c1", index: 1 });

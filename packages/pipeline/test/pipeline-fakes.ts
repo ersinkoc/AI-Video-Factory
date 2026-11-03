@@ -35,6 +35,7 @@ export const AGENT_NAMES = [
   "vectorDirector",
   "lessonCurator",
   "packager",
+  "figureDesigner",
 ] as const;
 export type AgentName = (typeof AGENT_NAMES)[number];
 
@@ -72,6 +73,16 @@ export const render = {
     return out;
   }),
   episode: loose(async (opts: { outputPath: string }) => opts.outputPath),
+  figures: loose(async (opts: { figures: Record<string, unknown>; outDir: string }) => {
+    const out: Record<string, string> = {};
+    await mkdir(opts.outDir, { recursive: true });
+    for (const name of Object.keys(opts.figures)) {
+      const file = join(opts.outDir, `${name}.png`);
+      await writeFile(file, `png:${name}`);
+      out[name] = file;
+    }
+    return out;
+  }),
   thumbnail: loose(async (opts: { output: string; onWait?: (pid: number) => void }) => {
     opts.onWait?.(4242);
     await writeFile(opts.output, "jpeg:thumb");
@@ -86,6 +97,7 @@ export async function renderModule() {
     renderEpisode: (o: any) => render.episode(o),
     renderStills: (o: any) => render.stills(o),
     renderThumbnail: (o: any) => render.thumbnail(o),
+    renderFigurePreviews: (o: any) => render.figures(o),
     thumbnailShot: real.thumbnailShot,
     thumbnailTitle: real.thumbnailTitle,
   };

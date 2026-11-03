@@ -1,6 +1,7 @@
-import type { Timeline } from "@ys/core";
+import { FigureSpec, type Timeline } from "@ys/core";
 import { Composition } from "remotion";
 import { Episode, type EpisodeProps } from "./Episode.tsx";
+import { FIGURE_PREVIEW, FigurePreview, type FigurePreviewProps } from "./FigurePreview.tsx";
 import { Thumbnail, type ThumbnailProps } from "./Thumbnail.tsx";
 import { THUMB } from "./thumbnail.ts";
 
@@ -20,6 +21,14 @@ const PLACEHOLDER: Timeline = {
   lineStyle: "outline",
   texture: "none",
 };
+
+const PLACEHOLDER_FIGURE = FigureSpec.parse({
+  skin: "#f1c7a5",
+  hair: { style: "short", color: "#3a2a20" },
+  top: { style: "sweater", color: "#5b7fbf" },
+  bottom: { style: "trousers", color: "#3b3f4a" },
+  shoes: "#2b2622",
+});
 
 export function Root() {
   return (
@@ -55,6 +64,15 @@ export function Root() {
         fps={PLACEHOLDER.fps}
         width={THUMB.width}
         height={THUMB.height}
+      />
+      <Composition
+        id="Figure"
+        component={FigurePreview}
+        defaultProps={{ figure: PLACEHOLDER_FIGURE } satisfies FigurePreviewProps}
+        durationInFrames={1}
+        fps={PLACEHOLDER.fps}
+        width={FIGURE_PREVIEW.width}
+        height={FIGURE_PREVIEW.height}
       />
     </>
   );

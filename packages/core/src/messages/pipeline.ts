@@ -79,6 +79,9 @@ export const PIPELINE_MESSAGES = {
   },
   "log.asset.drawn": { tr: "  {name}: çizildi ({kb} KB, {draws} deneme)", en: "  {name}: drawn ({kb} KB, {draws} attempts)" },
   "log.figure.done": { tr: "  {name}: 3D figür hazır ({hair} saç, {top})", en: "  {name}: 3D figure ready ({hair} hair, {top})" },
+  "log.figure.previews": { tr: "  3D figür önizlemesi: {n} figür", en: "  3D figure previews: {n} figures" },
+  "log.figure.previewBusy": { tr: "  3D figür önizlemesi sonraya kaldı: makine başka bir render yapıyor", en: "  3D figure previews postponed: the machine is busy with another render" },
+  "log.figure.previewFailed": { tr: "  3D figür önizlemesi çıkarılamadı: {error}", en: "  3D figure previews could not be rendered: {error}" },
   "log.figure.failed": { tr: "  {name}: 3D figür hazırlanamadı, SVG çizim kullanılacak: {error}", en: "  {name}: 3D figure could not be prepared, the SVG drawing will be used: {error}" },
   "log.side.name": { tr: "{name} (yan görünüş)", en: "{name} (side view)" },
   "log.side.fallback": {

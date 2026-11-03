@@ -38,6 +38,7 @@ vi.mock("three", async (orig) => {
 });
 
 const { Figure3D, FIGURE_VIEW } = await import("../src/Figure3D.tsx");
+const { FigurePreview, FIGURE_PREVIEW } = await import("../src/FigurePreview.tsx");
 const SPEC = FigureSpec.parse({ skin: "#f1c7a5", hair: { style: "short", color: "#3a2a20" }, top: { style: "sweater", color: "#5b7fbf" }, bottom: { style: "trousers", color: "#3b3f4a" }, shoes: "#2b2622" });
 
 afterEach(() => {
@@ -81,6 +82,15 @@ describe("3D figür (three.js)", () => {
     expect(container.querySelector("[data-svg]")).not.toBeNull();
     expect(rem.continued).toEqual([9]);
     expect(gl.renders).toHaveLength(0);
+  });
+
+  it("önizleme: figür kenar paylı tuvalde kukla kutusunun yerinde, hafif dönük ve rahat duruşta", () => {
+    expect(FIGURE_PREVIEW).toEqual({ width: 520, height: 864 });
+    const { container } = render(<FigurePreview figure={SPEC} />);
+    const box = container.querySelector("canvas")!.parentElement!;
+    expect([box.style.left, box.style.top, box.style.width, box.style.height]).toEqual(["60px", "48px", "400px", "800px"]);
+    const root = gl.renders[0]!.scene.children.at(-1) as unknown as { rotation: { y: number }; children: { children: { rotation: { z: number } }[] }[] };
+    expect(root.rotation.y).toBeCloseTo((0.18 * Math.PI) / 2);
   });
 
   it("kaldırılınca figür ve renderer serbest bırakılır", () => {

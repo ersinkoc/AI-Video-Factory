@@ -32,6 +32,8 @@ export interface StyleSample {
   /** Karakterin ve mekânın kütüphane anahtarı (SVG). */
   character?: string;
   background?: string;
+  /** 3D paketlerde karakterin figür önizlemesi (PNG): galeri SVG yerine bunu gösterir. */
+  figure?: string;
   /** Bölümlerden alındı mı, örnek için mi çizildi. */
   source: "library" | "drawn";
   at: string;

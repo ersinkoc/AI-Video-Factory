@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { openBrowser, renderMedia, renderStill, selectComposition, type OpenGlRenderer } from "@remotion/renderer";
-import type { Timeline } from "@ys/core";
+import type { FigureSpec, Timeline } from "@ys/core";
 import { runMediaTool } from "./tools.ts";
 
 export { THUMB, thumbnailShot, thumbnailTitle } from "./thumbnail.ts";
@@ -102,6 +102,30 @@ function alive(pid: number): boolean {
  * aralığını ve 8'er Chrome sekmesini paylaşıyor. Kilidin sahibi ölmüşse kilit bayattır.
  */
 export async function withRenderLock<R>(fn: () => Promise<R>, onWait?: (holderPid: number) => void): Promise<R> {
+  const token = (await acquireRenderLock(onWait, false))!;
+  try {
+    return await fn();
+  } finally {
+    await releaseRenderLock(token);
+  }
+}
+
+/**
+ * Makine boşsa kilidi alıp çalıştırır; başka bir süreç render ediyorsa beklemeden undefined döner. Yardımcı işler için
+ * (3D figür önizlemesi): uzun bir bölüm render'ının bitmesini beklemek konsept aşamasını yarım saat durdururdu.
+ */
+export async function ifRenderFree<R>(fn: () => Promise<R>): Promise<R | undefined> {
+  const token = await acquireRenderLock(undefined, true);
+  if (!token) return undefined;
+  try {
+    return await fn();
+  } finally {
+    await releaseRenderLock(token);
+  }
+}
+
+/** Kilidi alır ve sahiplik belirtecini döner; `skipIfBusy` iken canlı bir sahip varsa undefined. */
+async function acquireRenderLock(onWait: ((holderPid: number) => void) | undefined, skipIfBusy: boolean): Promise<string | undefined> {
   const token = `${process.pid}:${randomUUID()}`;
   let waiting = false;
   let empty = 0;
@@ -110,7 +134,7 @@ export async function withRenderLock<R>(fn: () => Promise<R>, onWait?: (holderPi
       const fh = await open(RENDER_LOCK, "wx");
       await fh.writeFile(token);
       await fh.close();
-      break;
+      return token;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
       const holder = Number((await readFile(RENDER_LOCK, "utf8").catch(() => "")).split(":")[0]);
@@ -121,16 +145,16 @@ export async function withRenderLock<R>(fn: () => Promise<R>, onWait?: (holderPi
         await rm(RENDER_LOCK, { force: true });
         continue;
       }
+      if (holder && skipIfBusy) return undefined;
       if (!waiting && holder) onWait?.(holder);
       waiting ||= Boolean(holder);
       await new Promise((r) => setTimeout(r, holder ? LOCK_POLL_MS : 200));
     }
   }
-  try {
-    return await fn();
-  } finally {
-    if ((await readFile(RENDER_LOCK, "utf8").catch(() => "")) === token) await rm(RENDER_LOCK, { force: true });
-  }
+}
+
+async function releaseRenderLock(token: string): Promise<void> {
+  if ((await readFile(RENDER_LOCK, "utf8").catch(() => "")) === token) await rm(RENDER_LOCK, { force: true });
 }
 
 /** Timeline'ı yerelde MP4'e render eder (Remotion; ≤3 kişilik ekipte lisans ücretsiz). Geçici hatada bir kez yeniden dener. */
@@ -290,4 +314,35 @@ export function renderThumbnail(opts: ThumbnailOptions): Promise<string> {
     });
     return opts.output;
   }, opts.onWait);
+}
+
+export interface FigurePreviewOptions {
+  /** Ad → figür tarifi; her biri `<ad>.png` olur. */
+  figures: Record<string, FigureSpec>;
+  outDir: string;
+}
+
+/**
+ * 3D figürlerin önizlemesi (Stüdyo: konsept kartı, karakter bankası, stil galerisi): "Figure" kompozisyonundan saydam
+ * PNG, hafif dönük duruşta. Tek paket ve tek tarayıcı bütün figürler için. Makine başka render yapıyorsa beklemez,
+ * undefined döner (önizleme sonraki aşamada tamamlanır).
+ */
+export function renderFigurePreviews(opts: FigurePreviewOptions): Promise<Record<string, string> | undefined> {
+  return ifRenderFree(async () => {
+    const serveUrl = await bundle({ entryPoint: ENTRY });
+    const browser = await openBrowser("chrome", { chromiumOptions: { gl: renderGl() } });
+    try {
+      const out: Record<string, string> = {};
+      for (const [name, figure] of Object.entries(opts.figures)) {
+        const inputProps = { figure };
+        const composition = await selectComposition({ serveUrl, id: "Figure", inputProps, puppeteerInstance: browser, timeoutInMilliseconds: BROWSER_TIMEOUT_MS });
+        const output = join(opts.outDir, `${name}.png`);
+        await renderStill({ serveUrl, composition, inputProps, frame: 0, output, imageFormat: "png", puppeteerInstance: browser, timeoutInMilliseconds: BROWSER_TIMEOUT_MS });
+        out[name] = output;
+      }
+      return out;
+    } finally {
+      await browser.close({ silent: true }).catch(() => {});
+    }
+  });
 }

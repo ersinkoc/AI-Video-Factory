@@ -124,6 +124,12 @@ describe("CharacterBank", () => {
     const custom = char("cus", "Özel", { pack: undefined });
     renderIn(<CharacterBank initial={[ADA, INK, custom]} series={["Bilim"]} initialJob={null} />);
     expect(screen.getByAltText("Ada").getAttribute("src")).toBe(`/api/assets/${ADA.key}`);
+    // 3D figürü olan karakter önizlemesiyle.
+    cleanup();
+    renderIn(<CharacterBank initial={[{ ...ADA, figurePreview: "library/ada.figure.png" }]} series={[]} initialJob={null} />);
+    expect(screen.getByAltText("Ada").getAttribute("src")).toBe("/api/assets/library/ada.figure.png");
+    cleanup();
+    renderIn(<CharacterBank initial={[ADA, INK, custom]} series={["Bilim"]} initialJob={null} />);
     expect(screen.getByText("sunucu")).toBeTruthy();
     expect(screen.getByText(tr("bank.episodes", { n: 2 }))).toBeTruthy();
     expect(screen.getAllByText(tr("bank.badge.bank"))).toHaveLength(1);

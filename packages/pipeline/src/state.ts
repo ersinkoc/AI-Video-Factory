@@ -268,6 +268,8 @@ export interface EpisodeState {
    * ok false: kapıdan geçemedi (karakter önden yürür, aynı ön çizim için yeniden çizilmez).
    */
   sideViews?: Record<string, { key: string; ok: boolean }>;
+  /** Seçili karakterlerin 3D figür önizlemesi (3D paketler): SVG anahtarı → PNG anahtarı; Stüdyo konsept kartında. */
+  figurePreviews?: Record<string, string>;
   /** Kalite kapısı sonuçları (varlık anahtarı → sonuç); reddedilenler de görünür. */
   assetChecks?: Record<string, AssetCheck>;
   /** Elle istenen yeniden çizim sayısı (çekim başına); seed olarak kullanılır. */

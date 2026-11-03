@@ -211,6 +211,8 @@ export function ConceptTab({ data, busy, act }: { data: EpisodeResponse; busy: b
             <div className="grid grid-cols-3 gap-2">
               {(concept.candidates[e.id] ?? []).map((c, i) => {
                 const selected = concept.selected[e.id]?.key === c.key;
+                // 3D paketlerde seçili karakter render'da 3D figür olarak çizilir: kartta onun önizlemesi.
+                const figure = state.figurePreviews?.[c.key];
                 return (
                   <button
                     key={c.key}
@@ -220,10 +222,15 @@ export function ConceptTab({ data, busy, act }: { data: EpisodeResponse; busy: b
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={asset(c.key)}
+                      src={asset(figure ?? c.key)}
                       alt={t("concept.candidate", { name: e.name, n: i + 1 })}
-                      className={`aspect-video w-full ${c.mimeType === "image/svg+xml" ? "object-contain p-1" : "object-cover"}`}
+                      className={`aspect-video w-full ${figure || c.mimeType === "image/svg+xml" ? "object-contain p-1" : "object-cover"}`}
                     />
+                    {figure && (
+                      <span className="absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1.5 text-[10px] font-semibold text-white" title={t("concept.figureHint")}>
+                        {t("concept.figure")}
+                      </span>
+                    )}
                     {selected && (
                       <span className="absolute top-1.5 right-1.5 grid h-5 w-5 place-items-center rounded-full bg-accent text-accent-ink">
                         <Check size={12} />

@@ -166,7 +166,7 @@ function CharacterCard({
   const [name, setName] = useState("");
   return (
     <div className="card grid gap-2 p-3">
-      <img src={`/api/assets/${c.key}`} alt={c.name} className="h-40 w-full rounded bg-panel-2 object-contain" />
+      <img src={`/api/assets/${c.figurePreview ?? c.key}`} alt={c.name} className="h-40 w-full rounded bg-panel-2 object-contain" />
       <div className="flex flex-wrap items-baseline justify-between gap-1">
         <span className="font-medium">{c.name}</span>
         <span className="text-xs text-muted">{t("bank.episodes", { n: c.episodes.length })}</span>

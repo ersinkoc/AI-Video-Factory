@@ -37,7 +37,7 @@ const DIR = mkdtempSync(join(tmpdir(), "ys-render-"));
 const LOCK = join(DIR, "render.lock");
 process.env.YS_RENDER_LOCK = LOCK;
 const mod = await import("../src/render.ts");
-const { renderEpisode, renderStills, renderThumbnail, withRenderLock, isTransientRenderFailure, isGpuFailure, renderGl, normalizeLoudness, ENTRY } = mod;
+const { renderEpisode, renderStills, renderThumbnail, renderFigurePreviews, withRenderLock, ifRenderFree, isTransientRenderFailure, isGpuFailure, renderGl, normalizeLoudness, ENTRY } = mod;
 
 const timeline = { episodeId: "e1" } as Timeline;
 const browser = { close: vi.fn() };
@@ -276,6 +276,46 @@ describe("renderThumbnail", () => {
     expect(remotion.selectComposition).toHaveBeenCalledWith({ serveUrl: "http://bundle", id: "Thumbnail", inputProps, chromiumOptions: { gl: "angle" }, timeoutInMilliseconds: 120_000 });
     expect(remotion.renderStill).toHaveBeenCalledWith(expect.objectContaining({ inputProps, frame: 80, output, imageFormat: "jpeg", jpegQuality: 92, chromiumOptions: { gl: "angle" } }));
     expect(remotion.renderStill.mock.calls[0]![0]).not.toHaveProperty("scale");
+    expect(existsSync(LOCK)).toBe(false);
+  });
+});
+
+describe("3D figür önizlemesi", () => {
+  const figure = { skin: "#f1c7a5" } as never;
+
+  it("tek paket ve tek tarayıcıyla her figür için saydam PNG; tarayıcı kapanır, kilit bırakılır", async () => {
+    const outDir = mkdtempSync(join(DIR, "fig-"));
+    const res = await renderFigurePreviews({ figures: { a: figure, b: figure }, outDir });
+    expect(res).toEqual({ a: join(outDir, "a.png"), b: join(outDir, "b.png") });
+    expect(remotion.bundle).toHaveBeenCalledTimes(1);
+    expect(remotion.bundle).toHaveBeenCalledWith({ entryPoint: ENTRY });
+    expect(remotion.openBrowser).toHaveBeenCalledWith("chrome", { chromiumOptions: { gl: "angle" } });
+    expect(remotion.selectComposition).toHaveBeenCalledWith(expect.objectContaining({ id: "Figure", inputProps: { figure }, puppeteerInstance: browser }));
+    expect(remotion.renderStill.mock.calls.map((c) => c[0])).toEqual([
+      expect.objectContaining({ frame: 0, output: join(outDir, "a.png"), imageFormat: "png" }),
+      expect.objectContaining({ output: join(outDir, "b.png") }),
+    ]);
+    expect(browser.close).toHaveBeenCalledWith({ silent: true });
+    expect(existsSync(LOCK)).toBe(false);
+  });
+
+  it("makine başka render yapıyorsa beklemez, hiçbir şey çizmez; hata olursa tarayıcı yine kapanır", async () => {
+    writeFileSync(LOCK, `${process.pid}:baska-is`);
+    try {
+      expect(await renderFigurePreviews({ figures: { a: figure }, outDir: DIR })).toBeUndefined();
+      expect(remotion.bundle).not.toHaveBeenCalled();
+    } finally {
+      rmSync(LOCK, { force: true });
+    }
+    remotion.renderStill.mockRejectedValue(new Error("kare alınamadı"));
+    browser.close.mockRejectedValue(new Error("zaten kapalı"));
+    await expect(renderFigurePreviews({ figures: { a: figure }, outDir: DIR })).rejects.toThrow("kare alınamadı");
+    expect(browser.close).toHaveBeenCalled();
+    expect(existsSync(LOCK)).toBe(false);
+  });
+
+  it("ifRenderFree: kilit boşsa çalıştırır ve bırakır", async () => {
+    expect(await ifRenderFree(async () => existsSync(LOCK))).toBe(true);
     expect(existsSync(LOCK)).toBe(false);
   });
 });

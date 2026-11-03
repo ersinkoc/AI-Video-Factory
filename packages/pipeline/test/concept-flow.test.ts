@@ -1,12 +1,32 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { mkdir, writeFile } from "node:fs/promises";
+import { describe, expect, it, vi } from "vitest";
 import type { QueryFn } from "@ys/agents";
 import { styleFromPack, stylePackOf, VectorAssetMeta } from "@ys/core";
 import { InMemoryLedger, MediaGateway } from "@ys/media-gateway";
 import { FsAssetStore, getJson, putJson, type AssetStore } from "@ys/storage";
 import { acceptAsset, EpisodePipeline, newEpisodeState, rejectAsset, type EpisodeInput, type EpisodeState } from "../src/index.ts";
+
+// Remotion yok: 3D figür önizlemesi küçük dosya olarak yazılır; makine meşgul ya da render hatası taklit edilebilir.
+const previews = vi.hoisted(() => ({ calls: [] as string[][], mode: "ok" as "ok" | "busy" | "fail" }));
+vi.mock("@ys/video/render", () => ({
+  renderEpisode: vi.fn(),
+  renderStills: vi.fn(),
+  renderThumbnail: vi.fn(),
+  thumbnailShot: vi.fn(),
+  thumbnailTitle: vi.fn(),
+  renderFigurePreviews: async (o: { figures: Record<string, unknown>; outDir: string }) => {
+    previews.calls.push(Object.keys(o.figures));
+    if (previews.mode === "busy") return undefined;
+    if (previews.mode === "fail") throw new Error("WebGL yok");
+    await mkdir(o.outDir, { recursive: true });
+    const out: Record<string, string> = {};
+    for (const name of Object.keys(o.figures)) await writeFile((out[name] = join(o.outDir, `${name}.png`)), "png");
+    return out;
+  },
+}));
 
 /**
  * Konsept aşaması uçtan uca, sahte Claude ile (para harcamaz): plan → çizim → kör tahmin → kapı → kütüphane; ret, insan
@@ -131,20 +151,30 @@ describe("konsept akışı (sahte Claude)", () => {
   });
 
   it("3D pakette onaylı karakterin çizimi figür ajanına gider; tarif paketin yüzeyiyle kütüphaneye yazılır, bir kez", async () => {
+    previews.calls.length = 0;
+    previews.mode = "ok";
     const { store, calls, pipeline, id } = await setup(() => 9, "clay");
     let state = await pipeline.run(id, { until: "concept" });
     const key = state.concept!.selected.c1!.key;
-    const figure = VectorAssetMeta.parse(await getJson(store, `${key}.json`)).figure;
-    expect(figure).toMatchObject({ finish: "clay", glasses: true, top: { style: "vest", inner: "#f4efe4" } });
+    const saved = VectorAssetMeta.parse(await getJson(store, `${key}.json`));
+    expect(saved.figure).toMatchObject({ finish: "clay", glasses: true, top: { style: "vest", inner: "#f4efe4" } });
+    // Önizleme PNG'si figürün yanında; Stüdyo konsept kartı için bölümde de anılır.
+    const png = key.replace(/\.svg$/, ".figure.png");
+    expect(saved.figurePreview).toBe(png);
+    expect(new TextDecoder().decode((await store.get(png))!)).toBe("png");
+    expect(state.figurePreviews).toEqual({ [key]: png });
+    expect(previews.calls).toEqual([["f0"]]);
     // Yalnız karakter (mekân figür olmaz); referans yok: yalnız çizimin kendisi.
     expect(calls.figure).toEqual([1]);
     expect(state.activity!.some((a) => a.msg.includes("Rider: 3D figür hazır (short saç, vest)"))).toBe(true);
 
-    // Konsept yeniden çalışınca hazır tarif yeniden istenmez.
+    // Konsept yeniden çalışınca hazır tarif yeniden istenmez, önizleme yeniden çizilmez.
     delete state.done.concept;
     await pipeline.save(state);
     state = await pipeline.run(id, { until: "concept" });
     expect(calls.figure).toEqual([1]);
+    expect(previews.calls).toHaveLength(1);
+    expect(state.figurePreviews).toEqual({ [key]: png });
 
     // Tarif yoksa (ör. Stüdyo'da başka çizim seçildi) yeniden hazırlanır; gerçek kişinin kayıtlı referansları da gider
     // (en çok iki, depoda olmayan atlanır).
@@ -156,6 +186,36 @@ describe("konsept akışı (sahte Claude)", () => {
     await pipeline.save(state);
     await pipeline.run(id, { until: "concept" });
     expect(calls.figure).toEqual([1, 2]);
+    // Tarif yenilendi: önizleme de yeniden çizilir.
+    expect(previews.calls).toHaveLength(2);
+  });
+
+  it("önizleme: makine meşgulse sonraya kalır, hata olursa bölüm durmaz; kayıtlı PNG kaybolduysa yeniden çizilir", async () => {
+    previews.calls.length = 0;
+    previews.mode = "busy";
+    const { store, pipeline, id } = await setup(() => 9, "vinyl-toy");
+    let state = await pipeline.run(id, { until: "concept" });
+    const key = state.concept!.selected.c1!.key;
+    expect(state.figurePreviews).toBeUndefined();
+    expect(VectorAssetMeta.parse(await getJson(store, `${key}.json`)).figurePreview).toBeUndefined();
+    expect(state.activity!.some((a) => a.msg.includes("önizlemesi sonraya kaldı"))).toBe(true);
+
+    previews.mode = "fail";
+    delete state.done.concept;
+    await pipeline.save(state);
+    state = await pipeline.run(id, { until: "concept" });
+    expect(state.activity!.some((a) => a.msg.includes("önizlemesi çıkarılamadı: WebGL yok"))).toBe(true);
+
+    // Kayıtta önizleme var ama dosyası yok: yeniden çizilir.
+    previews.mode = "ok";
+    const meta = VectorAssetMeta.parse(await getJson(store, `${key}.json`));
+    await putJson(store, `${key}.json`, { ...meta, figurePreview: "library/yok.png" });
+    delete state.done.concept;
+    await pipeline.save(state);
+    state = await pipeline.run(id, { until: "concept" });
+    expect(previews.calls).toHaveLength(3);
+    expect(state.figurePreviews![key]).toBe(key.replace(/\.svg$/, ".figure.png"));
+    expect(state.activity!.some((a) => a.msg.includes("3D figür önizlemesi: 1 figür"))).toBe(true);
   });
 
   it("figür tarifi kurulamazsa SVG çizimle sürer, bölüm durmaz", async () => {

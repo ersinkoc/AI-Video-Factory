@@ -149,12 +149,16 @@ describe("NewEpisodeForm", () => {
       noir: { character: "library/vector/character/n.svg", background: "library/vector/background/n.svg" },
       pixel: { background: "library/vector/background/p.svg" },
       "ukiyo-e": { character: "library/vector/character/u.svg" },
+      // 3D paket: karakter yerine figür önizlemesi.
+      clay: { character: "library/vector/character/c.svg", figure: "library/vector/character/c.figure.png" },
     };
     renderIn(<NewEpisodeForm samples={samples} />);
     expect(screen.getByText(tr("form.gallery"))).toBeTruthy();
-    expect(screen.getByText(tr("form.gallery.hint", { n: 3, total: STYLE_PACKS.length }))).toBeTruthy();
+    expect(screen.getByText(tr("form.gallery.hint", { n: 4, total: STYLE_PACKS.length }))).toBeTruthy();
     const thumbs = screen.getAllByRole("button", { pressed: false }).filter((b) => b.querySelector("img"));
-    expect(thumbs).toHaveLength(3);
+    expect(thumbs).toHaveLength(4);
+    expect(document.querySelector('img[src="/api/assets/library/vector/character/c.figure.png"]')).toBeTruthy();
+    expect(document.querySelector('img[src^="/api/styles/clay/sample?kind=character"]')).toBeNull();
     // "Otomatik" seçiliyken büyük önizleme yok: her resim bir küçük resimde.
     expect(document.querySelectorAll('img[src="/api/styles/noir/sample?kind=background&v=library%2Fvector%2Fbackground%2Fn.svg"]')).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: /Kara film/ }));

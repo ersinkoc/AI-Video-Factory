@@ -388,6 +388,10 @@ describe("Remotion kökü", () => {
     const tl = timeline({ fps: 25, visuals: [shot("a", "still_motion", { durationInFrames: 77 })] });
     expect(thumbMeta({ props: { timeline: tl, shotId: "a" } })).toEqual({ durationInFrames: 77, fps: 25, width: 1280, height: 720 });
     expect(thumbMeta({ props: { timeline: tl, shotId: "yok" } })).toMatchObject({ durationInFrames: 1 });
+    // 3D figür önizlemesi: tek kare, kenar paylı figür tuvali; varsayılan tarif geçerli.
+    const figure = registered.compositions.Figure!;
+    expect([figure.width, figure.height, figure.durationInFrames]).toEqual([520, 864, 1]);
+    expect((figure.defaultProps as { figure: { finish: string } }).figure.finish).toBe("matte");
   });
 });
 

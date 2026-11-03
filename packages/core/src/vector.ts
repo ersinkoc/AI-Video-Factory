@@ -173,6 +173,8 @@ export const VectorAssetMeta = z.object({
    * iskelet pozları aynen uygulanır. SVG yine saklanır (kalite kapısı, küçük resim, eski render'lar).
    */
   figure: FigureSpec.optional(),
+  /** 3D figürün saydam PNG önizlemesi (kütüphane anahtarı): Stüdyo'da SVG yerine bu gösterilir. */
+  figurePreview: z.string().optional(),
   /** Gerçek veriden üretildi (harita, bayrak): çizgi stili ve zemin temizliği uygulanmaz, olduğu gibi gösterilir. */
   exact: z.boolean().optional(),
   /** Kalite kapısı sonucu; olmayan (eski) varlık kullanılmadan önce denetlenir. */

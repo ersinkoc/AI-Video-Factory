@@ -33,7 +33,7 @@ import {
   type ShotPlanOut,
   type CastOut,
 } from "@ys/agents";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   AssetPlan,
   betterGate,
@@ -78,7 +78,7 @@ import type {
   RunOptions,
 } from "@ys/media-gateway";
 import { getJson, putJson, type AssetStore } from "@ys/storage";
-import { renderEpisode, renderStills, renderThumbnail, thumbnailShot, thumbnailTitle } from "@ys/video/render";
+import { renderEpisode, renderFigurePreviews, renderStills, renderThumbnail, thumbnailShot, thumbnailTitle } from "@ys/video/render";
 import { readFile } from "node:fs/promises";
 import { curateLessons } from "./curate.ts";
 import { loadModelSettings } from "./settings.ts";
@@ -355,6 +355,22 @@ export class EpisodePipeline {
       await (saving = saving.then(() => putJson(this.deps.store, STYLE_SAMPLES_KEY, all)));
       this.log(msg("log.samples.done", { pack, source: sample.source }));
     });
+    // 3D paketlerde örnek karakterin figürü ve önizlemesi: galeri SVG yerine figürü gösterir.
+    const figured: string[] = [];
+    for (const pack of packs) {
+      const key = all[pack]?.character;
+      const finish = stylePackOf(pack)!.figure;
+      if (!key || !finish) continue;
+      const identity = VectorAssetMeta.parse(await getJson(this.deps.store, `${key}.json`)).identity;
+      const brief = { name: identity?.name ?? SAMPLE_BRIEF.character.name, description: identity?.description ?? SAMPLE_BRIEF.character.description };
+      if (await this.ensureFigure(virtualState(STYLE_SAMPLES_ID, pack, brief.name), "concept", key, brief.name, brief.description, finish)) figured.push(pack);
+    }
+    if (figured.length) {
+      const previews = await this.figurePreviews(figured.map((pack) => all[pack]!.character!));
+      for (const pack of figured) all[pack]!.figure = previews[all[pack]!.character!];
+      await saving;
+      await putJson(this.deps.store, STYLE_SAMPLES_KEY, all);
+    }
     return all;
   }
 
@@ -1009,27 +1025,77 @@ export class EpisodePipeline {
     if (!finish) return;
     // Figürlü pakette konsept aşaması ve sonrası: kadro ve seçimler var.
     const selected = state.concept!.selected;
+    const keys: string[] = [];
     for (const c of state.cast!.characters.filter((x) => selected[x.id])) {
       const key = selected[c.id]!.key;
-      try {
-        // Seçili karakterin bilgisi ve kapı kaydı hep vardır; yoksa (bozuk kayıt) figür atlanır, SVG kullanılır.
-        const meta = VectorAssetMeta.parse(await getJson(this.deps.store, `${key}.json`));
-        if (meta.figure?.finish === finish) continue;
-        const drawing = await rasterizeSvg(new TextDecoder().decode(await this.bytes(key)));
-        const references: AgentImage[] = [];
-        for (const ref of meta.check!.refs.slice(0, 2)) {
-          const data = await this.deps.store.get(ref);
-          if (data) references.push({ data, mimeType: "image/jpeg" });
-        }
-        const out = await this.agent(state, stage, figureDesigner({ name: c.name, description: c.visualDescription, drawing, references }, this.agentDeps));
-        const figure = FigureSpec.parse({ ...out, finish });
-        await putJson(this.deps.store, `${key}.json`, { ...meta, figure });
-        this.log(msg("log.figure.done", { name: c.name, hair: figure.hair.style, top: figure.top.style }));
-      } catch (e) {
-        this.log(msg("log.figure.failed", { name: c.name, error: errorText(e) }));
+      if (await this.ensureFigure(state, stage, key, c.name, c.visualDescription, finish)) keys.push(key);
+    }
+    const previews = await this.figurePreviews(keys);
+    if (Object.keys(previews).length) state.figurePreviews = { ...state.figurePreviews, ...previews };
+  }
+
+  /**
+   * Karakterin 3D figür tarifi kütüphanede yoksa hazırlar (onaylı çizim + kayıtlı referanslar → ucuz ajan). Tarif varsa
+   * true; hazırlanamazsa günlüğe yazar, false (SVG çizim kullanılır).
+   */
+  private async ensureFigure(state: EpisodeState, stage: Stage, key: string, name: string, description: string, finish: FigureSpec["finish"]): Promise<boolean> {
+    try {
+      // Seçili karakterin bilgisi ve kapı kaydı hep vardır; yoksa (bozuk kayıt) figür atlanır, SVG kullanılır.
+      const meta = VectorAssetMeta.parse(await getJson(this.deps.store, `${key}.json`));
+      if (meta.figure?.finish === finish) return true;
+      const drawing = await rasterizeSvg(new TextDecoder().decode(await this.bytes(key)));
+      const references: AgentImage[] = [];
+      for (const ref of meta.check!.refs.slice(0, 2)) {
+        const data = await this.deps.store.get(ref);
+        if (data) references.push({ data, mimeType: "image/jpeg" });
       }
+      const out = await this.agent(state, stage, figureDesigner({ name, description, drawing, references }, this.agentDeps));
+      const figure = FigureSpec.parse({ ...out, finish });
+      // Tarif değişti: eski önizleme artık bu figürü göstermez.
+      await putJson(this.deps.store, `${key}.json`, { ...meta, figure, figurePreview: undefined });
+      this.log(msg("log.figure.done", { name, hair: figure.hair.style, top: figure.top.style }));
+      return true;
+    } catch (e) {
+      this.log(msg("log.figure.failed", { name, error: errorText(e) }));
+      return false;
     }
   }
+
+  /**
+   * Figürlerin PNG önizlemesi (Stüdyo): kütüphanede olan kullanılır, eksikler tek Remotion işinde çizilir ve figürün
+   * yanına yazılır. Makine başka render yapıyorsa beklenmez; eksikler sonraki aşamada tamamlanır. SVG anahtarı → PNG.
+   */
+  private async figurePreviews(keys: string[]): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    const missing: Record<string, FigureSpec> = {};
+    const metas = new Map<string, VectorAssetMeta>();
+    for (const [i, key] of keys.entries()) {
+      const meta = VectorAssetMeta.parse(await getJson(this.deps.store, `${key}.json`));
+      metas.set(key, meta);
+      if (meta.figurePreview && (await this.deps.store.get(meta.figurePreview))) out[key] = meta.figurePreview;
+      else missing[`f${i}`] = meta.figure!;
+    }
+    if (!Object.keys(missing).length) return out;
+    try {
+      const files = await renderFigurePreviews({ figures: missing, outDir: resolve(this.deps.workDir, "figures", randomUUID()) });
+      if (!files) {
+        this.log(msg("log.figure.previewBusy"));
+        return out;
+      }
+      for (const [name, file] of Object.entries(files)) {
+        const key = keys[Number(name.slice(1))]!;
+        const preview = key.replace(/\.svg$/, ".figure.png");
+        await this.deps.store.put(preview, new Uint8Array(await readFile(file)), "image/png");
+        await putJson(this.deps.store, `${key}.json`, { ...metas.get(key), figurePreview: preview });
+        out[key] = preview;
+      }
+      this.log(msg("log.figure.previews", { n: Object.keys(files).length }));
+    } catch (e) {
+      this.log(msg("log.figure.previewFailed", { error: errorText(e) }));
+    }
+    return out;
+  }
+
 
 
   /**

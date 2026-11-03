@@ -19,7 +19,7 @@ async function library(): Promise<AssetStore> {
   await add(1, { check: passed, identity: identity("Mehmed II") });
   await add(2, { check: { ...passed, passed: false }, identity: identity("Failed") });
   await add(3, { check: { ...passed, override: { decision: "rejected", at: "" } }, identity: identity("Human rejected") });
-  await add(4, { check: passed, identity: identity("Other style", "flat", "flat") });
+  await add(4, { check: passed, identity: identity("Other style", "flat", "flat"), figurePreview: "library/x.figure.png" });
   await add(5, { check: passed });
   await putJson(store, `${dir}${hash(6)}.rejected.svg.json`, { check: passed, identity: identity("Rejected copy") });
   return store;
@@ -31,6 +31,10 @@ describe("karakter kütüphanesi", () => {
     expect((await listLibraryCharacters(store, { artStyle: "noir", lineStyle: "ink" })).map((c) => c.name)).toEqual(["Mehmed II"]);
     expect((await listLibraryCharacters(store)).map((c) => c.name).sort()).toEqual(["Mehmed II", "Other style"]);
     expect((await listLibraryCharacters(store))[0]!.id).toMatch(/^0+[14]$/);
+    // 3D figür önizlemesi varsa Stüdyo onu gösterir.
+    const all = await listLibraryCharacters(store);
+    expect(all.find((c) => c.name === "Other style")!.figurePreview).toBe("library/x.figure.png");
+    expect(all.find((c) => c.name === "Mehmed II")).not.toHaveProperty("figurePreview");
   });
 
   it("kullanıldığı bölüm bir kez yazılır", async () => {
