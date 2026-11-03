@@ -15,6 +15,11 @@ const remotion = vi.hoisted(() => ({
 }));
 vi.mock("@remotion/bundler", () => ({ bundle: remotion.bundle }));
 vi.mock("@remotion/renderer", () => ({
+  // Gerçek iptal sinyali gibi: cancel() bekleyen dinleyicileri çağırır.
+  makeCancelSignal: () => {
+    const listeners: (() => void)[] = [];
+    return { cancelSignal: (cb: () => void) => listeners.push(cb), cancel: () => listeners.forEach((cb) => cb()) };
+  },
   openBrowser: remotion.openBrowser,
   selectComposition: remotion.selectComposition,
   renderMedia: remotion.renderMedia,
@@ -134,6 +139,20 @@ describe("renderEpisode", () => {
     await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), onRetry: (r) => reasons.push(r) });
     expect(reasons).toEqual(["Error: Page crashed!"]);
     expect(remotion.renderMedia.mock.calls.map((c) => c[0].chromiumOptions)).toEqual([{ gl: "angle" }, { gl: "swangle" }]);
+  });
+
+  it("ilerlemesi duran render iptal edilir ve aynı arka uçla bir kez baştan alınır; ikinci kez takılırsa hata", async () => {
+    // Takılan render: hiç ilerleme bildirmez, yalnız iptal sinyaliyle düşer (Remotion'daki gibi).
+    const hang = (o: { cancelSignal: (cb: () => void) => void }) => new Promise<void>((_, reject) => o.cancelSignal(() => reject(new Error("renderMedia() got cancelled"))));
+    remotion.renderMedia.mockImplementationOnce(hang);
+    const reasons: string[] = [];
+    await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), stallMs: 40, onRetry: (r) => reasons.push(r) });
+    expect(reasons).toEqual(["render stalled: no progress for 0 s"]);
+    expect(remotion.renderMedia.mock.calls.map((c) => c[0].chromiumOptions)).toEqual([{ gl: "angle" }, { gl: "angle" }]);
+    // İptal dışı hatada bekçi sessiz kalır; ikinci takılma iletilir ve kilit bırakılır.
+    remotion.renderMedia.mockImplementation(hang);
+    await expect(renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), stallMs: 40 })).rejects.toThrow("render stalled");
+    expect(existsSync(LOCK)).toBe(false);
   });
 
   it("zaten yazılım GL'deyken çöken render geçici değilse yeniden denenmez", async () => {

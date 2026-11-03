@@ -4,7 +4,7 @@ import { availableParallelism, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
-import { openBrowser, renderMedia, renderStill, selectComposition, type OpenGlRenderer } from "@remotion/renderer";
+import { makeCancelSignal, openBrowser, renderMedia, renderStill, selectComposition, type OpenGlRenderer } from "@remotion/renderer";
 import type { FigureSpec, Timeline } from "@ys/core";
 import { runMediaTool } from "./tools.ts";
 
@@ -26,7 +26,16 @@ export interface RenderOptions {
   concurrency?: number;
   /** OffthreadVideo kare önbelleği. */
   videoCacheBytes?: number;
+  /** İlerlemesiz geçen bu süreden sonra render takılmış sayılır (ms; varsayılan STALL_MS). */
+  stallMs?: number;
 }
+
+/**
+ * Render ilerlemesi bu kadar süre durursa takılmış sayılır, iptal edilip yeni tarayıcıyla bir kez baştan alınır (3 Kas:
+ * bilgisayar render'ın %10'unda uykuya geçti; uyanınca Chrome hiç ilerlemedi, süreç 7 saat kilidi tutup bekledi).
+ * Ağır karede bile Remotion her kare için ilerleme bildirir; 5 dakika yanlış alarm vermez.
+ */
+const STALL_MS = 5 * 60_000;
 
 /**
  * Remotion varsayılanı sistem belleğinin yarısı; 32 iş parçacıklı Windows makinede 16 paralel
@@ -64,7 +73,7 @@ export const isGpuFailure = (e: unknown) =>
  * render boşa gitti.
  */
 export const isTransientRenderFailure = (e: unknown) =>
-  e instanceof Error && /No such file or directory|ENOENT|EBUSY|EPERM|while setting up the headless browser/i.test(e.message);
+  e instanceof Error && /No such file or directory|ENOENT|EBUSY|EPERM|while setting up the headless browser|render stalled/i.test(e.message);
 
 /**
  * Remotion geçici klasörlerini os.tmpdir() altında açar; Windows'ta sistem Temp'i dışarıdan temizlenebiliyor. Render
@@ -186,19 +195,40 @@ async function renderOnce(opts: RenderOptions, gl: OpenGlRenderer): Promise<stri
 
   // Uzantı ne olursa olsun ham dosya ayrı: aynı yol olursa ffmpeg kendi girdisinin üstüne yazar, rm sonucu siler.
   const rawPath = `${opts.outputPath.replace(/\.mp4$/i, "")}.raw.mp4`;
-  await renderMedia({
-    serveUrl,
-    composition,
-    inputProps,
-    codec: "h264",
-    outputLocation: rawPath,
-    chromiumOptions,
-    concurrency:
-      opts.concurrency ?? Math.max(1, Math.min(MAX_DEFAULT_CONCURRENCY, Math.floor(availableParallelism() / 2))),
-    timeoutInMilliseconds: BROWSER_TIMEOUT_MS,
-    offthreadVideoCacheSizeInBytes: opts.videoCacheBytes ?? DEFAULT_VIDEO_CACHE_BYTES,
-    onProgress: ({ progress }) => opts.onProgress?.(progress),
-  });
+  // Bekçi: ilerleme durursa render iptal edilir; hata "render stalled" olarak geçici sayılır ve baştan alınır.
+  const { cancelSignal, cancel } = makeCancelSignal();
+  const stallMs = opts.stallMs ?? STALL_MS;
+  let last = Date.now();
+  let stalled = false;
+  const watch = setInterval(() => {
+    if (Date.now() - last < stallMs) return;
+    stalled = true;
+    cancel();
+  }, Math.min(15_000, stallMs / 2));
+  try {
+    await renderMedia({
+      serveUrl,
+      composition,
+      inputProps,
+      codec: "h264",
+      outputLocation: rawPath,
+      chromiumOptions,
+      concurrency:
+        opts.concurrency ?? Math.max(1, Math.min(MAX_DEFAULT_CONCURRENCY, Math.floor(availableParallelism() / 2))),
+      timeoutInMilliseconds: BROWSER_TIMEOUT_MS,
+      offthreadVideoCacheSizeInBytes: opts.videoCacheBytes ?? DEFAULT_VIDEO_CACHE_BYTES,
+      cancelSignal,
+      onProgress: ({ progress }) => {
+        last = Date.now();
+        opts.onProgress?.(progress);
+      },
+    });
+  } catch (e) {
+    if (stalled) throw new Error(`render stalled: no progress for ${Math.round(stallMs / 1000)} s`);
+    throw e;
+  } finally {
+    clearInterval(watch);
+  }
 
   await normalizeLoudness(rawPath, opts.outputPath);
   await rm(rawPath, { force: true });
