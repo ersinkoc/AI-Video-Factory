@@ -293,7 +293,10 @@ describe("vektör sahne: karakter iskeleti", () => {
     // Hedef yoksa öne-yana yatay (omuz hizasında).
     expect([g("arm-r").rotate, g("forearm-r").rotate, g("head").rotate, g("eyes").tx]).toEqual([-90, -6, -4, 5]);
     g = at("think");
-    expect([g("forearm-r").rotate, g("head").rotate, g("eyes").tx]).toEqual([162, 7, 5]);
+    // El çeneye: dirsek göğsün önünde.
+    expect([g("arm-r").rotate, g("forearm-r").rotate, g("head").rotate, g("eyes").tx]).toEqual([70, 125, 7, 5]);
+    // Öbür kol karnın önünde yatay ("düşünen adam").
+    expect([g("arm-l").rotate, g("forearm-l").rotate, g("forearm-l").sy]).toEqual([-6, -90, 0.9]);
     g = at("cheer");
     expect([g("forearm-l").rotate, g("forearm-r").rotate, g("brows").ty, g("mouth").sy]).toEqual([-15, 15, -8, 1.5]);
     g = at("surprised");
@@ -467,7 +470,8 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(Math.max(...waves) - Math.min(...waves)).toBeGreaterThan(10);
     expect(heroAt(150, { anims: [{ type: "explain" }] }).get("hand-r").rotate).toBeLessThan(-10);
     cleanup();
-    expect(heroAt(150, { anims: [{ type: "think" }] }).get("hand-r").rotate).toBeGreaterThan(10);
+    // Düşünürken parmaklar çeneye doğru döner (ön kolun devamından hafifçe dışa).
+    expect(heroAt(150, { anims: [{ type: "think" }] }).get("hand-r").rotate).toBe(-5);
     cleanup();
     const c = scene({ layers: [{ asset: "hero", x: 960, depth: 0.3 }, { asset: "cup", x: 960, heldBy: 0 }] }, { frame: 150 });
     expect(pose(c, "hand-r").rotate).toBe(0);
@@ -890,7 +894,7 @@ describe("vektör sahne: elde tutulan nesne", () => {
 
   it("nesne tutan karakter sol eliyle düşünür: nesne yüze kalkmaz", () => {
     const c = scene({ layers: [{ asset: "hero", x: 960, depth: 0, anims: [{ type: "think" }] }, { asset: "cup", x: 0, heldBy: 0 }] }, { frame: 150 });
-    expect(pose(c, "forearm-l").rotate).toBeCloseTo(-162, 0);
+    expect(pose(c, "forearm-l").rotate).toBeCloseTo(-125, 0);
     expect(pose(c, "forearm-r").rotate).toBeCloseTo(-HOLD_POSE.forearm, -1);
     cleanup();
     expect(held({ anims: [{ type: "think" }] }).top).toBeCloseTo(held({}).top, -1);

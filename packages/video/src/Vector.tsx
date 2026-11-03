@@ -388,10 +388,20 @@ function rigPose(
       case "think": {
         // Sağ el nesne tutuyorsa sol el çeneye gider; yoksa tutulan defter yüzü kapatıyordu.
         const hand = attention.holding ? -1 : 1;
-        mix(hand > 0 ? "arm-r" : "arm-l", "rotate", -8 * hand);
-        mix(hand > 0 ? "forearm-r" : "forearm-l", "rotate", 162 * hand);
-        // El çeneye doğru kıvrılır.
-        mix(hand > 0 ? "hand-r" : "hand-l", "rotate", 24 * hand);
+        // Dirsek göğsün önüne gelir, el çeneye: omuz 300, dirsek 100, bilek 90 px aşağıda; eski açılar (üst kol -8°, ön
+        // kol 162°) eli omuz hizasında bırakıyordu, denetçi "düşünmüyor" diyordu (3 Kas, C# incelemesi).
+        // Çizimlerin boynu farklı uzunlukta: el dudak/çene hizasına (bilek ~y 247, uç ~218) hedeflenir.
+        mix(hand > 0 ? "arm-r" : "arm-l", "rotate", 70 * hand);
+        mix(hand > 0 ? "forearm-r" : "forearm-l", "rotate", 125 * hand);
+        // Parmaklar çeneye doğru.
+        mix(hand > 0 ? "hand-r" : "hand-l", "rotate", -5 * hand);
+        if (hand > 0) {
+          // "Düşünen adam": öbür ön kol karnın önünde yatay, el karşı kolun altına kıvrılır.
+          mix("arm-l", "rotate", -6);
+          mix("forearm-l", "rotate", -90);
+          mix("forearm-l", "sy", 0.9);
+          mix("hand-l", "rotate", -40);
+        }
         mix("head", "rotate", 7);
         mix("brows", "ty", -5);
         mix("eyes", "tx", 5);
