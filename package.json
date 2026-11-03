@@ -15,6 +15,7 @@
     "studio:build": "pnpm --filter @ys/studio build",
     "studio:start": "pnpm --filter @ys/studio start",
     "release": "tsx scripts/release.ts",
+    "bench": "tsx packages/pipeline/scripts/bench.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --mode integration packages/db",
