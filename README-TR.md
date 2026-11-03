@@ -8,6 +8,22 @@ Tek bir konudan çok dilli, animasyon ağırlıklı YouTube videoları üreten b
 
 Mimari, sağlayıcı seçimi ve yol haritası: [docs/PROJE_PLANI.md](docs/PROJE_PLANI.md). Sürüm geçmişi: [CHANGELOG.md](CHANGELOG.md).
 
+## Sponsor
+
+<table>
+  <tr>
+    <td width="96" valign="top">
+      <a href="https://wrongstack.com"><img src="https://raw.githubusercontent.com/WrongStack/WrongStack/main/website/public/wrongstack.svg" width="80" height="80" alt="WrongStack"></a>
+    </td>
+    <td>
+      <strong><a href="https://wrongstack.com">WrongStack</a></strong>: <em>senin</em> kod tabanını zamanla daha iyi tanıyan, ücretsiz ve açık kaynak (MIT) bir AI kodlama ajanı. Kodu okur, araçları çalıştırır ve uzman ajanları koordine eder; oturumlar arasında kalıcı hafızası ve görünür izin sınırları vardır, abonelik gerekmez. Tek başına çalışan tek bir dosya, Node.js gerekmez.<br><br>
+      macOS / Linux: <code>curl -fsSL https://wrongstack.com/install.sh | sh</code><br>
+      Windows: <code>irm https://wrongstack.com/install.ps1 | iex</code><br><br>
+      <a href="https://wrongstack.com">wrongstack.com</a> · <a href="https://github.com/WrongStack/WrongStack">GitHub</a>
+    </td>
+  </tr>
+</table>
+
 ## Özellikler
 
 - **Konudan bitmiş videoya.** Pipeline şu aşamalardan geçer: stil → hikâye → senaryo → *onay* → kadro → konsept → *onay* → ses → çekimler → kareler → klipler → kurgu → render → yayın paketi → Short → inceleme. Her aşama idempotent'tir ve her alt adımdan sonra kaydeder; hata alan çalıştırma kaldığı yerden devam eder.

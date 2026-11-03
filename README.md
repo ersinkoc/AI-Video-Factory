@@ -8,6 +8,22 @@ An AI video factory that produces multilingual, animation-heavy YouTube videos f
 
 Architecture, provider choices and the roadmap are in [docs/PROJE_PLANI.md](docs/PROJE_PLANI.md) (Turkish). Release history: [CHANGELOG.md](CHANGELOG.md).
 
+## Sponsor
+
+<table>
+  <tr>
+    <td width="96" valign="top">
+      <a href="https://wrongstack.com"><img src="https://raw.githubusercontent.com/WrongStack/WrongStack/main/website/public/wrongstack.svg" width="80" height="80" alt="WrongStack"></a>
+    </td>
+    <td>
+      <strong><a href="https://wrongstack.com">WrongStack</a></strong>: a free, open-source (MIT) AI coding agent that gets better at <em>your</em> codebase over time. It reads code, runs tools and coordinates specialist agents, with durable memory across sessions, visible permission boundaries and no subscription. One self-contained binary, no Node.js needed.<br><br>
+      macOS / Linux: <code>curl -fsSL https://wrongstack.com/install.sh | sh</code><br>
+      Windows: <code>irm https://wrongstack.com/install.ps1 | iex</code><br><br>
+      <a href="https://wrongstack.com">wrongstack.com</a> · <a href="https://github.com/WrongStack/WrongStack">GitHub</a>
+    </td>
+  </tr>
+</table>
+
 ## Features
 
 - **Topic to finished video.** The pipeline runs these stages: style → story → script → *approval* → cast → concept → *approval* → voice → shots → keyframes → clips → timeline → render → package → short → review. Every stage is idempotent and saves after each sub-step, so a failed run resumes where it stopped.
