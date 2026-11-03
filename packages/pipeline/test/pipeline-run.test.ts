@@ -68,6 +68,17 @@ describe("yardımcılar", () => {
 });
 
 describe("run düzeni", () => {
+  it("render'dan önce önizleme onayı beklenir (Stüdyo bölümü); onaydan sonra devam eder", async () => {
+    const h = harness();
+    const before = ["style", "story", "script", "cast", "concept", "voice", "shots", "keyframes", "clips", "timeline"];
+    const done = Object.fromEntries(before.map((s) => [s, "t"]));
+    const id = await h.seed(makeState({ autoApprove: false }, { done, approvals: { script: "t", concept: "t" } }));
+    const state = await h.pipeline.run(id);
+    expect(state.waitingFor).toBe("preview");
+    expect(state.done.render).toBeUndefined();
+    expect(h.logs).toContain("⏸ onay bekleniyor: preview");
+  });
+
   it("paket stili, hikâye ve senaryo; onaysız bölüm senaryo kapısında bekler, model seçimi ve maliyetler kaydedilir", async () => {
     const h = harness();
     h.store.putJsonSync("settings/models.json", { screenwriter: "claude-haiku-5-5" });

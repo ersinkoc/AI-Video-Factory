@@ -36,6 +36,7 @@ export type StudioAction =
   | { type: "preview" }
   | { type: "set-motion"; motionMode: MotionMode; aiClipRatio?: number }
   | { type: "approve-concept" }
+  | { type: "approve-preview" }
   | { type: "change-voice"; voiceId: string }
   | { type: "redraw"; shotIds: string[] }
   | { type: "replan"; shotIds: string[]; note: string }
@@ -95,6 +96,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       case "approve-concept":
         await episodes.update(id, (s) => approve(s, "concept"));
         startJob(id, "job.produce", ["episode", "run", id]);
+        break;
+      case "approve-preview":
+        await episodes.update(id, (s) => approve(s, "preview"));
+        startJob(id, "job.render", ["episode", "run", id]);
         break;
       case "change-voice":
         await episodes.update(id, (s) => changeVoice(s, action.voiceId));

@@ -583,6 +583,15 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
 
   return (
     <div className="grid gap-4">
+      {data.status.status === "waiting" && data.status.stage === "render" && (
+        // Önizleme kapısı: render yapımcının onayıyla başlar (beğenmediği çekimleri önce yeniden oluşturabilir).
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-accent/50 bg-accent/10 p-3 text-sm">
+          <span className="flex-1">{t("shots.waiting")}</span>
+          <button className="btn-primary py-1.5 text-xs" disabled={busy} onClick={() => act({ type: "approve-preview" })}>
+            <Clapperboard size={14} /> {t("shots.approve")}
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-muted">{t("shots.count", { n: shots.length })}</span>
         <button className={`chip ${weakOnly ? "chip-on" : ""}`} onClick={() => setWeakOnly(!weakOnly)}>

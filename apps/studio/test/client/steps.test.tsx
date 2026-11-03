@@ -497,6 +497,16 @@ describe("ShotsTab", () => {
     expect((screen.getByRole("button", { name: tr("prod.replan", { n: 1, usd: fmtTr.usd(0) }) }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("render onayı bekleniyorsa şerit ve onay düğmesi; beklemiyorsa yok", async () => {
+    const act = okAct();
+    const { rerender } = renderIn(<ShotsTab data={makeData(shotsState(), { status: { status: "waiting", stage: "render" } })} busy={false} act={act} />);
+    expect(screen.getByText(tr("shots.waiting"))).toBeTruthy();
+    await reactAct(async () => fireEvent.click(screen.getByRole("button", { name: tr("shots.approve") })));
+    expect(act).toHaveBeenLastCalledWith({ type: "approve-preview" });
+    rerender(<ShotsTab data={makeData(shotsState(), { status: { status: "waiting", stage: "voice" } })} busy={false} act={act} />);
+    expect(screen.queryByText(tr("shots.waiting"))).toBeNull();
+  });
+
   it("vektör: Shift'li ilk tıklama tek çekim seçer (çapa yok); bekleyen not yoksa satırı yok", () => {
     renderIn(<ShotsTab data={makeData(shotsState({}, { motionMode: "vector" }))} busy={false} act={okAct()} />);
     expect(screen.queryByText(tr("prod.replanPending", { scenes: "" }), { exact: false })).toBeNull();

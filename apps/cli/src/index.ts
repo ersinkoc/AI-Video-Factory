@@ -52,7 +52,7 @@ Komutlar:
   episode run <id> [--until <aşama>] [--from <aşama>] [--only <aşama>]
               aşamalar: style story script voice shots keyframes clips timeline render
   episode show <id>
-  episode approve <id> script|concept
+  episode approve <id> script|concept|preview
   episode select <id> <varlık>=<sıra>      örn. c1=2 (konsept adayı seç)
   episode preview <id>              seçilen referanslarla deneme kareleri
               new için: [--motion animated|mixed|still|vector] [--manual: onaylarda dur] [--no-qa: kare kontrolü kapalı] [--no-realism: gerçeklik denetimi kapalı] [--side-views: yürüyen karakterlere yan görünüş] [--no-captions: altyazı videoya gömülmez, yalnız .srt] [--line outline|flat|sketch|ink]

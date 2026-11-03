@@ -30,6 +30,11 @@ export type Stage = (typeof STAGES)[number];
 export const GATES = {
   script: "cast",
   concept: "voice",
+  /**
+   * Önizleme onayı (4 Kas, kullanıcı: "render'a otomatik geçmesin, benden onay alsın"): çekimler, önizleme kareleri ve
+   * timeline hazır olunca render'dan önce durulur; yapımcı çekimleri inceler, beğenmediğini notla yeniden oluşturur.
+   */
+  preview: "render",
 } as const satisfies Record<string, Stage>;
 export type Gate = keyof typeof GATES;
 

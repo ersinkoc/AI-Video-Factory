@@ -1,6 +1,6 @@
 "use client";
 
-import type { EpisodeEstimate, EpisodeState, RunStatus, Stage } from "@ys/pipeline/light";
+import type { EpisodeEstimate, EpisodeState, Gate, RunStatus, Stage } from "@ys/pipeline/light";
 import { AlertTriangle, Check, CircleDashed, Hourglass, Loader2, PauseCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Formatters, MessageKey } from "../../../lib/i18n";
@@ -12,7 +12,10 @@ export const stageKey = (s: string) => `stage.${s}` as MessageKey;
  * Onay kapısı geçildi mi (CLI'dan otomatik onaylı bölümler dahil). Pipeline'daki isApproved'ın istemci kopyası:
  * istemci paketi @ys/pipeline/light'ın çalışma kodunu (node:fs kullanan modüller) içeremez.
  */
-export const approved = (state: EpisodeState, gate: "script" | "concept") => Boolean(state.input.autoApprove || state.approvals?.[gate]);
+export const approved = (state: EpisodeState, gate: Gate) => Boolean(state.input.autoApprove || state.approvals?.[gate]);
+
+/** Bekleyen onay kapısının sekmesi: senaryo, konsept, önizleme (render öncesi, Çekimler). */
+export const gateTab = (stage: Stage | undefined): Tab => (stage === "render" ? "shots" : stage === "voice" ? "concept" : "script");
 
 /** Eylem: sunucu kabul ettiyse true (çağıran yalnız o zaman girdisini temizler). */
 export type Act = (action: Record<string, unknown>) => Promise<boolean>;

@@ -155,6 +155,7 @@ const tr = {
   "ct.cache": " · {n} önbellek",
 
   "step.script": "Senaryo",
+  "step.preview": "Önizleme",
   "step.concept": "Konsept",
 
   "script.writing": "Stil, hikâye ve senaryo yazılıyor… (1–2 dk)",
@@ -319,6 +320,10 @@ const tr = {
   "live.waiting.script": "Senaryo hazır, onayını bekliyor. Onaylayınca karakterler ve görsel konsept hazırlanır.",
   "live.waiting.concept": "Karakterler ve görsel konsept hazır, onayını bekliyor. Onaylayınca seslendirme ve üretim başlar.",
   "live.goApprove": "İncele ve onayla",
+  "live.waiting.shots": "Çekimler ve önizleme kareleri hazır, render onayını bekliyor. Beğenmediklerini Çekimler sekmesinde notla yeniden oluştur; hazır olunca render'a geç.",
+  "shots.waiting": "Render onayını bekliyor: kareleri incele, beğenmediklerini seçip yeniden oluştur. Hazır olunca render'a geç.",
+  "shots.approve": "Onayla, render'a geç",
+  "job.render": "Render alınıyor",
   "live.external": "Bu iş Stüdyo dışında (CLI) çalışıyor; durdurmak için terminali kullan.",
   "live.idle": "Sıradaki aşama: {stage}",
   "live.recent": "Son olaylar",
@@ -708,6 +713,7 @@ const en: Record<MessageKey, string> = {
   "ct.cache": " · {n} cached",
 
   "step.script": "Script",
+  "step.preview": "Preview",
   "step.concept": "Concept",
 
   "script.writing": "Writing style, story and script… (1–2 min)",
@@ -872,6 +878,10 @@ const en: Record<MessageKey, string> = {
   "live.waiting.script": "The script is ready for your approval. Once approved, characters and the visual concept are prepared.",
   "live.waiting.concept": "Characters and the visual concept are ready for your approval. Once approved, voice-over and production start.",
   "live.goApprove": "Review and approve",
+  "live.waiting.shots": "The shots and preview frames are ready and waiting for your render approval. Re-create the ones you don't like in the Shots tab; render when you're happy.",
+  "shots.waiting": "Waiting for your render approval: review the frames, select the ones you don't like and re-create them. Render when you're happy.",
+  "shots.approve": "Approve and render",
+  "job.render": "Rendering",
   "live.external": "This job runs outside the Studio (CLI); use the terminal to stop it.",
   "live.idle": "Next stage: {stage}",
   "live.recent": "Recent events",

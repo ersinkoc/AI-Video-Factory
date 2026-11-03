@@ -651,6 +651,11 @@ describe("POST /api/episodes/[id]/action", () => {
     // Bozuk gövde: çekim listesi ve not metin değilse boş sayılır.
     await saveEpisode("job-bad", { shots: [{ id: "sh1", sceneId: "s1" }] as unknown as EpisodeState["shots"] }, { motionMode: "vector" });
     await fail("job-bad", { type: "replan", shotIds: "sh1", note: 5 }, "çekim yok");
+    await saveEpisode("job-prev-ok", { waitingFor: "preview" });
+    await ok("job-prev-ok", { type: "approve-preview" });
+    expect(server.getJob("job-prev-ok")?.label).toBe("job.render");
+    expect(lastChild().args.slice(2)).toEqual(["episode", "run", "job-prev-ok"]);
+    expect((await load("job-prev-ok")).approvals?.preview).toBeDefined();
     const replanned = await load("job-5");
     expect(replanned.replans).toEqual({ s1: { note: "Harita 1453 olsun", shots: ["sh1"], findings: [], at: expect.any(String) } });
     expect(replanned.done.render).toBeUndefined();

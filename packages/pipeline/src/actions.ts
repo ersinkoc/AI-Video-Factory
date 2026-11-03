@@ -73,6 +73,22 @@ export function approve(state: EpisodeState, gate: Gate): void {
   if (state.waitingFor === gate) delete state.waitingFor;
 }
 
+/**
+ * Görüntü değişti (yeniden çizim, notla yeniden oluşturma): önizleme onayı geri alınır, render'dan önce yine durulur
+ * (yapımcı yeni çekimleri görmeden render alınmasın).
+ */
+function reviewAgain(state: EpisodeState): void {
+  if (state.approvals) delete state.approvals.preview;
+}
+
+/**
+ * Yalnız render ayarı değişti (altyazı, efekt, müzik) ve görüntü render edilmiş haliyle duruyor: önizleme kabul
+ * edilmiş sayılır, yeniden render kapıda beklemez. Önizleme kapısı sonradan eklendi; eski bölümlerde onay kaydı yok.
+ */
+function keepPreview(state: EpisodeState): void {
+  if (state.render && state.done.keyframes && !state.approvals?.preview) state.approvals = { ...state.approvals, preview: new Date().toISOString() };
+}
+
 export function revokeApproval(state: EpisodeState, gate: Gate): void {
   if (state.approvals) delete state.approvals[gate];
   invalidateFrom(state, GATES[gate]);
@@ -129,6 +145,7 @@ export function redrawShots(state: EpisodeState, shotIds: string[]): void {
     delete state.clips?.[id];
   }
   delete state.lastError;
+  reviewAgain(state);
   invalidateFrom(state, "keyframes");
 }
 
@@ -169,6 +186,7 @@ export function replanShots(state: EpisodeState, shotIds: string[], note: string
     };
   }
   delete state.lastError;
+  reviewAgain(state);
   invalidateFrom(state, "keyframes");
 }
 
@@ -331,6 +349,7 @@ export function setRealism(state: EpisodeState, enabled: boolean): void {
 export function setCaptions(state: EpisodeState, enabled: boolean): void {
   if ((state.input.captions !== false) === enabled) return;
   state.input.captions = enabled;
+  keepPreview(state);
   delete state.done.render;
   delete state.done.short;
 }
@@ -342,6 +361,7 @@ export function setCaptions(state: EpisodeState, enabled: boolean): void {
 export function setSfx(state: EpisodeState, enabled: boolean): void {
   if ((state.input.sfx !== false) === enabled) return;
   state.input.sfx = enabled;
+  keepPreview(state);
   delete state.done.timeline;
   delete state.done.render;
   delete state.done.short;
@@ -358,6 +378,7 @@ export function setShort(state: EpisodeState, enabled: boolean): void {
 export function setMusic(state: EpisodeState, enabled: boolean): void {
   if ((state.input.music !== false) === enabled) return;
   state.input.music = enabled;
+  keepPreview(state);
   delete state.done.timeline;
   delete state.done.render;
   delete state.done.short;

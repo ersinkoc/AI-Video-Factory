@@ -281,6 +281,15 @@ describe("EpisodeView: durum panelleri", () => {
     expect(screen.getByText(tr("live.waiting.concept"))).toBeTruthy();
     await click(screen.getByRole("button", { name: tr("live.goApprove") }));
     expect(window.location.hash).toBe("#concept");
+    cleanup();
+    window.location.hash = "";
+    // Render öncesi önizleme onayı: Çekimler sekmesi.
+    await show(makeData(makeState(), { status: { status: "waiting", stage: "render" } }));
+    expect(screen.getByRole("tab", { name: tr("tab.shots") }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText(tr("live.waiting.shots"))).toBeTruthy();
+    await click(screen.getByRole("tab", { name: tr("tab.costs") }));
+    await click(screen.getByRole("button", { name: tr("live.goApprove") }));
+    expect(window.location.hash).toBe("#shots");
   });
 
   it("beklemede: senaryo varsa devam düğmesi; tamamlandıysa canlı panel yok; aşamasız bekleme", async () => {

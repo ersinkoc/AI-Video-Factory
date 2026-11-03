@@ -1418,7 +1418,7 @@ export function boxOf(points: readonly (readonly [number, number])[]): Box {
  * çok out kesriyle; ara görünüm (kenarda yarım yüz) kusurdur. step: odak aramasının adımı (tuval px). pad: yüz kutusu her
  * yandan genişliğinin/yüksekliğinin bu kesri kadar büyütülür (jestte gövde eğilir, baş dinlenme pozundan kayar).
  */
-export const FACE_SAFE = { in: 0.98, out: 0.02, step: 8, pad: [0.2, 0.1] } as const;
+export const FACE_SAFE = { in: 0.98, out: 0.02, step: 8, pad: [0.2, 0.1], arm: 0.2 } as const;
 
 /**
  * Yarım yüzü kadrajın kenarından kurtarma (3 Kas denetimi: yakın çekim nesneye yaklaşırken kenardaki kişinin yüzü
@@ -1426,17 +1426,29 @@ export const FACE_SAFE = { in: 0.98, out: 0.02, step: 8, pad: [0.2, 0.1] } as co
  * en az kaydırmayla uyan yere geçer: yatayda, vertical ise dikeyde de (geniş planda dikey kayma eklem kesimini bozar).
  * Odak ekranın dörtte birinden fazla kaymaz (özne kadrajda kalır); uyan yer yoksa kamera aynı kalır. Kamera yaklaşırken
  * yüzün kenardan geçip çıkması olağandır: yalnız başı ve sonu.
+ *
+ * bodies (yüzlerle aynı sırada, kişinin kutusu): yüzü yandan kadraj dışında kalan kişinin gövdesi de kenardan sızmaz
+ * (4 Kas ölçüm tezgâhı: yakın çekimlerin %13'ünde kenarda kişinin yalnız bir şeridi ya da kolu; denetçi "kopuk kol",
+ * "yalnız bir şerit görünüyor" diyordu). Kutu yanlardan FACE_SAFE.arm kadar genişler (uzanan işaret kolu). Yüzü yukarıdan
+ * dışarıda kalan kişiye dokunulmaz: masadaki eller gibi bilinçli ara çekim.
  */
-export function faceSafe(cam: VectorShot["camera"], centre: boolean, faces: Box[], vertical: boolean): VectorShot["camera"] {
+export function faceSafe(cam: VectorShot["camera"], centre: boolean, faces: Box[], vertical: boolean, bodies: Box[] = []): VectorShot["camera"] {
   const ok = (c: VectorShot["camera"]) =>
     [0, 1].every((k) => {
       const at = cameraAt(c, k, centre);
       const f = { x: -at.tx / at.scale - (at.panX / 100) * W, y: -at.ty / at.scale, w: W / at.scale, h: H / at.scale };
-      return faces.every((face) => {
+      return faces.every((face, i) => {
         const [px, py] = FACE_SAFE.pad;
         const b = { x: face.x - face.w * px, y: face.y - face.h * py, w: face.w * (1 + 2 * px), h: face.h * (1 + 2 * py) };
         const v = overlap(b, f) / (b.w * b.h);
-        return v >= FACE_SAFE.in || v <= FACE_SAFE.out;
+        if (v >= FACE_SAFE.in) return true;
+        if (v > FACE_SAFE.out) return false;
+        const body = bodies[i];
+        const sideways = b.x + b.w <= f.x || b.x >= f.x + f.w;
+        if (!body || !sideways) return true;
+        const arm = body.w * FACE_SAFE.arm;
+        const wide = { x: body.x - arm, y: body.y, w: body.w + 2 * arm, h: body.h };
+        return overlap(wide, f) / (wide.w * wide.h) <= FACE_SAFE.out;
       });
     });
   if (ok(cam)) return cam;
@@ -2294,16 +2306,16 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
     if (bg?.meta.exact) return close;
     // Yerinde duranların yüzleri (dinlenme pozunda): kadrajın kenarında yarım kalmasın (faceSafe).
     const neutral = (pl: PlacedLayer): Motion => ({ tr: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 }, flip: spec.layers[pl.index]!.flip, squash: 1 });
-    const faces = placed
-      .filter((pl) => isPerson(pl) && !moving(pl.index))
-      .map((pl) => boxOf(faceCorners(safe[spec.layers[pl.index]!.asset]!).map((c) => rigToCanvas(pl, spec.layers[pl.index]!, neutral(pl), c))));
-    if (close.centre) return { cam: faceSafe(close.cam, true, faces, true), centre: true };
+    const still = placed.filter((pl) => isPerson(pl) && !moving(pl.index));
+    const faces = still.map((pl) => boxOf(faceCorners(safe[spec.layers[pl.index]!.asset]!).map((c) => rigToCanvas(pl, spec.layers[pl.index]!, neutral(pl), c))));
+    const bodies = still.map((pl) => ({ x: pl.x - pl.width / 2, y: pl.y - pl.height, w: pl.width, h: pl.height }));
+    if (close.centre) return { cam: faceSafe(close.cam, true, faces, true, bodies), centre: true };
     // Boş geniş çekim içeriğe yaklaşır; sahneye giren biri varsa yolu kadrajda kalsın diye yaklaşılmaz.
     const filled = placed.some((pl) => moving(pl.index)) ? undefined : fillWide(close.cam, placed, (pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character");
     const wide = filled ?? { cam: frameWide(close.cam, keep), centre: false };
     // Son olarak ayakta duranlar eklem yerinden kesilmez (oturanın bacağı masanın ardında, ona bakılmaz).
     const people = placed.filter((pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character" && !pl.sitting);
-    return { cam: faceSafe(jointSafe(wide.cam, wide.centre, people, keep), wide.centre, faces, false), centre: wide.centre };
+    return { cam: faceSafe(jointSafe(wide.cam, wide.centre, people, keep), wide.centre, faces, false, bodies), centre: wide.centre };
   })();
   // Dikey kadraj: geniş çekimde kenara düşen kişi/nesne kesilmesin diye sahne gerektiği kadar küçülür (contentFit).
   // Yakın çekim bilerek kırpar; harita tuvalin tamamıdır; tahta ekrana sabittir, sahneyle aynı ölçekte kalmalı.

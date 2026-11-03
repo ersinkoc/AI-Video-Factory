@@ -15,6 +15,9 @@ import {
   missingSelections,
   revokeApproval,
   selectCandidate,
+  setCaptions,
+  setMusic,
+  setSfx,
   type EpisodeInput,
   type EpisodeState,
 } from "../src/light.ts";
@@ -135,6 +138,51 @@ describe("redrawShots", () => {
     expect(s.done.keyframes).toBeUndefined();
     expect(s.done.render).toBeUndefined();
     expect(() => redrawShots(s, ["yok"])).toThrow(/çekim yok/);
+  });
+});
+
+describe("önizleme onayı (render öncesi kapı)", () => {
+  const shot = (id: string, sceneId: string) => ({ id, sceneId, kind: "still_motion" as const, startMs: 0, endMs: 1000, description: "", imagePrompt: "", motionPrompt: "", camera: "static" as const });
+
+  it("onay kaydedilir; yeniden çizim ve notla yeniden oluşturma onayı geri alır (yeni çekimler yine görülür)", () => {
+    const s = baseState();
+    s.input.motionMode = "vector";
+    s.shots = [shot("a", "s1")];
+    s.waitingFor = "preview";
+    approve(s, "preview");
+    expect(s.approvals?.preview).toBeDefined();
+    expect(s.waitingFor).toBeUndefined();
+    replanShots(s, ["a"], "not");
+    expect(s.approvals?.preview).toBeUndefined();
+    approve(s, "preview");
+    redrawShots(s, ["a"]);
+    expect(s.approvals?.preview).toBeUndefined();
+    // Onay kaydı hiç yoksa da sorun çıkmaz.
+    delete s.approvals;
+    redrawShots(s, ["a"]);
+    expect(s.approvals).toBeUndefined();
+  });
+
+  it("yalnız render ayarı değişince (altyazı, efekt, müzik) render edilmiş görüntü kabul sayılır; görüntü değiştiyse sayılmaz", () => {
+    const rendered = (): EpisodeState => ({ ...baseState(), render: { path: "v.mp4", at: "t" }, done: { ...baseState().done, keyframes: "t", timeline: "t", render: "t" } });
+    const a = rendered();
+    setCaptions(a, false);
+    expect(a.approvals?.preview).toBeDefined();
+    const b = rendered();
+    setSfx(b, false);
+    expect(b.approvals?.preview).toBeDefined();
+    const c = rendered();
+    c.approvals = { script: "t", preview: "eski" };
+    setMusic(c, false);
+    expect(c.approvals.preview).toBe("eski");
+    // Görüntü yeniden açılmış (kare aşaması bitmemiş) ya da hiç render yok: yapımcı yine görür.
+    const d = rendered();
+    delete d.done.keyframes;
+    setCaptions(d, false);
+    expect(d.approvals?.preview).toBeUndefined();
+    const e = baseState();
+    setCaptions(e, false);
+    expect(e.approvals?.preview).toBeUndefined();
   });
 });
 

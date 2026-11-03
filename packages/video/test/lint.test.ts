@@ -227,6 +227,21 @@ describe("kamera: durağan kadrajda yarım yüz yok", () => {
     expect([near.focusX, near.focusY]).toEqual([1016, 500]);
   });
 
+  it("yüzü yandan dışarıda kalan kişinin gövdesi (uzanan kolu) kenardan sızmaz; yüzü yukarıdan dışarıdakine dokunulmaz", () => {
+    // Odak 960, 2x: kadraj 480–1440. Kişi solda, yüz kadraj dışında (payıyla 392–448) ama gövde kutusu 360–520: kol sızıyor.
+    const c = cam({ zoomFrom: 2, zoomTo: 2, panX: 0 });
+    const face = { x: 400, y: 300, w: 40, h: 40 };
+    const out = faceSafe(c, true, [face], false, [{ x: 360, y: 260, w: 160, h: 400 }]);
+    expect(FACE_SAFE.arm).toBe(0.2);
+    // Gövde (kol payıyla 328–552) dışarı: odak 72 px sağa; yüzü içeri almak 88 px sola, daha uzak.
+    expect(out.focusX).toBe(1032);
+    // Gövde kutusu verilmezse eski davranış: yüz dışarıdaysa yeter.
+    expect(faceSafe(c, true, [face], false)).toBe(c);
+    // Yüz yukarıdan dışarıda (masadaki eller ara çekimi): kamera aynı kalır.
+    const top = cam({ zoomFrom: 2, zoomTo: 2, panX: 0, focusY: 800 });
+    expect(faceSafe(top, true, [{ x: 900, y: 200, w: 40, h: 40 }], true, [{ x: 860, y: 160, w: 160, h: 600 }])).toBe(top);
+  });
+
   it("uyan odak yoksa (tam kadrajda odak kadrajı kaydırmaz) kamera aynı kalır", () => {
     const wide = cam({ zoomFrom: 1, zoomTo: 1, panX: 0 });
     expect(faceSafe(wide, false, [{ x: -40, y: 400, w: 100, h: 100 }], true)).toBe(wide);

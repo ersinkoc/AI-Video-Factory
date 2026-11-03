@@ -33,6 +33,13 @@ describe("bölüm durumu", () => {
     expect(runStatusOf({ ...s, input: { ...s.input, autoApprove: true } }, NOW).status).toBe("idle");
   });
 
+  it("timeline bitti, önizleme onayı yoksa render'dan önce bekler; onaylıysa sıradaki render", () => {
+    const done = Object.fromEntries(["style", "story", "script", "cast", "concept", "voice", "shots", "keyframes", "clips", "timeline"].map((s) => [s, at(NOW)]));
+    const s = state({ done, approvals: { script: at(NOW), concept: at(NOW) } });
+    expect(runStatusOf(s, NOW)).toEqual({ status: "waiting", stage: "render" });
+    expect(runStatusOf({ ...s, approvals: { ...s.approvals, preview: at(NOW) } }, NOW)).toEqual({ status: "idle", stage: "render" });
+  });
+
   it("çalışan aşama son kayıttan sonra uzun süre güncellenmezse takılmış sayılır", () => {
     const s = state({ done: { style: at(NOW) }, stats: { story: { startedAt: at(NOW - 60_000) } }, heartbeatAt: at(NOW - 30_000) });
     expect(runStatusOf(s, NOW)).toEqual({ status: "running", stage: "story" });

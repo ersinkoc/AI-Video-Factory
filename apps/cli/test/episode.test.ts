@@ -235,6 +235,7 @@ describe("episode approve ve select", () => {
       await expect(episodeCommand(pipeline, "approve", id, { gate })).rejects.toThrow("Kullanım: episode approve <id> script|concept");
     }
     await expect(episodeCommand(pipeline, "approve", "e1", { gate: "concept" })).resolves.toBeUndefined();
+    await expect(episodeCommand(pipeline, "approve", "e1", { gate: "preview" })).resolves.toBeUndefined();
   });
 
   it("select adayı seçer; biçim hatası", async () => {

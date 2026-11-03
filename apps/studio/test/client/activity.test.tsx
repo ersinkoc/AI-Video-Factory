@@ -14,6 +14,7 @@ const entries: ActivityEntry[] = [
   { at, stage: "story", level: "stage", msg: "✓ story" },
   { at, stage: "script", level: "info", msg: "⏸ onay bekleniyor: script" },
   { at, stage: "concept", level: "warn", msg: "⏸ onay bekleniyor: concept" },
+  { at, stage: "render", level: "info", msg: "⏸ onay bekleniyor: preview" },
   { at, stage: "concept", level: "error", msg: "Sağlayıcı yanıt vermedi" },
   { at, level: "info", msg: "aşamasız satır" },
 ];
@@ -39,6 +40,7 @@ describe("ActivityLine", () => {
     expect(screen.getByText(tr("act.finished", { stage: tr("stage.story"), time: "" }))).toBeTruthy();
     expect(screen.getByText(tr("act.waiting", { gate: tr("step.script") }))).toBeTruthy();
     expect(screen.getByText(tr("act.waiting", { gate: tr("step.concept") }))).toBeTruthy();
+    expect(screen.getByText(tr("act.waiting", { gate: tr("step.preview") }))).toBeTruthy();
     expect(screen.getByText("Sağlayıcı yanıt vermedi").className).toContain("text-bad");
     expect(screen.getByText("aşamasız satır")).toBeTruthy();
     // Aşama etiketi yalnız "stage" düzeyi dışındaki aşamalı satırlarda görünür.

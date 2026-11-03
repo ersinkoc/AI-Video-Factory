@@ -100,7 +100,7 @@ export async function episodeCommand(
       return;
     }
     case "approve": {
-      if (!id || (args.gate !== "script" && args.gate !== "concept")) throw new Error("Kullanım: episode approve <id> script|concept");
+      if (!id || (args.gate !== "script" && args.gate !== "concept" && args.gate !== "preview")) throw new Error("Kullanım: episode approve <id> script|concept|preview");
       const state = await pipeline.load(id);
       approve(state, args.gate);
       await pipeline.save(state);
