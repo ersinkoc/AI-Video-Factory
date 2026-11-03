@@ -171,7 +171,7 @@ interface PartPose {
 }
 
 /** Kolu meşgul eden jestler; bunlardan biri sürerken (ya da yürürken) kendiliğinden el hareketi yapılmaz. */
-const ARM_GESTURES: VectorAnimType[] = ["wave", "point", "explain", "think", "cheer", "shrug", "surprised", "typing", "writing", "reading", "show", "clap", "hands_on_hips", "arms_crossed"];
+const ARM_GESTURES: VectorAnimType[] = ["wave", "point", "explain", "think", "cheer", "shrug", "surprised", "typing", "writing", "reading", "show", "clap", "hands_on_hips", "arms_crossed", "give"];
 
 const STILL: Gait = { steps: 0, amount: 0, dir: 0 };
 
@@ -181,6 +181,8 @@ interface Attention {
   aim?: readonly [number, number];
   /** Sahnedeki en yakın diğer karakterin yönü: −1 sol, 1 sağ. */
   lookDir?: number;
+  /** give alıcısının göğsü (iskelet tuvali); yoksa undefined. */
+  receiver?: readonly [number, number];
   /** Sağ elinde nesne var: yüze giden jest sol elle yapılır. */
   holding?: boolean;
   /** Anlatımın bu anı (ağız şekli ve vurgular); kelime zamanı yoksa undefined. */
@@ -350,7 +352,12 @@ function rigPose(
   part("eyes").tx = face.lookX ?? (attention.lookDir && glance < 0.75 ? attention.lookDir * 5 + (glance - 0.375) * 3 : (glance - 0.5) * 8);
 
   // --- kendiliğinden jest: kolu meşgul eden bir animasyon yoksa ara ara anlatır gibi el hareketi
-  const armsBusy = gait.amount > 0.05 || anims.some((a) => ARM_GESTURES.includes(a.type) && active(p, a));
+  // Dinleyenin dinlenme pozu (çekim boyunca): serbest, bir eli belde ya da elleri önde kavuşmuş. Bir sıra insanın hepsi
+  // kollar yanda aynı pozda duruyordu (inceleme: "stiff lineup"). Jest yapan, konuşan, bir şey tutan, oturan, yürüyen
+  // ya da yandan görünen için yok; pozdaki kişi kendiliğinden el hareketi yapmaz.
+  const rest: RestPose =
+    sitting || side || attention.holding || anims.some((a) => ARM_GESTURES.includes(a.type) || a.type === "talk" || a.type === "walk") ? "relaxed" : restPoseOf(seed);
+  const armsBusy = rest !== "relaxed" || gait.amount > 0.05 || anims.some((a) => ARM_GESTURES.includes(a.type) && active(p, a));
   // Konuşuyor (talk penceresinde) ve kelime zamanı var: jestler sesin vurgularına bağlanır.
   const talking = Math.max(0, ...anims.filter((a) => a.type === "talk").map((a) => Math.min(1, gestureWeight(p, a, dur))));
   const voice = talking > 0 ? attention.voice : undefined;
@@ -420,6 +427,40 @@ function rigPose(
     part("arm-l").rotate -= 6 * s * gait.amount;
     part("arm-r").rotate -= 6 * s * gait.amount;
     part("torso").rotate += (toward * 2.5 + s * 1.5) * gait.amount;
+  }
+
+  // --- duruş (kontrapost): ağırlık bir bacakta, öbür diz gevşek; üst gövde ağırlığın üstüne gelir, baş dengeler, gevşek
+  // taraftaki dirsek biraz daha bükülür. Ağırlık arada öbür bacağa geçer. Simetrik dimdik duruş durağan karede kaskatı
+  // okunuyordu (kare denetçisi, 3 Kas: incelenen sekiz bölümün hepsinde "stands stiffly").
+  if (!sitting && !side) {
+    const k = stanceAt(t, seed) * (1 - gait.amount);
+    const onL = Math.max(0, k);
+    const onR = Math.max(0, -k);
+    // Dönüş saat yönü artı: soldaki bacak artıyla dışa, sağdaki eksiyle dışa açılır. Gevşek bacakta diz dışa, ayak içe.
+    part("leg-l").rotate += -STANCE.inward * onL + STANCE.out * onR;
+    part("leg-r").rotate += STANCE.inward * onR - STANCE.out * onL;
+    part("shin-l").rotate -= STANCE.knee * onR;
+    part("shin-r").rotate += STANCE.knee * onL;
+    part("torso").rotate -= STANCE.torso * k;
+    part("head").rotate += STANCE.head * k;
+    if (!attention.holding) part("forearm-r").rotate += STANCE.elbow * onL;
+    part("forearm-l").rotate -= STANCE.elbow * onR;
+  }
+  if (rest === "hip") {
+    // Bir el belde (hands_on_hips'in tek kolu); öbür kol serbest.
+    const hand = random(`${seed}-rh`) < 0.5 ? "l" : "r";
+    const out = hand === "r" ? -1 : 1;
+    part(`arm-${hand}`).rotate = out * 30;
+    part(`forearm-${hand}`).rotate = -out * 65;
+    part(`hand-${hand}`).rotate = 0;
+  } else if (rest === "clasped") {
+    // Eller karnın önünde kavuşur (IK: iki el de göbeğin önüne, birbirine değecek kadar yakın).
+    for (const hand of ["l", "r"] as const) {
+      const ik = reach(RIG.pivots[`arm-${hand}`], [RIG.width / 2 + (hand === "r" ? 6 : -6), REST.clasp], ARM.upper, ARM.reach);
+      part(`arm-${hand}`).rotate = ik.arm;
+      part(`forearm-${hand}`).rotate = ik.forearm;
+      part(`hand-${hand}`).rotate = 0;
+    }
   }
 
   // --- Claude'un istediği jestler: hazırlık + taşmayla girer (gestureWeight), ön kol üst kolu geriden izler.
@@ -660,9 +701,44 @@ function rigPose(
         mix("brows", "ty", 3);
         mix("head", "rotate", -5);
         break;
-      case "nod":
-        part("head").rotate += Math.sin(t * 6) * 7 * w;
+      case "nod": {
+        // Evet: baş öne iner kalkar; gözler ve kaşlar başın içinde biraz daha iner (öne eğilme). Eskiden baş yana
+        // sallanıyordu (yan eğilme), onay gibi okunmuyordu.
+        const down = Math.max(0, Math.sin(t * 7)) * w;
+        part("head").ty += 4 * down;
+        part("eyes").ty += 2 * down;
+        part("brows").ty += 2 * down;
         break;
+      }
+      case "shake_head": {
+        // Hayır: baş iki yana döner (yüz özellikleri başın içinde yana kayar), gözler aynı yöne.
+        const turn = Math.sin(t * 13) * w;
+        part("head").tx += 3 * turn;
+        part("head").rotate += 1.5 * turn;
+        part("eyes").tx += 4 * turn;
+        part("brows").tx += 3 * turn;
+        part("mouth").tx += 3 * turn;
+        mix("brows", "ty", face.brows + 2);
+        break;
+      }
+      case "give": {
+        // Nesneyi karşıdakine uzatır: tutan el (sağ; boşsa alıcı tarafındaki el) bel-göğüs hizasında alıcıya doğru uzanır,
+        // dirsek hafif bükük (IK), avuç yukarı; baş, gözler ve gövde alıcıya döner. Elde tutulan nesne eli izler.
+        const [rx] = attention.receiver ?? [RIG.width * 2, 0];
+        const toward = rx >= RIG.width / 2 ? 1 : -1;
+        const hand = attention.holding || toward > 0 ? "r" : "l";
+        const shoulder = RIG.pivots[`arm-${hand}`];
+        const span = (ARM.upper + ARM.reach) * GIVE.reach;
+        const len = Math.hypot(1, GIVE.drop);
+        const ik = reach(shoulder, [shoulder[0] + (toward * span) / len, shoulder[1] + (GIVE.drop * span) / len], ARM.upper, ARM.reach);
+        mix(`arm-${hand}`, "rotate", ik.arm);
+        mix(`forearm-${hand}`, "rotate", ik.forearm);
+        mix(`hand-${hand}`, "rotate", -toward * 15);
+        mix("eyes", "tx", 5 * toward);
+        mix("torso", "rotate", 4 * toward);
+        mix("head", "rotate", -2 * toward);
+        break;
+      }
       case "talk":
         // Konuşurken ağız anlatımın seslerine göre şekil alır (vizem). Ölçülen ağızda şekil koddan çizilir (Layer), çizimin
         // ağzına dokunulmaz; 3D figürde ve ölçülemeyen ağızda ağız şekle göre ölçeklenir (somurtan yüzde eğri ters
@@ -702,6 +778,40 @@ export const HOLD_POSE = { arm: 12, forearm: 72 };
 
 /** Oturan karakter: uyluk kameraya doğru kısalır (ön görünüş), baldır dik kalır. */
 const SIT_THIGH = 0.35;
+
+/**
+ * Ayakta duruş (kontrapost): taşıyan bacak içe (°), gevşek bacak dışa, gevşek dizin bükülmesi, üst gövdenin taşıyan
+ * bacağa eğilmesi, başın dengelemesi, gevşek taraftaki dirseğin fazladan bükülmesi; ağırlık every + 0…spread sn'de bir,
+ * shift sn'de öbür bacağa geçer.
+ */
+export const STANCE = { inward: 1.5, out: 4, knee: 8, torso: 2.2, head: 3, elbow: 15, every: 9, spread: 5, shift: 0.9 } as const;
+
+/** Dinleyenin çekim boyunca dinlenme pozu. */
+export type RestPose = "relaxed" | "hip" | "clasped";
+
+/** Dinlenme pozu oranları (serbest, bel, kavuşmuş) ve kavuşan ellerin yüksekliği (iskelet y: göbek). */
+const REST = { hip: 0.25, clasped: 0.3, clasp: 470 } as const;
+
+/** Karakterin (çekim + katman tohumu) dinlenme pozu. */
+export function restPoseOf(seed: string): RestPose {
+  const x = random(`${seed}-rest`);
+  return x < REST.hip ? "hip" : x < REST.hip + REST.clasped ? "clasped" : "relaxed";
+}
+
+/** Ağırlığın hangi bacakta olduğu: 1 soldaki (leg-l), −1 sağdaki; geçişte arası (yumuşak). Karakter başına tohumlu. */
+export function stanceAt(t: number, seed: string): number {
+  const period = STANCE.every + random(`${seed}-st`) * STANCE.spread;
+  const x = t / period + random(`${seed}-sp`);
+  const n = Math.floor(x);
+  const first = random(`${seed}-sb`) < 0.5 ? 0 : 1;
+  const side = (i: number) => ((i + first) % 2 ? 1 : -1);
+  const q = Math.min(1, ((x - n) * period) / STANCE.shift);
+  const e = q * q * (3 - 2 * q);
+  return side(n - 1) * (1 - e) + side(n) * e;
+}
+
+/** Uzatma: elin omuzdan uzaklığı (kol boyunun kesri) ve öne uzanırken aşağı eğimi (yatay 1'e karşı). */
+const GIVE = { reach: 0.85, drop: 0.5 } as const;
 /** Kısalan uyluk kadar karakter aşağı iner ki ayaklar yerde kalsın (iskelet pikseli). */
 const SIT_DROP = (RIG.pivots["shin-l"][1] - RIG.pivots["leg-l"][1]) * (1 - SIT_THIGH);
 
@@ -716,6 +826,8 @@ export interface Focus {
   lookX?: number;
   /** Elinde bir şey tutuyor (nesne sağ eli izler). */
   holding?: boolean;
+  /** give alıcısının göğsü (tuval). */
+  receiver?: readonly [number, number];
 }
 
 /**
@@ -730,12 +842,20 @@ export function focusOf(spec: VectorShot, placed: PlacedLayer[], index: number, 
     list.sort((a, b) => Math.abs(a.x - self.x) - Math.abs(b.x - self.x))[0];
   const people = others.filter((pl) => kinds(pl.index) === "character");
   const target = spec.layers[index]!.anims.find((a) => a.type === "point" && a.target !== undefined)?.target;
+  // give alıcısı: verilmişse o katman, yoksa en yakın kişi; göğüs hizası.
+  const giveTo = spec.layers[index]!.anims.find((a) => a.type === "give" && a.target !== undefined)?.target;
+  const receiver = others.find((pl) => pl.index === giveTo) ?? near(people);
   const explicit = others.find((pl) => pl.index === target);
   const beside = near(others.filter((pl) => Math.abs(pl.x - self.x) > self.width * 0.4));
   // Bilgi kartının yeri sabit (sol üst); işaret yalnız yerinde duran kişi etiketine gider.
   const text = spec.texts.find((tx) => tx.style === "label");
   const aim = explicit ? center(explicit) : beside ? center(beside) : text ? ([text.x, text.y] as const) : undefined;
-  return { aim, lookX: near(people)?.x, holding: placed.some((pl) => pl.heldBy === index) };
+  return {
+    aim,
+    lookX: near(people)?.x,
+    holding: placed.some((pl) => pl.heldBy === index),
+    ...(receiver ? { receiver: [receiver.x, receiver.y - receiver.height * 0.6] as const } : {}),
+  };
 }
 
 /** Yakın çekim çerçevesi: bu zoom'dan itibaren yakın çekim sayılır; özne kare yüksekliğinin en az min'i kadar görünmeli. */
@@ -1097,6 +1217,7 @@ function motionOf(
     aim: focus.aim ? [toRigX(focus.aim[0]), (focus.aim[1] - tr.y - (placed.y - placed.height)) / k] : undefined,
     lookDir: focus.lookX === undefined ? undefined : Math.sign(toRigX(focus.lookX) - RIG.width / 2),
     holding: focus.holding,
+    receiver: focus.receiver ? [toRigX(focus.receiver[0]), (focus.receiver[1] - tr.y - (placed.y - placed.height)) / k] : undefined,
     voice,
     face,
   };

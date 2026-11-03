@@ -246,6 +246,9 @@ export const VectorAnimType = z.enum([
   "clap",
   "hands_on_hips",
   "arms_crossed",
+  // etkileşim (3 Kas: inceleme "nesneyi uzatmıyor", "başını sallamıyor")
+  "give",
+  "shake_head",
   // yazı
   "typewriter",
   "count_up",
@@ -263,7 +266,7 @@ export const VectorAnim = z.object({
   /** move/walk hedefi (1920×1080 tuval). */
   toX: z.number().optional(),
   toY: z.number().optional(),
-  /** point hedefi: aynı çekimdeki katmanın indeksi (yoksa yanındaki en yakın şey). */
+  /** point/give hedefi: aynı çekimdeki katmanın indeksi (yoksa point'te yanındaki en yakın şey, give'de en yakın kişi). */
   target: z.number().int().nonnegative().optional(),
 });
 export type VectorAnim = z.infer<typeof VectorAnim>;

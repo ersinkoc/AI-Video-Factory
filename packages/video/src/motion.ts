@@ -28,6 +28,8 @@ const RIG_ONLY: VectorAnimType[] = [
   "clap",
   "hands_on_hips",
   "arms_crossed",
+  "give",
+  "shake_head",
 ];
 /** Nesneyi yerinden oynatan animasyonlar: elde tutulan nesnede hareket tutandan gelir. */
 const DISPLACING: VectorAnimType[] = ["move", "walk", "slide_in", "float", "sway", "shake"];
