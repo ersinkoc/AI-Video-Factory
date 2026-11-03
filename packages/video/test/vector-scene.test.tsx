@@ -297,7 +297,9 @@ describe("vektör sahne: karakter iskeleti", () => {
     g = at("cheer");
     expect([g("forearm-l").rotate, g("forearm-r").rotate, g("brows").ty, g("mouth").sy]).toEqual([-15, 15, -8, 1.5]);
     g = at("surprised");
-    expect([g("arm-l").rotate, g("forearm-l").rotate, g("forearm-r").rotate, g("eyes").sy, g("mouth").sy]).toEqual([30, 115, -115, 1.25, 1.6]);
+    // Şaşkın ağız küçük, dar bir "o": büyük gülümseme sevinç gibi okunuyordu.
+    // İrkilme: sağ el göğüste (kısalan ön kol), sol el aşağıda yana açık.
+    expect([g("arm-l").rotate, g("forearm-l").rotate, g("forearm-r").rotate, g("forearm-r").sy, g("eyes").sy, g("mouth").sy, g("mouth").sx]).toEqual([22, 38, 134, 0.55, 1.25, 0.3, 0.6]);
     g = at("shrug");
     expect([g("arm-l").rotate, g("arm-l").ty, g("forearm-l").rotate, g("forearm-r").rotate, g("head").rotate]).toEqual([16, -7, 62, -62, -6]);
     const t = 5;
@@ -509,6 +511,10 @@ describe("vektör sahne: karakter iskeleti", () => {
       return r("mouth").sy;
     };
     expect(mouth()).toBe(1);
+    // Şaşkınlık: küçük, dar ağız (gülümseme değil).
+    const surprised = heroAt(0, { expression: "surprised" }).get("mouth");
+    cleanup();
+    expect([surprised.sy, surprised.sx]).toEqual([0.3, 0.6]);
     expect(mouth("happy")).toBe(1.35);
     expect(mouth("sad")).toBe(-0.8);
     expect(mouth("angry")).toBe(-0.45);
@@ -711,7 +717,7 @@ describe("vektör sahne: yan görünüş", () => {
   it("yan görünüşte kol jesti uygulanmaz (kollar yürür), yüz jesti sürer", () => {
     const { css } = walkerAt(25, { anims: [{ type: "walk", toX: 1500 }, { type: "wave" }, { type: "surprised" }] });
     expect(Math.abs(pose(css, "arm-r").rotate)).toBeLessThan(25);
-    expect(pose(css, "mouth").sy).toBeCloseTo(1.6, 1);
+    expect(pose(css, "mouth").sy).toBeCloseTo(0.3, 1);
     cleanup();
   });
 

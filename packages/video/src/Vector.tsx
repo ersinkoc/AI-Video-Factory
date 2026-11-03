@@ -186,13 +186,18 @@ interface Attention {
  * Yüz ifadeleri: kaş yüksekliği, göz açıklığı ve ağız eğrisi. Ağız gülümseme olarak çizilir; dikey ölçeği eksi olunca
  * ters döner ve somurtmaya dönüşür. head: başın öne düşmesi (px), droop: omuzların düşmesi (derece).
  */
-const EXPRESSIONS: Record<VectorExpression, { brows: number; eyes: number; mouth: number; head: number; droop: number; lookX?: number }> = {
+/**
+ * Şaşkınlıkta ağız küçük, dar bir "o" olur (mouthW: yatay ölçek). Eskiden gülümseme eğrisi 1,6 kat büyüyordu; kalkan
+ * ellerle birlikte izleyici bunu sevinç diye okuyordu (3 Kas, C# incelemesi: "endişeli değil, kollarını kaldırmış neşeli";
+ * 21 bölümün 9'unda benzer not).
+ */
+const EXPRESSIONS: Record<VectorExpression, { brows: number; eyes: number; mouth: number; mouthW?: number; head: number; droop: number; lookX?: number }> = {
   neutral: { brows: 0, eyes: 1, mouth: 1, head: 0, droop: 0 },
   happy: { brows: -4, eyes: 0.9, mouth: 1.35, head: -1, droop: 0 },
   sad: { brows: 4, eyes: 0.75, mouth: -0.8, head: 6, droop: 6 },
   angry: { brows: 7, eyes: 0.8, mouth: -0.45, head: 2, droop: -3 },
   worried: { brows: -5, eyes: 1.1, mouth: -0.5, head: 3, droop: 3 },
-  surprised: { brows: -10, eyes: 1.25, mouth: 1.6, head: -2, droop: 0 },
+  surprised: { brows: -10, eyes: 1.25, mouth: 0.3, mouthW: 0.6, head: -2, droop: 0 },
   thinking: { brows: -3, eyes: 0.9, mouth: 0.45, head: 0, droop: 0, lookX: 6 },
 };
 
@@ -240,6 +245,7 @@ function rigPose(
   part("brows").ty = face.brows;
   part("eyes").sy = face.eyes;
   part("mouth").sy = face.mouth;
+  part("mouth").sx = face.mouthW ?? 1;
   part("head").ty += face.head;
   part("arm-l").rotate -= face.droop;
   part("arm-r").rotate += face.droop;
@@ -406,17 +412,22 @@ function rigPose(
         mix("torso", "rotate", Math.sin(t * 6) * 3.5);
         break;
       case "surprised":
-        // Eller omuz hizasına kalkar, avuçlar dışa.
-        mix("arm-l", "rotate", 30);
-        mix("arm-r", "rotate", -30);
-        mix("forearm-l", "rotate", 115);
-        mix("forearm-r", "rotate", -115);
-        // Avuçlar dışa açılır.
-        mix("hand-l", "rotate", 20);
-        mix("hand-r", "rotate", -20);
+        // İrkilme: sağ el göğse gider (ön kol kameraya uzanır, kısalır), sol el aşağıda yana açılır. Eskiden iki el omuz
+        // hizasında açılıyordu; izleyici bunu sevinç/zafer diye okuyordu (3 Kas, C# incelemesi: "endişeli değil, kollarını
+        // kaldırmış neşeli").
+        mix("arm-r", "rotate", 10);
+        mix("forearm-r", "rotate", 134);
+        mix("forearm-r", "sy", FORESHORTEN);
+        mix("hand-r", "rotate", 10);
+        mix("arm-l", "rotate", 22);
+        mix("forearm-l", "rotate", 38);
+        // Açık avuç dışa.
+        mix("hand-l", "rotate", 24);
+        mix("head", "ty", -3);
         mix("brows", "ty", -10);
         mix("eyes", "sy", 1.25);
-        mix("mouth", "sy", 1.6);
+        mix("mouth", "sy", 0.3);
+        mix("mouth", "sx", 0.6);
         // Şaşkınlıkta geri çekilir (baktığı yönün tersine) ve dikleşir.
         mix("torso", "rotate", -6 * (attention.lookDir ?? 1));
         mix("torso", "sy", 1.02);
