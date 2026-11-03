@@ -346,6 +346,27 @@ export interface FigureView {
  * dönük) ekrandaki saat yönü yerel x ekseni etrafında artı dönüştür, yatay öteleme figürün önüne (+z) gider. Verilmeyen
  * parça dinlenir.
  */
+/**
+ * Kol gövdenin önünden geçerken (düşünürken çeneye, kollar kavuşuk, okurken) önden görünüşte kameraya doğru öne alınır:
+ * 2D poz kolu ön düzlemde döndürüyor, 3D figürde ise kol gövdeyle aynı derinlikte kalıp hacminin içinde kayboluyordu
+ * (3 Kas: düşünen figürün kolu hiç görünmüyordu). Öne alma, elin omuzdan gövde ortasına doğru gittiği payla artar.
+ */
+export const ARM_FRONT = { depth: 48, span: 110 } as const;
+
+function armDepth(name: string, pose: Partial<Record<FigurePart, PartPose>>): number {
+  if (name !== "arm-l" && name !== "arm-r") return 0;
+  const side = name === "arm-r" ? "r" : "l";
+  const [sx, sy] = RIG.pivots[name];
+  const [, ey] = RIG.pivots[`forearm-${side}`];
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const arm = pose[name]?.rotate ?? 0;
+  const fore = pose[`forearm-${side}`]?.rotate ?? 0;
+  // Elin yeri (ileri kinematik; üst kol omuzdan dirseğe, ön kol dirsekten elin ortasına).
+  const hx = sx - Math.sin(rad(arm)) * (ey - sy) - Math.sin(rad(arm + fore)) * 112;
+  const inward = side === "r" ? sx - hx : hx - sx;
+  return ARM_FRONT.depth * Math.min(1, Math.max(0, inward / ARM_FRONT.span));
+}
+
 export function poseFigure(figure: Figure, pose: Partial<Record<FigurePart, PartPose>>, view: FigureView = {}): void {
   figure.root.rotation.y = ((view.turn ?? 0) * Math.PI) / 2;
   for (const [name, part] of Object.entries(figure.parts)) {
@@ -356,7 +377,7 @@ export function poseFigure(figure: Figure, pose: Partial<Record<FigurePart, Part
       part.position.set(x, y - v.ty, v.tx);
       part.rotation.set(a, 0, 0);
     } else {
-      part.position.set(x + v.tx, y - v.ty, 0);
+      part.position.set(x + v.tx, y - v.ty, armDepth(name, pose));
       part.rotation.set(0, 0, -a);
     }
     part.scale.set(v.sx, v.sy, 1);

@@ -34,7 +34,9 @@ import { CALLOUT, calloutScale, calloutSpot, calloutTarget, overlap, type Box } 
 import { Figure3D } from "./Figure3D.tsx";
 import { clapClosed, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
+import { reach } from "./ik.ts";
 import { revealWindow } from "./kinetic-timing.ts";
+import { faceOf, type Face } from "./rigGeometry.ts";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
 import { FOREARM_LAG, gaitOf, gestureWeight, hop, paceWalks, physicalAnims, type Gait } from "./motion.ts";
@@ -180,6 +182,42 @@ interface Attention {
   holding?: boolean;
   /** Anlatımın bu andaki ağız açıklığı (0 kapalı – 1 açık); kelime zamanı yoksa undefined. */
   voice?: number;
+  /** Çizimin ölçülmüş yüzü (rigGeometry, fitFace): el çeneye, ağız şekli ağzın yerine. */
+  face?: FaceFit;
+}
+
+/** Kol boyları (iskelet): omuzdan dirseğe; dirsekten elin tuttuğu/değdiği noktaya (bilek + elin ortası). */
+export const ARM = { upper: RIG.pivots["forearm-r"][1] - RIG.pivots["arm-r"][1], reach: 112 } as const;
+/** Yüzü ölçülemeyen çizimde (ve 3D figürde) çene. */
+const CHIN: [number, number] = [200, 242];
+
+/** Ölçülen çenenin makul bölgesi (iskelet tuvali): dışındaysa çizim kurala uymuyor, varsayılan çene kullanılır. */
+const CHIN_ZONE = { x: [140, 260], y: [180, 330] } as const;
+
+/** Jestlerin kullandığı yüz: çene (doğrulanmış) ve çene hattının yana uzaklığı (yüz genişliğinden). */
+export interface FaceFit {
+  chin: [number, number];
+  jaw: number;
+  mouth?: Face["mouth"];
+}
+
+/** Ölçülen yüzden jest yüzü: çene makul bölgede değilse ya da yoksa varsayılan; çene hattı yüz genişliğinin ~%28'i. */
+export function fitFace(face: Face): FaceFit {
+  const [x, y] = face.chin ?? CHIN;
+  const inside = x >= CHIN_ZONE.x[0] && x <= CHIN_ZONE.x[1] && y >= CHIN_ZONE.y[0] && y <= CHIN_ZONE.y[1];
+  const jaw = Math.min(42, Math.max(26, (face.head?.w ?? 120) * 0.28));
+  return { chin: inside ? [x, y] : CHIN, jaw, ...(face.mouth ? { mouth: face.mouth } : {}) };
+}
+
+/** Yüzü ölçülemeyen kukla (yan görünüş, test). */
+const NO_FACE: FaceFit = fitFace({});
+
+/** Çizimin yüz ölçüsü bir kez alınır (aynı varlık her karede aynı nesne); 3D figürün yüzü sabit. */
+const faces = new WeakMap<VectorAsset, FaceFit>();
+export function faceFor(asset: VectorAsset): FaceFit {
+  let f = faces.get(asset);
+  if (!f) faces.set(asset, (f = asset.meta.figure ? NO_FACE : fitFace(faceOf(asset.svg))));
+  return f;
 }
 
 /** İskelet parçalarının bu karedeki pozu: sürekli canlılık + Claude'un istediği jestler. */
@@ -388,19 +426,22 @@ function rigPose(
       case "think": {
         // Sağ el nesne tutuyorsa sol el çeneye gider; yoksa tutulan defter yüzü kapatıyordu.
         const hand = attention.holding ? -1 : 1;
-        // Dirsek göğsün önüne gelir, el çeneye: omuz 300, dirsek 100, bilek 90 px aşağıda; eski açılar (üst kol -8°, ön
-        // kol 162°) eli omuz hizasında bırakıyordu, denetçi "düşünmüyor" diyordu (3 Kas, C# incelemesi).
-        // Çizimlerin boynu farklı uzunlukta: el dudak/çene hizasına (bilek ~y 247, uç ~218) hedeflenir.
-        mix(hand > 0 ? "arm-r" : "arm-l", "rotate", 70 * hand);
-        mix(hand > 0 ? "forearm-r" : "forearm-l", "rotate", 125 * hand);
+        const side = hand > 0 ? "r" : "l";
+        // "Düşünen adam" (ölçülen yüz + iki kemikli IK): el çizimin kendi çene hattına yandan değer, ön kol çapraz
+        // durur (el çenenin tam altındayken ten rengi ön kol boyunla birleşip "uzun boyun" gibi okunuyordu); öbür el bu
+        // kolun dirseğini alttan tutar. Sabit açılar eli kimi çizimde omuzda, kiminde boyunda bırakıyordu (3 Kas).
+        const { chin, jaw } = attention.face ?? NO_FACE;
+        const main = reach(RIG.pivots[`arm-${side}`], [chin[0] + jaw * hand, chin[1] + 4], ARM.upper, ARM.reach);
+        mix(`arm-${side}`, "rotate", main.arm);
+        mix(`forearm-${side}`, "rotate", main.forearm);
         // Parmaklar çeneye doğru.
-        mix(hand > 0 ? "hand-r" : "hand-l", "rotate", -5 * hand);
+        mix(`hand-${side}`, "rotate", -5 * hand);
         if (hand > 0) {
-          // "Düşünen adam": öbür ön kol karnın önünde yatay, el karşı kolun altına kıvrılır.
-          mix("arm-l", "rotate", -6);
-          mix("forearm-l", "rotate", -90);
-          mix("forearm-l", "sy", 0.9);
-          mix("hand-l", "rotate", -40);
+          const support = reach(RIG.pivots["arm-l"], [main.elbow[0], main.elbow[1] + 22], ARM.upper, ARM.reach);
+          mix("arm-l", "rotate", support.arm);
+          mix("forearm-l", "rotate", support.forearm);
+          // Avuç yukarı, dirseği taşır.
+          mix("hand-l", "rotate", -25);
         }
         mix("head", "rotate", 7);
         mix("brows", "ty", -5);
@@ -980,6 +1021,7 @@ function motionOf(
     lookDir: focus.lookX === undefined ? undefined : Math.sign(toRigX(focus.lookX) - RIG.width / 2),
     holding: focus.holding,
     voice,
+    face: faceFor(asset),
   };
   return { tr, flip: layer.flip, squash, turn, pose: rigPose(anims, p, t, prefix, placed.sitting, layer.expression, gait, layer.flip, attention, dur) };
 }
@@ -1066,7 +1108,7 @@ function handPoint(placed: PlacedLayer, layer: VectorLayer, m: Motion): [number,
   const [sx, sy] = (m.profile ? RIG_SIDE : RIG).pivots["arm-r"];
   const [ex, ey] = (m.profile ? RIG_SIDE : RIG).pivots["forearm-r"];
   const elbow = rot([ex - sx, ey - sy], a);
-  const hand = rot([0, 112 * fs], a + f);
+  const hand = rot([0, ARM.reach * fs], a + f);
   let rx = sx + elbow[0] + hand[0];
   let ry = sy + elbow[1] + hand[1];
   // Üst gövde eğildiyse el de onunla gider (CSS: kalçadan çevir, ölçekle, kaydır).
