@@ -354,11 +354,12 @@ describe("vektör sahne: karakter iskeleti", () => {
   });
 
   it("yürüyüşte adımlar alınan yoldan gelir: yol iki katına çıkınca adım sayısı da iki katına çıkar", () => {
-    // Bir bacağın kalkıp indiği her geçiş bir adımdır; geçişleri sayarız.
+    // Bir bacağın kalkıp indiği her geçiş bir adımdır; geçişleri sayarız. Bir adım ~30 kare, bacak yarısında havada:
+    // 3 karede bir bakmak her kalkışı yakalar (her kare 600 sahne render ediyordu, yüklü makinede 30 sn'yi aşıyordu).
     const stepsTo = (toX: number) => {
       let steps = 0;
       let prev = 0;
-      for (let f = 0; f <= 300; f += 1) {
+      for (let f = 0; f <= 300; f += 3) {
         const { get, c: root } = heroAt(f, { anims: [{ type: "walk", toX }] });
         const css = root.querySelector("style")!.textContent!;
         const sy = (part: string) => (css.includes(`s1-0-${part}{`) ? get(part).sy : 1);
