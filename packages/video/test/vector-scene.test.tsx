@@ -36,7 +36,7 @@ vi.mock("../src/Figure3D.tsx", () => ({
 const { clapClosed, penDown, typingTaps } = await import("../src/gesture-timing.ts");
 const { tip } = await import("../src/ik.ts");
 const { BURST } = await import("../src/staging.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -407,14 +407,39 @@ describe("vektör sahne: karakter iskeleti", () => {
       return (part: string) => pose(css, part, "s1-0-");
     };
     const t = 5;
+    // Bileğin iskelet tuvalindeki yeri (ön kol kısalmış) ve elin mutlak açısı (0: aşağı).
+    const wrist = (g: (p: string) => { rotate: number; sy: number }, s: "l" | "r") => tip(RIG.pivots[`arm-${s}`], ARM.upper, ARM.reach * g(`forearm-${s}`).sy, g(`arm-${s}`).rotate, g(`forearm-${s}`).rotate);
+    const handAbs = (g: (p: string) => { rotate: number }, s: "l" | "r") => g(`arm-${s}`).rotate + g(`forearm-${s}`).rotate + g(`hand-${s}`).rotate;
     let g = at("typing");
-    // Eller gövdenin önünde yan yana; ön kol kameraya uzandığı için kısalır; parmaklar sırayla iner.
-    expect([g("arm-l").rotate, g("arm-r").rotate, g("forearm-l").rotate, g("forearm-r").rotate, g("forearm-r").sy]).toEqual([-8, 8, -47, 47, 0.5]);
-    expect(g("hand-l").rotate).toBeCloseTo(-6 + 10 * typingTaps(t)[0], 1);
-    expect(g("hand-r").rotate).toBeCloseTo(6 - 10 * typingTaps(t)[1], 1);
+    // Bilekler klavyenin iki yarısında (üst üste binip ovuşturmuyor), dirsek hizasının altında; tuşa basan el biraz iner;
+    // parmaklar aşağı-içe, bilek yana dönmez; ön kol kameraya uzandığı için kısa.
+    const [tl, tr] = [wrist(g, "l"), wrist(g, "r")];
+    expect(tr[0] - tl[0]).toBeGreaterThan(55);
+    expect(tl[0]).toBeLessThan(RIG.width / 2);
+    expect(tr[0]).toBeGreaterThan(RIG.width / 2);
+    expect(tl[1]).toBeCloseTo(DESK_WORK.key[1] + DESK_WORK.dip * typingTaps(t)[0], 0);
+    expect(tr[1]).toBeCloseTo(DESK_WORK.key[1] + DESK_WORK.dip * typingTaps(t)[1], 0);
+    expect([handAbs(g, "l"), handAbs(g, "r")].map((a) => Math.round(a))).toEqual([-DESK_WORK.tilt, DESK_WORK.tilt]);
+    expect(g("forearm-r").sy).toBe(DESK_WORK.fore);
     g = at("writing");
-    expect(g("forearm-r").rotate).toBeCloseTo(42 + Math.sin(t * 17) * 5 * penDown(t), 1);
-    expect([g("forearm-l").rotate, g("forearm-l").sy, g("head").ty]).toEqual([-34, 0.55, 5]);
+    // Kalemli el gövdenin kendi yanında satırda, öbür el kâğıtta: kollar çaprazlanmaz.
+    const [wl, wr] = [wrist(g, "l"), wrist(g, "r")];
+    expect(wl).toEqual([DESK_WORK.hold[0], DESK_WORK.hold[1]].map((v) => expect.closeTo(v, 0)));
+    expect(wr[0]).toBeGreaterThanOrEqual(DESK_WORK.pen[0] - 1);
+    expect(wr[0]).toBeLessThanOrEqual(DESK_WORK.pen[0] + DESK_WORK.line + 1);
+    expect(wr[0] - wl[0]).toBeGreaterThan(30);
+    expect(Math.abs(wr[1] - DESK_WORK.pen[1])).toBeLessThan(2);
+    expect(Math.round(handAbs(g, "l"))).toBe(-20);
+    expect(Math.abs(handAbs(g, "r") - 15 - Math.sin(t * 23) * 6 * penDown(t))).toBeLessThan(0.5);
+    expect([g("forearm-l").sy, g("head").ty]).toEqual([0.55, 5]);
+    // Satırda ilerler, duraklamada satır başına döner.
+    const pens = [150, 160, 170, 180, 190].map((f) => {
+      const c = scene({ layers: [{ asset: "hero", x: 960, depth: 0, anims: [{ type: "writing" }] }, { asset: "box", x: 960, depth: 0 }] }, { frame: f });
+      const css = c.querySelector("style")!.textContent!;
+      cleanup();
+      return wrist((part: string) => pose(css, part, "s1-0-"), "r")[0];
+    });
+    expect(Math.max(...pens) - Math.min(...pens)).toBeGreaterThan(DESK_WORK.line / 2);
     g = at("reading");
     expect([g("arm-l").rotate, g("forearm-l").rotate, g("forearm-r").rotate, g("eyes").sy]).toEqual([10, -104, 104, 0.85]);
     expect(g("eyes").tx).toBeCloseTo(Math.sin(t * 2.4) * 4, 1);

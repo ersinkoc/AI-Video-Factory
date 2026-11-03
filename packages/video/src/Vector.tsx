@@ -33,7 +33,7 @@ import { Ambience } from "./Ambience.tsx";
 import { armBeats, BEAT, pulseAt, speechBeats, strokeAt } from "./beats.ts";
 import { CALLOUT, calloutScale, calloutSpot, calloutTarget, overlap, type Box } from "./callout.ts";
 import { Figure3D } from "./Figure3D.tsx";
-import { clapClosed, penDown, typingTaps } from "./gesture-timing.ts";
+import { clapClosed, GESTURE_RHYTHM, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
 import { bend, reach } from "./ik.ts";
 import { revealWindow } from "./kinetic-timing.ts";
@@ -113,6 +113,25 @@ export function cheerPhase(seed: string, t: number): number {
  * birbirini geçip göğüste çapraz duruyordu, "açık"ta aralarında 28 px kalıyordu (3 Kas, PHP s4-sh6).
  */
 export const CLAP = { meet: [192, 368], open: 36, lift: 23, fore: 0.6 } as const;
+
+/**
+ * Masa başı işler (3 Kas, kullanıcı: "klavye başında ellerini ovuşturuyor gibi"): eski sabit açılarla iki bilek de
+ * göğsün önünde aynı noktaya (200, 431) düşüyor, eller üst üste binip her tuşta ters yöne dönüyordu; yazıda kalemli el
+ * öbür yana geçip kolları çaprazlıyordu. Bilekler hedefe IK ile, ön kollar kameraya uzanıp kısalmış (fore) gider.
+ * Klavye: sol bilek key (sağ ayna, aradaki ~22 cm), tuşta dip px iner, drift px tuşlar arasında kayar; parmaklar aşağı,
+ * içe tilt derece (mutlak açı), bilek yana dönmez. Yazı: kalemli el (sağ) pen'den başlayıp satır boyunca line px
+ * ilerler, duraklamada satır başına döner; öbür el hold'da kâğıdı tutar.
+ */
+export const DESK_WORK = {
+  key: [167, 428],
+  dip: 3,
+  drift: 4,
+  tilt: 10,
+  fore: 0.5,
+  pen: [206, 438],
+  line: 16,
+  hold: [168, 444],
+} as const;
 
 /** Katman/yazı düzeyindeki animasyonlar: hepsi zaman ve tohumdan türetilir. dur: çekim süresi (sn), height: katman boyu (px). */
 function layerTransform(
@@ -730,19 +749,19 @@ function rigPose(
       // iskeletten hesaplı (omuz x 140/260, dirsek +100, bilek +90 px): eller gövdenin önünde buluşur, çaprazlanmaz (ilk
       // denemede ön kollar X çiziyordu). Masada ön kol kameraya doğru uzanır: önden bakışta kısalır (sy).
       case "typing": {
-        // Eller dirsek hizasının biraz altında yan yana klavyede (masanın üstünde görünür; daha aşağıda masa örtüyordu),
-        // parmaklar sırayla iner; baş ve gözler ekrana/klavyeye eğik.
-        const [l, rr] = typingTaps(t);
-        mix("arm-l", "rotate", -8);
-        mix("arm-r", "rotate", 8);
-        mix("forearm-l", "rotate", -47);
-        mix("forearm-r", "rotate", 47);
-        mix("forearm-l", "sy", FORESHORTEN - 0.05);
-        mix("forearm-r", "sy", FORESHORTEN - 0.05);
-        mix("forearm-l", "ty", 3 * l);
-        mix("forearm-r", "ty", 3 * rr);
-        mix("hand-l", "rotate", -6 + 10 * l);
-        mix("hand-r", "rotate", 6 - 10 * rr);
+        // Bilekler dirsek hizasının biraz altında klavyenin iki yarısında (masanın üstünde görünür); tuşa basan el biraz
+        // iner, eller tuşlar arasında kayar; parmaklar klavyeye iner, bilek yana dönmez. Baş ve gözler klavyeye eğik.
+        const taps = typingTaps(t);
+        (["l", "r"] as const).forEach((s, i) => {
+          const out = s === "l" ? -1 : 1;
+          const x = DESK_WORK.key[0] + Math.sin(t * (1.3 + 0.4 * i) + i * 2) * DESK_WORK.drift;
+          const k = reach(RIG.pivots[`arm-${s}`], [s === "l" ? x : RIG.width - x, DESK_WORK.key[1] + DESK_WORK.dip * taps[i]!], ARM.upper, ARM.reach * DESK_WORK.fore);
+          mix(`arm-${s}`, "rotate", k.arm);
+          mix(`forearm-${s}`, "rotate", k.forearm);
+          mix(`forearm-${s}`, "sy", DESK_WORK.fore);
+          // Mutlak açı: parmaklar aşağı, biraz içe (sol el sağa, sağ el sola).
+          mix(`hand-${s}`, "rotate", out * DESK_WORK.tilt - k.arm - k.forearm);
+        });
         mix("head", "ty", 4);
         mix("brows", "ty", 2);
         mix("torso", "rotate", Math.sin(t * 1.7) * 0.8);
@@ -751,14 +770,26 @@ function rigPose(
       case "writing": {
         // Kalemli el gövdenin önünde masada, satır boyunca küçük hızlı kıvrımlar; öbür el kâğıdı tutar; baş eğik.
         const pen = penDown(t);
-        mix("arm-r", "rotate", 8 + Math.sin(t * 0.9) * 2);
-        mix("forearm-r", "rotate", 42 + Math.sin(t * 17) * 5 * pen);
+        // Satırda ilerleme: yazarken soldan sağa, duraklamada (satır başı) geri.
+        const { strokeSec, pauseSec } = GESTURE_RHYTHM;
+        const u = (t % (strokeSec + pauseSec)) / strokeSec;
+        const along = u <= 1 ? u : 1 - (u - 1) * (strokeSec / pauseSec);
+        const pr = reach(
+          RIG.pivots["arm-r"],
+          [DESK_WORK.pen[0] + DESK_WORK.line * along, DESK_WORK.pen[1] + Math.sin(t * 17) * 1.5 * pen],
+          ARM.upper,
+          ARM.reach * FORESHORTEN,
+        );
+        mix("arm-r", "rotate", pr.arm);
+        mix("forearm-r", "rotate", pr.forearm);
         mix("forearm-r", "sy", FORESHORTEN);
-        mix("hand-r", "rotate", 10 + Math.sin(t * 23) * 8 * pen);
-        mix("arm-l", "rotate", -8);
-        mix("forearm-l", "rotate", -34);
+        // Kalem ucu kâğıda: parmaklar aşağı-içe; harf kıvrımları bilekte.
+        mix("hand-r", "rotate", 15 + Math.sin(t * 23) * 6 * pen - pr.arm - pr.forearm);
+        const hl = reach(RIG.pivots["arm-l"], [DESK_WORK.hold[0], DESK_WORK.hold[1]], ARM.upper, ARM.reach * FORESHORTEN);
+        mix("arm-l", "rotate", hl.arm);
+        mix("forearm-l", "rotate", hl.forearm);
         mix("forearm-l", "sy", FORESHORTEN);
-        mix("hand-l", "rotate", -8);
+        mix("hand-l", "rotate", -20 - hl.arm - hl.forearm);
         mix("head", "ty", 5);
         mix("head", "rotate", 4);
         mix("eyes", "tx", -3);

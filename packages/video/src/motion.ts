@@ -181,8 +181,8 @@ export const GESTURE_TRAVEL: Partial<Record<VectorAnim["type"], number>> = {
   hands_on_hips: 75,
   explain: 90,
   shrug: 85,
-  typing: 50,
-  writing: 45,
+  typing: 60,
+  writing: 65,
 };
 /**
  * Bilerek hızlı jestler: irkilme (surprised) bir anda olur, yavaşlatılırsa anlamı kaybolur. En kısa süreyle girer;

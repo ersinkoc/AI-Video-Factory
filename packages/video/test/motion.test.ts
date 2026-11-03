@@ -146,7 +146,7 @@ describe("hareket fiziği: yürüyüş", () => {
     expect(think.rise).toBeCloseTo(GESTURE_TRAVEL.think! / GESTURE_SPEED, 6);
     expect(think.fall).toBe(think.rise);
     // Kısa yollu jestte en kısa süre.
-    expect(gestureTimes("writing")).toEqual({ rise: 0.45, fall: 0.4 });
+    expect(gestureTimes("typing")).toEqual({ rise: 0.45, fall: 0.4 });
     // Düşünme kalkışının ortası: ağırlık bir karede (1/30 sn) en çok ~%15 değişir (150° yolda ~25°'nin altı).
     const [g] = anims([{ type: "think", start: 0.2, end: 0.8 }]);
     const steps = Array.from({ length: 60 }, (_, i) => gestureWeight(0.2 + i / 300, g!, 10));
