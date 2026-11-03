@@ -38,7 +38,7 @@ import { Globe3D } from "./Globe3D.tsx";
 import { bend, reach } from "./ik.ts";
 import { revealWindow } from "./kinetic-timing.ts";
 import { lipLine, mouthIds, withMouths, type SpeakingMouth } from "./mouthShape.ts";
-import { faceOf, type Face } from "./rigGeometry.ts";
+import { faceOf, type Bounds, type Face } from "./rigGeometry.ts";
 import { visemeAt, visemeCues, type Viseme } from "./visemes.ts";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
@@ -223,7 +223,15 @@ export interface FaceFit {
   lips?: number;
   /** Parmak uçlarının elin değme noktasının (ARM.reach) ötesine uzanması, kol başına (çizimden; sınırlı). */
   fingers: { l: number; r: number };
+  /** Başın kutusu (saç dahil): ölçülen makulse o, değilse varsayılan (başı kaşıyan el bunun yanına gider). */
+  head: Bounds;
 }
+
+/** Yüzü ölçülemeyen çizimde (ve 3D figürde) baş kutusu: figürün kafası x 124–276, y 96–256. */
+const HEAD_BOX: Bounds = { x: 122, y: 96, w: 156, h: 160 };
+
+/** Ölçülen başın makul boyu (iskelet px): dışındaysa (başa gövde ya da sahne konmuş) varsayılan kutu. */
+const HEAD_FIT = { min: 60, maxW: 280, maxH: 300 } as const;
 
 /** Parmakların değme noktasının ötesine uzanması (iskelet px): ölçülemezse rest, ölçüleni [min, max] içinde. */
 const FINGERS = { rest: 22, min: 8, max: 60 } as const;
@@ -254,7 +262,10 @@ export function fitFace(face: Face): FaceFit {
   const lips = inside && m && m.y + m.h < y ? m.y + m.h : undefined;
   const elbowY = RIG.pivots["forearm-r"][1];
   const finger = (low: number | undefined) => (low === undefined ? FINGERS.rest : Math.min(FINGERS.max, Math.max(FINGERS.min, low - elbowY - ARM.reach)));
-  return { chin, jaw, ...(mouth ? { mouth } : {}), ...(lips !== undefined ? { lips } : {}), fingers: { l: finger(face.hands?.l), r: finger(face.hands?.r) } };
+  // Baş makul çeneyi yatayda kapsamalı ve onun üstünde başlamalı.
+  const box =
+    inside && head && head.w >= HEAD_FIT.min && head.h >= HEAD_FIT.min && head.w <= HEAD_FIT.maxW && head.h <= HEAD_FIT.maxH && head.x < x && head.x + head.w > x && head.y < y ? head : HEAD_BOX;
+  return { chin, jaw, ...(mouth ? { mouth } : {}), ...(lips !== undefined ? { lips } : {}), fingers: { l: finger(face.hands?.l), r: finger(face.hands?.r) }, head: box };
 }
 
 /** Yüzü ölçülemeyen kukla (yan görünüş, test). */
@@ -535,9 +546,44 @@ function rigPose(
         break;
       }
       case "think": {
-        // Sağ el nesne tutuyorsa sol el çeneye gider; yoksa tutulan defter yüzü kapatıyordu.
+        // Sağ el nesne tutuyorsa sol el yüze/başa gider; yoksa tutulan defter yüzü kapatıyordu.
         const hand = attention.holding ? -1 : 1;
         const side = hand > 0 ? "r" : "l";
+        // Çekim başına üç duruştan biri (thinkPoseOf): yönetmen bölüm başına 6–13 çekimde düşündürüyor, hep aynı duruş
+        // tekrar ediyordu (3 Kas).
+        const how = thinkPoseOf(seed, attention.holding);
+        if (how === "scratch") {
+          // Başını kaşır: el başın yanına, üst üçte birine gider (saçın içine), dirsek dışa ve yukarı açılır (IK, dış
+          // çözüm; aşağıdaki çözüm ön kolu yüzün önünden geçirirdi). Kol başın arkasında kalır: el başın kenarından görünür.
+          // Kaşıma aralıklıdır: kısa sürelerle bilek ve ön kol hızlıca gidip gelir. Bakış yukarı, öbür yana; kaşlar kalkık.
+          const { head } = attention.face ?? NO_FACE;
+          const at: [number, number] = [head.x + head.w * (0.5 + (SCRATCH.x / 2) * hand), head.y + head.h * SCRATCH.y];
+          const ik = reach(RIG.pivots[`arm-${side}`], at, ARM.upper, ARM.reach, hand);
+          const rub = Math.sin(t * SCRATCH.rate) * Math.max(0, Math.sin(t * SCRATCH.burst));
+          mix(`arm-${side}`, "rotate", ik.arm);
+          mix(`forearm-${side}`, "rotate", ik.forearm + rub * SCRATCH.fore * hand);
+          mix(`hand-${side}`, "rotate", (rub * SCRATCH.rub - SCRATCH.curl) * hand);
+          mix("head", "rotate", -3 * hand);
+          mix("eyes", "tx", -4 * hand);
+          mix("eyes", "ty", -3);
+          mix("brows", "ty", -6);
+          mix("mouth", "sx", 0.8);
+          mix("torso", "rotate", -1.5 * hand);
+          break;
+        }
+        if (how === "ponder") {
+          // Kollar kavuşuk, baş hafif kalkık ve bir yana yatık, gözler yukarıda bir noktada; baş yavaşça salınır.
+          const look = random(`${seed}-think-look`) < 0.5 ? -1 : 1;
+          for (const [k, field, v] of CROSSED) mix(k, field, v);
+          mix("head", "rotate", 7 * look + Math.sin(t * 0.9) * 1.5);
+          mix("head", "ty", -2);
+          mix("eyes", "tx", 5 * look);
+          mix("eyes", "ty", -4);
+          mix("brows", "ty", -5);
+          mix("mouth", "sx", 0.85);
+          mix("torso", "rotate", -look);
+          break;
+        }
         // "Düşünen adam" (ölçülen yüz): el çizimin kendi çenesinin altına gelir, ön kol göğsün önünde hafif yatık dikilir,
         // dirsek göğsün altında; üst kol oraya kameraya uzanarak kısalır (bend). Öbür el bu dirseği alttan tutar. Eskiden el
         // çenenin yanındaydı ve üst kol tam boydu: dirsek omuz hizasında göğsün karşı yanına gidiyor, iki kol göğsü yatay
@@ -710,14 +756,7 @@ function rigPose(
         break;
       case "arms_crossed":
         // Ön kollar göğsün altında yatay, üst üste; eller karşı kolun altına kıvrılır. Şüpheci, bekleyen; kaş çatık.
-        mix("arm-l", "rotate", -6);
-        mix("arm-r", "rotate", 6);
-        mix("forearm-l", "rotate", -90);
-        mix("forearm-r", "rotate", 84);
-        mix("forearm-l", "sy", 0.9);
-        mix("forearm-r", "sy", 0.9);
-        mix("hand-l", "rotate", -50);
-        mix("hand-r", "rotate", 50);
+        for (const [k, field, v] of CROSSED) mix(k, field, v);
         mix("brows", "ty", 3);
         mix("head", "rotate", -5);
         break;
@@ -840,6 +879,38 @@ const GIVE = { reach: 0.85, drop: 0.5 } as const;
  * kenarının en az gap px altında kalır.
  */
 export const THINK = { x: 0.4, y: 14, lean: 8, min: 0.62, support: 16, gap: 6 } as const;
+
+/** Düşünme duruşları: çene elde ("düşünen adam"), başını kaşıma, kollar kavuşuk yukarı bakma. */
+export type ThinkPose = "chin" | "scratch" | "ponder";
+
+/** Duruş oranları (çene, kaşıma; kalanı kavuşuk kollar). Elde nesne varken kollar kavuşmaz: çene ya da kaşıma. */
+const THINK_MIX = { chin: 0.4, scratch: 0.3, heldChin: 0.55 } as const;
+
+/** Karakterin (çekim + katman tohumu) bu çekimdeki düşünme duruşu. */
+export function thinkPoseOf(seed: string, holding = false): ThinkPose {
+  const x = random(`${seed}-think`);
+  if (holding) return x < THINK_MIX.heldChin ? "chin" : "scratch";
+  return x < THINK_MIX.chin ? "chin" : x < THINK_MIX.chin + THINK_MIX.scratch ? "scratch" : "ponder";
+}
+
+/**
+ * Başını kaşıma (iskelet px, derece): el başın kutusunda yatay olarak kenara x kadar (yarı genişliğin kesri), dikeyde
+ * y kadar (boyun kesri) gider; parmaklar başa doğru curl derece kıvrılır. Kaşıma burst rad/sn'lik dalganın artı yarısında
+ * sürer; bilek rub, ön kol fore derece, rate rad/sn hızla (~5 Hz: 30 kare/sn'de kırpışmadan) gider gelir.
+ */
+export const SCRATCH = { x: 0.92, y: 0.32, curl: 10, rub: 9, fore: 2.5, rate: 30, burst: 2.1 } as const;
+
+/** Kavuşuk kollar (arms_crossed ve düşünürken): ön kollar göğsün altında yatay, eller karşı kolun altında. */
+const CROSSED: [PosePart, keyof PartPose, number][] = [
+  ["arm-l", "rotate", -6],
+  ["arm-r", "rotate", 6],
+  ["forearm-l", "rotate", -90],
+  ["forearm-r", "rotate", 84],
+  ["forearm-l", "sy", 0.9],
+  ["forearm-r", "sy", 0.9],
+  ["hand-l", "rotate", -50],
+  ["hand-r", "rotate", 50],
+];
 /** Kısalan uyluk kadar karakter aşağı iner ki ayaklar yerde kalsın (iskelet pikseli). */
 const SIT_DROP = (RIG.pivots["shin-l"][1] - RIG.pivots["leg-l"][1]) * (1 - SIT_THIGH);
 
@@ -1255,8 +1326,9 @@ function motionOf(
   // Konuşma yarıdan fazla girmişken ses varsa şekil koddan çizilir; sessizlikte (X) çizimin kendi ağzı görünür.
   const viseme = voice?.viseme;
   const talking = face.mouth && viseme && viseme !== "X" && anims.some((a) => a.type === "talk" && gestureWeight(p, a, dur) >= 0.5);
-  // Düşünen kol (sağ; sağ el nesne tutuyorsa sol) çekim boyunca başın önünde çizilir: kol yandayken başla örtüşmez.
-  const front = anims.some((a) => a.type === "think") ? (focus.holding ? "arm-l" : "arm-r") : undefined;
+  // Çeneyi tutan kol (sağ; sağ el nesne tutuyorsa sol) çekim boyunca başın önünde çizilir: kol yandayken başla
+  // örtüşmez. Başını kaşıyan el başın arkasında kalır (saçın içinde), kavuşuk kollar başa değmez.
+  const front = anims.some((a) => a.type === "think") && thinkPoseOf(prefix, focus.holding) === "chin" ? (focus.holding ? "arm-l" : "arm-r") : undefined;
   return { tr, flip: layer.flip, squash, turn, pose, ...(talking ? { speak: viseme } : {}), ...(front ? { front } : {}) };
 }
 

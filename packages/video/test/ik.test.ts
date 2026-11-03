@@ -37,6 +37,23 @@ describe("iki kemikli ters kinematik", () => {
     expect(Math.hypot(...tip(S, 100, 112, same.arm, same.forearm).map((v, i) => v - S[i]!) as [number, number])).toBeCloseTo(12, 3);
   });
 
+  it("out verilince dirseği o yana açılan çözüm seçilir (başa uzanan el yüzün önünden geçmez)", () => {
+    // Omzun hemen üstündeki hedef: iki çözüm de aynı yükseklikte değil; sağa ve sola açılan dirsekler ayrı.
+    const target = [270, 147] as const;
+    const right = reach(S, target, 100, 112, 1);
+    const left = reach(S, target, 100, 112, -1);
+    expect(right.elbow[0]).toBeGreaterThan(S[0]);
+    expect(left.elbow[0]).toBeLessThan(S[0]);
+    for (const r of [right, left]) {
+      const [x, y] = tip(S, 100, 112, r.arm, r.forearm);
+      expect(x).toBeCloseTo(target[0], 6);
+      expect(y).toBeCloseTo(target[1], 6);
+    }
+    // Hedef aşağıdayken de istenen yana açılır.
+    expect(reach(S, [260, 420], 100, 112, -1).elbow[0]).toBeLessThan(S[0]);
+    expect(reach(S, [260, 420], 100, 112, 1).elbow[0]).toBeGreaterThan(S[0]);
+  });
+
   it("bend: dirsek verilen yerde, üst kol oraya kısalarak (kameraya uzanarak) ulaşır, el hedefte", () => {
     const hand = [210, 256] as const;
     const elbow = [226, 367] as const;

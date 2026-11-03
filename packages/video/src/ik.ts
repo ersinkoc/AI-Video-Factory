@@ -28,10 +28,11 @@ export interface Reach {
 }
 
 /**
- * Omuzdan hedefe iki kemikle uzanma. İki çözümden dirseği aşağıda olan (yerçekimi; dirsek havada asılı durmaz) seçilir.
+ * Omuzdan hedefe iki kemikle uzanma. İki çözümden dirseği aşağıda olan (yerçekimi; dirsek havada asılı durmaz) seçilir;
+ * out verilirse dirseği o yana (−1 sol, 1 sağ) açılan: başa uzanan elde aşağıdaki dirsek yüzün önünden geçebilir.
  * Hedef erişilemeyecek kadar uzak ya da yakınsa kemik boylarının izin verdiği en yakın yere uzanılır.
  */
-export function reach(shoulder: readonly [number, number], target: readonly [number, number], upper: number, lower: number): Reach {
+export function reach(shoulder: readonly [number, number], target: readonly [number, number], upper: number, lower: number, out?: -1 | 1): Reach {
   const dx = target[0] - shoulder[0];
   const dy = target[1] - shoulder[1];
   const dist = Math.hypot(dx, dy);
@@ -49,7 +50,8 @@ export function reach(shoulder: readonly [number, number], target: readonly [num
     const fore = Math.atan2(-(goal[0] - elbow[0]), goal[1] - elbow[1]) * DEG;
     return { arm: wrap(arm), forearm: wrap(fore - arm), elbow };
   });
-  const best = options[0]!.elbow[1] >= options[1]!.elbow[1] ? options[0]! : options[1]!;
+  const [a, b] = options as [(typeof options)[number], (typeof options)[number]];
+  const best = (out ? a.elbow[0] * out >= b.elbow[0] * out : a.elbow[1] >= b.elbow[1]) ? a : b;
   return { ...best, reached: Math.abs(d - dist) < 1e-3 };
 }
 

@@ -35,7 +35,7 @@ vi.mock("../src/Figure3D.tsx", () => ({
 
 const { clapClosed, penDown, typingTaps } = await import("../src/gesture-timing.ts");
 const { tip } = await import("../src/ik.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -331,7 +331,9 @@ describe("vektör sahne: karakter iskeleti", () => {
     g = at("point");
     // Hedef yoksa öne-yana yatay (omuz hizasında).
     expect([g("arm-r").rotate, g("forearm-r").rotate, g("head").rotate, g("eyes").tx]).toEqual([-90, -6, -4, 5]);
-    g = at("think");
+    // "s6" tohumunda çene duruşu.
+    g = heroAt(150, { anims: [{ type: "think" }] }, "s6").get;
+    cleanup();
     // El çizimin çenesinin altına (yüzü ölçülemeyen test kuklasında varsayılan çene), çene hattının biraz el tarafına.
     // Üst kol kameraya uzanarak kısalır (ön kol bu ölçeği dirsekte geri alır), dirsek elin altında göğsün önünde.
     const upper = ARM.upper * g("arm-r").sy;
@@ -408,10 +410,11 @@ describe("vektör sahne: karakter iskeleti", () => {
   });
 
   it("düşünen el: parmak uçları ağzın altında kalır (uzun elde el aşağı iner), kol çizimde başın önüne alınır", () => {
+    // "s6" tohumunda çene duruşu.
     const thinkAt = (layers: object[], frame = 150) => {
-      const c = scene({ layers }, { frame });
+      const c = scene({ layers }, { frame, shotId: "s6" });
       const html = c.innerHTML;
-      const r = { g: (p: string) => pose(c, p), order: (p: string) => html.indexOf(`id="s1-0-${p}"`) };
+      const r = { g: (p: string) => pose(c, p, "s6-0-"), order: (p: string) => html.indexOf(`id="s6-0-${p}"`) };
       return r;
     };
     const f = faceFor(ASSETS.thinker);
@@ -448,8 +451,9 @@ describe("vektör sahne: karakter iskeleti", () => {
 
   it("jest yüzü: ölçülen çene makul bölgedeyse kullanılır, değilse varsayılan; çene hattı yüz genişliğinden (26–42 px)", () => {
     const rest = { l: 22, r: 22 };
-    expect(fitFace({})).toEqual({ chin: [200, 242], jaw: 33.6, fingers: rest });
-    expect(fitFace({ chin: [210, 250], head: { x: 0, y: 0, w: 200, h: 10 } })).toEqual({ chin: [210, 250], jaw: 42, fingers: rest });
+    const box = { x: 122, y: 96, w: 156, h: 160 };
+    expect(fitFace({})).toEqual({ chin: [200, 242], jaw: 33.6, fingers: rest, head: box });
+    expect(fitFace({ chin: [210, 250], head: { x: 0, y: 0, w: 200, h: 10 } })).toEqual({ chin: [210, 250], jaw: 42, fingers: rest, head: box });
     // Ağzın alt kenarı (çenenin üstündeyse ve çene makulse); parmaklar ölçülen kol ucundan, sınırlı.
     const lipsOf = (mouth: { x: number; y: number; w: number; h: number }, chin: [number, number]) => fitFace({ mouth, chin }).lips;
     expect(lipsOf({ x: 180, y: 200, w: 40, h: 10 }, [200, 240])).toBe(210);
@@ -481,7 +485,108 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(fitFace({ mouth: { x: 180, y: 200, w: 40, h: 80 }, mouthFrame: frame }).mouth).toBeUndefined();
     // Varlık başına bir kez ölçülür; 3D figürün yüzü sabit (SVG yedeği figürle aynı değil).
     expect(faceFor(ASSETS.hero)).toBe(faceFor(ASSETS.hero));
-    expect(faceFor(ASSETS.toy)).toEqual({ chin: [200, 242], jaw: 33.6, fingers: rest });
+    expect(faceFor(ASSETS.toy)).toEqual({ chin: [200, 242], jaw: 33.6, fingers: rest, head: box });
+    // Baş kutusu: ölçülen baş makulse (boyu sınırlar içinde, çeneyi yatayda kapsar, çenenin üstünde başlar) o kullanılır.
+    const measured = { x: 110, y: 60, w: 180, h: 200 };
+    expect(fitFace({ chin: [200, 250], head: measured }).head).toEqual(measured);
+    for (const bad of [
+      { x: 110, y: 60, w: 50, h: 200 },
+      { x: 110, y: 60, w: 180, h: 50 },
+      { x: 0, y: 60, w: 300, h: 200 },
+      { x: 110, y: 0, w: 180, h: 320 },
+      { x: 210, y: 60, w: 180, h: 200 },
+      { x: 10, y: 60, w: 180, h: 200 },
+      { x: 110, y: 260, w: 180, h: 200 },
+    ])
+      expect(fitFace({ chin: [200, 250], head: bad }).head).toEqual(box);
+    // Çene makul değilse baş da varsayılan.
+    expect(fitFace({ chin: [200, 400], head: measured }).head).toEqual(box);
+  });
+
+  it("düşünme duruşu çekim başına seçilir: çene, başını kaşıma, kollar kavuşuk; elde nesneyle kollar kavuşmaz", () => {
+    const count = (holding: boolean) => {
+      const n = { chin: 0, scratch: 0, ponder: 0 };
+      for (let i = 0; i < 400; i++) n[thinkPoseOf(`sh${i}-0-`, holding)]++;
+      return n;
+    };
+    const free = count(false);
+    for (const [k, share] of [
+      ["chin", 0.4],
+      ["scratch", 0.3],
+      ["ponder", 0.3],
+    ] as const)
+      expect(Math.abs(free[k] / 400 - share)).toBeLessThan(0.08);
+    const held = count(true);
+    expect(held.ponder).toBe(0);
+    expect(Math.abs(held.chin / 400 - 0.55)).toBeLessThan(0.08);
+    // Aynı tohum hep aynı duruş; varsayılan: elde nesne yok.
+    expect(thinkPoseOf("s1-0-")).toBe(thinkPoseOf("s1-0-", false));
+    expect([thinkPoseOf("s6-0-"), thinkPoseOf("s1-0-"), thinkPoseOf("s2-0-"), thinkPoseOf("s1-0-", true)]).toEqual(["chin", "scratch", "ponder", "scratch"]);
+  });
+
+  it("başını kaşıma: el başın yanına (üst üçte bir) gider, dirsek dışa açılır, bilek aralıklı gidip gelir; kol başın arkasında kalır", () => {
+    const box = fitFace({}).head;
+    const handAt = (g: (p: string) => { rotate: number; sy: number }, side: "l" | "r") =>
+      tip(RIG.pivots[`arm-${side}`], ARM.upper * g(`arm-${side}`).sy, ARM.reach, g(`arm-${side}`).rotate, g(`forearm-${side}`).rotate);
+    // "s1" tohumunda kaşıma. Kaşıma dalgasının dışında (sin(t·burst) ≤ 0) bilek durgun: el tam hedefte.
+    const period = (2 * Math.PI) / SCRATCH.burst;
+    const frame = Math.round(period * 30 * 0.75);
+    const r = heroAt(frame, { anims: [{ type: "think", start: 0, end: 1 }] }, "s1");
+    cleanup();
+    const [hx, hy] = handAt(r.get, "r");
+    expect(hx).toBeCloseTo(box.x + box.w * (0.5 + SCRATCH.x / 2), 0);
+    expect(hy).toBeCloseTo(box.y + box.h * SCRATCH.y, 0);
+    expect(r.get("hand-r").rotate).toBeCloseTo(-SCRATCH.curl, 1);
+    // Dirsek omzun dışında (yüzün önünden geçmez); üst kol kısalmaz.
+    const elbow = tip(RIG.pivots["arm-r"], ARM.upper, 0, r.get("arm-r").rotate, 0);
+    expect(elbow[0]).toBeGreaterThan(RIG.pivots["arm-r"][0] + 40);
+    expect(r.get("forearm-r").undo).toBeUndefined();
+    expect([r.get("eyes").tx, r.get("eyes").ty, r.get("brows").ty, r.get("mouth").sx]).toEqual([-4, -3, -6, 0.8]);
+    // Kaşırken bilek gidip gelir.
+    const wrists = [0, 1, 2, 3].map((k) => {
+      const g = heroAt(Math.round(period * 30 * 1.25) + k, { anims: [{ type: "think", start: 0, end: 1 }] }, "s1").get;
+      cleanup();
+      return g("hand-r").rotate;
+    });
+    expect(Math.max(...wrists) - Math.min(...wrists)).toBeGreaterThan(SCRATCH.rub);
+    // Ölçülen başın yanına gider; kol çizimde başın arkasında kalır (öne alınmaz).
+    const c = scene({ layers: [{ asset: "thinker", x: 960, depth: 0, anims: [{ type: "think", start: 0, end: 1 }] }] }, { frame });
+    const head = faceFor(ASSETS.thinker).head;
+    const [mx, my] = handAt((p) => pose(c, p), "r");
+    expect(mx).toBeCloseTo(head.x + head.w * (0.5 + SCRATCH.x / 2), 0);
+    expect(my).toBeCloseTo(head.y + head.h * SCRATCH.y, 0);
+    expect(c.innerHTML.indexOf('id="s1-0-arm-r"')).toBeLessThan(c.innerHTML.indexOf('id="s1-0-head"'));
+    cleanup();
+    // Sağ eli nesne tutarken sol el başın sol yanını kaşır, dirsek sola açılır; sağ el tutuşta kalır.
+    const h = scene({ layers: [{ asset: "hero", x: 960, depth: 0, anims: [{ type: "think", start: 0, end: 1 }] }, { asset: "cup", x: 0, heldBy: 0 }] }, { frame });
+    const [lx, ly] = handAt((p) => pose(h, p), "l");
+    expect(lx).toBeCloseTo(box.x + box.w * (0.5 - SCRATCH.x / 2), 0);
+    expect(ly).toBeCloseTo(box.y + box.h * SCRATCH.y, 0);
+    expect(tip(RIG.pivots["arm-l"], ARM.upper, 0, pose(h, "arm-l").rotate, 0)[0]).toBeLessThan(RIG.pivots["arm-l"][0] - 40);
+    expect(pose(h, "forearm-r").rotate).toBeCloseTo(-HOLD_POSE.forearm, -1);
+  });
+
+  it("kollar kavuşuk düşünme: arms_crossed kolları, baş yatık ve kalkık, gözler yukarıda bir yanda", () => {
+    // "s2" tohumunda kollar kavuşuk.
+    const g = heroAt(150, { anims: [{ type: "think" }] }, "s2").get;
+    cleanup();
+    const crossed = heroAt(150, { anims: [{ type: "arms_crossed" }] }, "s2").get;
+    cleanup();
+    for (const part of ["arm-l", "arm-r", "forearm-l", "forearm-r", "hand-l", "hand-r"]) expect(g(part)).toEqual(crossed(part));
+    expect(g("head").ty).toBeCloseTo(-2, 0);
+    expect([g("eyes").ty, g("brows").ty, g("mouth").sx]).toEqual([-4, -5, 0.85]);
+    expect(Math.abs(g("head").rotate)).toBeGreaterThan(4);
+    expect(Math.abs(g("eyes").tx)).toBe(5);
+    // Baş, gözlerin baktığı yana yatar; bakış yanı çekime göre değişir.
+    expect(Math.sign(g("head").rotate)).toBe(Math.sign(g("eyes").tx));
+    const sides = new Set<number>();
+    for (const shot of ["s2", "g5"]) {
+      const h = heroAt(150, { anims: [{ type: "think" }] }, shot).get;
+      cleanup();
+      expect(Math.sign(h("head").rotate)).toBe(Math.sign(h("eyes").tx));
+      sides.add(Math.sign(h("eyes").tx));
+    }
+    expect([...sides].sort()).toEqual([-1, 1]);
   });
 
   it("yürüyüşte adımlar alınan yoldan gelir: yol iki katına çıkınca adım sayısı da iki katına çıkar", () => {
@@ -693,7 +798,7 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(heroAt(150, { anims: [{ type: "explain" }] }).get("hand-r").rotate).toBeLessThan(-10);
     cleanup();
     // Düşünürken parmaklar çeneye doğru döner (ön kolun devamından hafifçe dışa).
-    expect(heroAt(150, { anims: [{ type: "think" }] }).get("hand-r").rotate).toBe(-5);
+    expect(heroAt(150, { anims: [{ type: "think" }] }, "s6").get("hand-r").rotate).toBe(-5);
     cleanup();
     const c = scene({ layers: [{ asset: "hero", x: 960, depth: 0.3 }, { asset: "cup", x: 960, heldBy: 0 }] }, { frame: 150 });
     expect(pose(c, "hand-r").rotate).toBe(0);
@@ -1016,6 +1121,10 @@ describe("vektör sahne: yan görünüş", () => {
     expect(Math.abs(pose(css, "arm-r").rotate)).toBeLessThan(25);
     expect(pose(css, "mouth").sy).toBeCloseTo(0.3, 1);
     cleanup();
+    // Çene duruşunda ("s6") da kol yürür.
+    const c = scene({ layers: [{ asset: "walker", x: 600, depth: 0, anims: [{ type: "walk", toX: 1500 }, { type: "think" }] }] }, { frame: 25, shotId: "s6" });
+    expect(Math.abs(pose(c, "arm-r", "s6-0-").rotate)).toBeLessThan(25);
+    cleanup();
   });
 
   it("yan görünüşte yürürken tutulan nesne yine elde kalır", () => {
@@ -1201,14 +1310,16 @@ describe("vektör sahne: elde tutulan nesne", () => {
   });
 
   it("nesne tutan karakter sol eliyle düşünür: nesne yüze kalkmaz", () => {
-    const c = scene({ layers: [{ asset: "hero", x: 960, depth: 0, anims: [{ type: "think" }] }, { asset: "cup", x: 0, heldBy: 0 }] }, { frame: 150 });
-    // Sol el çenenin altına (varsayılan çene, sol tarafından), üst kol kısalarak; baş sola, ele yaslanır.
-    const [hx, hy] = tip(RIG.pivots["arm-l"], ARM.upper * pose(c, "arm-l").sy, ARM.reach, pose(c, "arm-l").rotate, pose(c, "forearm-l").rotate);
+    const c = scene({ layers: [{ asset: "hero", x: 960, depth: 0, anims: [{ type: "think" }] }, { asset: "cup", x: 0, heldBy: 0 }] }, { frame: 150, shotId: "s6" });
+    const at = (part: string) => pose(c, part, "s6-0-");
+    // "s6" tohumunda çene duruşu. Sol el çenenin altına (varsayılan çene, sol tarafından), üst kol kısalarak; baş sola,
+    // ele yaslanır.
+    const [hx, hy] = tip(RIG.pivots["arm-l"], ARM.upper * at("arm-l").sy, ARM.reach, at("arm-l").rotate, at("forearm-l").rotate);
     expect(hx).toBeCloseTo(200 - 26 * THINK.x, 0);
     expect(hy).toBeCloseTo(242 + THINK.y, 0);
-    expect(pose(c, "head").rotate).toBeLessThan(0);
-    expect(pose(c, "forearm-r").rotate).toBeCloseTo(-HOLD_POSE.forearm, -1);
-    expect(pose(c, "forearm-r").undo).toBeUndefined();
+    expect(at("head").rotate).toBeLessThan(0);
+    expect(at("forearm-r").rotate).toBeCloseTo(-HOLD_POSE.forearm, -1);
+    expect(at("forearm-r").undo).toBeUndefined();
     cleanup();
     // Nesne yüze kalkmaz (gövde yalnız duruş ve düşünme kadar eğilir).
     expect(Math.abs(held({ anims: [{ type: "think" }] }).top - held({}).top)).toBeLessThan(12);
