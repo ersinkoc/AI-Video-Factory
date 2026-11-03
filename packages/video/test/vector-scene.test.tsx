@@ -19,6 +19,11 @@ vi.mock("../src/Globe3D.tsx", () => ({
   Globe3D: ({ globe, p, seed }: { globe: { lon: number }; p: number; seed: string }) => <div data-globe={`${globe.lon}|${p}|${seed}`} />,
 }));
 
+// Atmosfer ayrı testte (episode.test.tsx): burada yalnız sahnenin hangi katmanında, hangi boyda çizildiği.
+vi.mock("../src/Ambience.tsx", () => ({
+  Ambience: ({ kind, size }: { kind: string; size?: number[] }) => (kind === "none" ? null : <div data-ambience={kind} data-size={size?.join("x")} />),
+}));
+
 // 3D figür ayrı testte (figure3d-view.test.tsx); burada yalnız katmana hangi tarif, poz ve SVG yedeğiyle konduğu.
 vi.mock("../src/Figure3D.tsx", () => ({
   Figure3D: ({ spec, pose, view, fallback }: { spec: { skin: string }; pose?: Record<string, { rotate: number }>; view: { turn?: number; profile?: boolean }; fallback: unknown }) => (
@@ -101,6 +106,9 @@ interface Opts {
   height?: number;
   shotId?: string;
   speech?: { text: string; startMs: number; endMs: number }[];
+  ambience?: string;
+  insets?: boolean;
+  overlay?: string;
 }
 
 function scene(shot: object, o: Opts = {}) {
@@ -112,8 +120,17 @@ function scene(shot: object, o: Opts = {}) {
     fromFrame: 0,
     durationInFrames: DURATION,
     vector: VectorShot.parse(shot),
+    ...(o.overlay ? { overlay: o.overlay } : {}),
   });
-  const props = { visual, assets: ASSETS, palette: o.palette ?? [], ...(o.speech ? { speech: o.speech } : {}), ...(o.texture ? { texture: o.texture } : {}) };
+  const props = {
+    visual,
+    assets: ASSETS,
+    palette: o.palette ?? [],
+    ...(o.speech ? { speech: o.speech } : {}),
+    ...(o.texture ? { texture: o.texture } : {}),
+    ...(o.ambience ? { ambience: o.ambience as never } : {}),
+    ...(o.insets === undefined ? {} : { insets: o.insets }),
+  };
   return render(o.lineStyle ? <VectorScene {...props} lineStyle={o.lineStyle} /> : <VectorScene {...props} />).container;
 }
 
@@ -681,6 +698,77 @@ describe("vektör sahne: yan görünüş", () => {
   });
 });
 
+describe("vektör sahne: bilgi kartı", () => {
+  it("sol üst kişiyle doluysa kart sağ üstte, sağa yaslı ve çizgisi sağda; boşsa solda", () => {
+    const card = (x: number) => {
+      // Yakın çekim: kişinin başı ve kaldırdığı kolları ekranın üst köşesine çıkar.
+      const camera = { zoomFrom: 2.2, zoomTo: 2.2, panX: 0, focusX: x, focusY: 520 };
+      const c = scene({ layers: [{ asset: "hero", x, depth: 0, anims: [{ type: "cheer" }] }], texts: [{ text: "1970", style: "title", x: 0, y: 0 }], camera }, { frame: 60 });
+      const el = c.querySelector<HTMLElement>('[data-text="card"]')!;
+      const r = { align: el.style.textAlign, left: el.style.left, bar: (el.firstElementChild as HTMLElement).style.borderRight };
+      cleanup();
+      return r;
+    };
+    const busy = card(330);
+    expect(busy.align).toBe("right");
+    expect(busy.left).toBe(`${1920 - 72 - 960}px`);
+    expect(busy.bar).toContain("6px solid");
+    expect(card(1500)).toMatchObject({ align: "left", left: "72px", bar: "" });
+  });
+});
+
+describe("vektör sahne: büyütme balonu ve atmosfer katmanı", () => {
+  // Duvarı kaplayan öğe: geniş çekim dolu, kamera kendiliğinden yaklaşmaz (fillWide).
+  const wall = { asset: "panorama", x: 960, y: 1080, height: 1080 };
+  const held = { layers: [{ asset: "hero", x: 1300, depth: 0.5 }, { asset: "cup", x: 0, heldBy: 0 }, wall] };
+
+  it("elde tutulan küçük nesne geniş çekimde yuvarlak pencerede büyük görünür; çizgi nesneye gider; çekim başında yok", () => {
+    expect(scene(held, { frame: 0 }).querySelector("[data-callout]")).toBeNull();
+    cleanup();
+    const c = scene({ ...held, texts: [{ text: "Bardak", x: 400, y: 200, style: "title" }, { text: "Mucit", x: 1300, y: 300, style: "label" }] }, { frame: 150 });
+    const box = c.querySelector('[data-callout="cup"]')!;
+    expect(box.innerHTML).toContain("#00ff00");
+    expect(box.querySelector("line")).not.toBeNull();
+    // Kimlikler balona özel önekli: sahnedeki aynı çizimle çakışmaz.
+    expect(box.querySelector('[id="s1-co-cup"]')).not.toBeNull();
+    // Yazılar balonun üstünde çizilir.
+    expect(c.innerHTML.indexOf("data-callout")).toBeLessThan(c.innerHTML.indexOf('data-text="card"'));
+    expect(c.querySelector('[data-text="tag"]')).not.toBeNull();
+    // Paletin vurgusu koyuysa çizgi okunur sarı.
+    cleanup();
+    const dark = scene(held, { frame: 150, palette: ["#111111", "#222222", "#333333"] });
+    expect(dark.querySelector("[data-callout] line")!.getAttribute("stroke")).toBe("#ffd84d");
+  });
+
+  it("yönetmenin seçtiği küçük nesneye de; yakın çekimde, haritada, tahtalı çekimde ve küçük resimde yok", () => {
+    expect(scene({ layers: [...boxShot([]).layers, wall], callout: 0 }, { frame: 150 }).querySelector('[data-callout="box"]')).not.toBeNull();
+    cleanup();
+    expect(scene({ ...held, camera: { zoomFrom: 2, zoomTo: 2.2, focusX: 1300, focusY: 600 } }, { frame: 150 }).querySelector("[data-callout]")).toBeNull();
+    cleanup();
+    expect(scene({ ...held, background: "map" }, { frame: 150 }).querySelector("[data-callout]")).toBeNull();
+    cleanup();
+    expect(scene(held, { frame: 150, overlay: "library/math/x.webm" }).querySelector("[data-callout]")).toBeNull();
+    cleanup();
+    expect(scene(held, { frame: 150, insets: false }).querySelector("[data-callout]")).toBeNull();
+  });
+
+  it("konfeti, kıvılcım ve toz karakterlerin arkasında; yağmur önde; ikisi de yazıların altında ve sahne tuvali boyunda", () => {
+    const order = (ambience: string) => {
+      const c = scene({ ...held, texts: [{ text: "Başlık", x: 400, y: 200, style: "title" }] }, { frame: 150, ambience });
+      const html = c.innerHTML;
+      const r = { amb: html.indexOf("data-ambience"), layer: html.indexOf('id="s1-0-body"'), text: html.indexOf('data-text="card"'), size: c.querySelector("[data-ambience]")!.getAttribute("data-size") };
+      cleanup();
+      return r;
+    };
+    const confetti = order("confetti");
+    expect(confetti.amb).toBeLessThan(confetti.layer);
+    expect(confetti.size).toBe("1920x1080");
+    const rain = order("rain");
+    expect(rain.amb).toBeGreaterThan(rain.layer);
+    expect(rain.amb).toBeLessThan(rain.text);
+  });
+});
+
 describe("vektör sahne: 3D figür", () => {
   it("figürlü karakter three.js kuklasıyla, iskelet pozuyla çizilir; SVG yedek olarak içinde, ayak altında temas gölgesi", () => {
     const c = scene({ layers: [{ asset: "toy", x: 960, depth: 0, anims: [{ type: "wave" }] }] }, { frame: 90 });
@@ -985,7 +1073,8 @@ describe("vektör sahne: yazılar", () => {
       expect(at(280)[0] - at(5)[0]).toBeGreaterThan(600);
       const c = scene({ layers: [FULL, { asset: "ada", x: 960, depth: 0.3 }], texts: [{ text: "Ada", style: "label", x: 960, y: 100 }] }, { frame: 0 });
       const box = layerBox(c, "body");
-      const top = parseFloat(box.style.top) + transformOf(box).y;
+      // Kafanın tepesi kutunun tepesinden %10 aşağıda: etiket çizilen kafanın hemen üstünde, kutunun boşluğunda asılı değil.
+      const top = parseFloat(box.style.top) + transformOf(box).y + parseFloat(box.style.height) * 0.1;
       const [, y] = centre(tagOf(c, "Ada")!);
       expect(y).toBeLessThan(top);
       expect(y).toBeGreaterThan(top - 60);

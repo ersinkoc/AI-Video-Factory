@@ -355,6 +355,16 @@ export const VectorShot = z.object({
     .default({ zoomFrom: 1, zoomTo: 1.06, panX: 0 }),
   /** Manim tahtası (formül/grafik); tahta sahnenin ortasında, karakterler yanlarında durur. */
   math: MathSpec.optional(),
+  /**
+   * Büyütme balonu (katman indeksi): anlatılan küçük nesne geniş çekimde de okunsun diye yuvarlak bir pencerede büyük
+   * gösterilir, ince bir çizgiyle nesneye bağlanır (3 Kas: inceleme karelerinin %60'ında ana nesne küçük/okunmazdı).
+   */
+  callout: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("Index of a small key prop (a page, screen, coin, chip, card) to show magnified in a round inset next to the scene; use it in wide and medium shots when the narration is about that object"),
 });
 export type VectorShot = z.infer<typeof VectorShot>;
 
@@ -371,11 +381,18 @@ export function keepLayers<L extends VectorLayer>(layers: L[], keep: boolean[]):
   );
 }
 
+/** Çekimin katmanlarından yalnız keep[i] olanlar kalır; katman ve çekim düzeyindeki başvurular (balon) yeniden eşlenir. */
+export function keepShotLayers<S extends Pick<VectorShot, "layers" | "callout">>(spec: S, keep: boolean[]): S {
+  const { callout, ...rest } = spec;
+  const kept = callout !== undefined && keep[callout] ? keep.slice(0, callout).filter(Boolean).length : undefined;
+  return { ...rest, layers: keepLayers(spec.layers, keep), ...(kept === undefined ? {} : { callout: kept }) } as S;
+}
+
 /** Aynı karakter bir çekimde bir kez görünür (bir kişi iki yerde olamaz): sonraki kopyalar atılır. */
 export function uniqueCharacters(spec: VectorShot, isCharacter: (asset: string) => boolean): VectorShot {
   const seen = new Set<string>();
   const keep = spec.layers.map((l) => !isCharacter(l.asset) || (!seen.has(l.asset) && Boolean(seen.add(l.asset))));
-  return keep.every(Boolean) ? spec : { ...spec, layers: keepLayers(spec.layers, keep) };
+  return keep.every(Boolean) ? spec : keepShotLayers(spec, keep);
 }
 
 /** İzin verilen SVG öğeleri: çizim, degrade, kırpma ve birkaç yumuşak filtre. Geri kalan her şey atılır. */

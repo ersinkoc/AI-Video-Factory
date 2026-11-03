@@ -136,4 +136,43 @@ describe("sahne fiziği: olmayan katmana başvuru", () => {
       expect(back.z).toBeLessThan(0);
     }
   });
+
+  it("öndeki ayaktaki karakter arkadakinin yüzünü örtüyorsa en yakın boş yere kayar; oturan, giren ve yer bulamayan kalır", () => {
+    const assets = { a: asset("a", "character", {}, 400, 800), b: asset("b", "character", {}, 400, 800) };
+    // Arkada (derinlik 0,7) bir kişi; önünde (0,3) aynı x'te ayakta biri.
+    const [back, front] = [0, 1].map((i) => resolveLayout(shot([{ asset: "a", x: 900, depth: 0.7 }, { asset: "b", x: 900, depth: 0.3 }]), assets).find((p) => p.index === i)!);
+    expect(back!.x).toBe(900);
+    expect(Math.abs(front!.x - 900)).toBeGreaterThan(front!.width * 0.3);
+    expect(front!.fixes).toContain("arkadaki karakterin yüzünü örtüyordu");
+    // Sahneye yürüyerek giren karakter kaydırılmaz.
+    const walking = resolveLayout(shot([{ asset: "a", x: 900, depth: 0.7 }, { asset: "b", x: 900, depth: 0.3, anims: [{ type: "walk", toX: 1500 }] }]), assets).find((p) => p.index === 1)!;
+    expect(walking.x).toBe(900);
+    // Arkadaki kişiler kadrajı boydan boya kaplıyorsa gidecek yer yok: yerinde kalır.
+    const row = Array.from({ length: 9 }, (_, i) => ({ asset: "a", x: 120 + i * 210, depth: 0.95 }));
+    const stuck = resolveLayout(shot([...row, { asset: "b", x: 960, depth: 0 }]), assets).find((p) => p.index === 9)!;
+    expect(stuck.x).toBe(960);
+    expect(stuck.fixes).not.toContain("arkadaki karakterin yüzünü örtüyordu");
+  });
+
+  it("aynı oturağa oturan kişiler yönetmenin x sırasıyla yan yana dizilir; tek kişi oturağın ortasında kalır", () => {
+    const assets = { bench: asset("bench", "prop", { realHeight: 0.5, surface: 0.5, grounded: true }, 1200, 400), a: asset("a", "character", {}, 400, 800), b: asset("b", "character", {}, 400, 800) };
+    const placed = resolveLayout(
+      shot([
+        { asset: "bench", x: 960, depth: 0.4 },
+        { asset: "b", x: 1200, on: 0 },
+        { asset: "a", x: 700, on: 0 },
+      ]),
+      assets,
+    );
+    const [b, a] = [1, 2].map((i) => placed.find((p) => p.index === i)!);
+    expect(a!.x).toBeLessThan(960);
+    expect(b!.x).toBeGreaterThan(960);
+    expect(b!.x - a!.x).toBeCloseTo(a!.width * 0.75);
+    expect(a!.fixes).toContain("aynı oturakta yanındakiyle iç içeydi, yan yana oturtuldu");
+    const single = resolveLayout(shot([{ asset: "bench", x: 960, depth: 0.4 }, { asset: "a", x: 700, on: 0 }]), assets).find((p) => p.index === 1)!;
+    expect(single.x).toBe(960);
+    // Aynı x'te iki kişi: kimlik sırasıyla.
+    const same = resolveLayout(shot([{ asset: "bench", x: 960, depth: 0.4 }, { asset: "a", x: 960, on: 0 }, { asset: "b", x: 960, on: 0 }]), assets);
+    expect(same.find((p) => p.index === 1)!.x).toBeLessThan(same.find((p) => p.index === 2)!.x);
+  });
 });

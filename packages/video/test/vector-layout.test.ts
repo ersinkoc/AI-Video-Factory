@@ -4,6 +4,29 @@ import { layoutTexts, readable } from "../src/Vector.tsx";
 
 const text = (t: string, y: number, style: "title" | "label" | "number" = "label", x = 960) => VectorText.parse({ text: t, x, y, style });
 
+describe("yazı yerleşimi: bilgi kartı karakteri örtmez", () => {
+  const anchor = (t: VectorText) => ({ x: t.x, y: t.y });
+  const all = { left: 0, right: 1920 };
+
+  it("sol üst bir karakterle doluysa ve sağ üst boşsa kart sağa, sağa yaslı geçer; etiket sağdaki kartın altına iner", () => {
+    const left = [{ x: 0, y: 0, w: 700, h: 600 }];
+    const [card, tag] = layoutTexts([text("1970", 0, "title"), text("Wirth", 100, "label", 1700)], false, anchor, all, left);
+    expect(card).toMatchObject({ card: true, right: true, x: 1920 - 72 });
+    // Etiket sağdaki kartla yatayda örtüşür: altına iner.
+    expect(tag!.y).toBeGreaterThan(card!.y + card!.size);
+    // Dikey videoda kenar payı dikeyinki.
+    expect(layoutTexts([text("1970", 0, "title")], true, anchor, all, left)[0]).toMatchObject({ right: true, x: 1920 - 300 });
+  });
+
+  it("sol boşsa ya da sağ daha doluysa kart solda kalır", () => {
+    expect(layoutTexts([text("1970", 0, "title")], false, anchor, all, [{ x: 1500, y: 0, w: 400, h: 400 }])[0]).not.toHaveProperty("right");
+    const both = [{ x: 0, y: 0, w: 1920, h: 600 }];
+    expect(layoutTexts([text("1970", 0, "title")], false, anchor, all, both)[0]).not.toHaveProperty("right");
+    // Kart yoksa (yalnız etiket) hiçbir şey kaymaz.
+    expect(layoutTexts([text("Wirth", 100, "label", 300)], false, anchor, all, both)[0]).toMatchObject({ card: false });
+  });
+});
+
 describe("yazı yerleşimi", () => {
   it("altyazı bölgesine inmez, en fazla iki yazı gösterir", () => {
     const placed = layoutTexts([text("1971", 1000, "number"), text("Intel", 950), text("üçüncü", 300)]);

@@ -43,7 +43,7 @@ import {
   styleFromPack,
   stylePackOf,
   gatePasses,
-  keepLayers,
+  keepShotLayers,
   uniqueCharacters,
   DRAFT_REVIEW,
   errorText,
@@ -1205,14 +1205,15 @@ export class EpisodePipeline {
     let dropped = 0;
     let clones = 0;
     const shots = out.shots.map((s) => {
-      const known = keepLayers(
-        s.spec.layers,
+      const known = keepShotLayers(
+        s.spec,
         s.spec.layers.map((l) => usable.has(l.asset)),
       );
-      dropped += s.spec.layers.length - known.length;
+      dropped += s.spec.layers.length - known.layers.length;
       // Kalabalık için aynı karakter kopyalanmasın: aynı yüz yan yana altı kez, farklı isim etiketleriyle görünüyordu.
-      const { layers } = uniqueCharacters({ ...s.spec, layers: known }, (id) => characters.has(id));
-      clones += known.length - layers.length;
+      const unique = uniqueCharacters(known, (id) => characters.has(id));
+      const { layers } = unique;
+      clones += known.layers.length - layers.length;
       const background = s.spec.background && isBackground(s.spec.background) ? s.spec.background : undefined;
       return {
         startWord: s.startWord,
@@ -1224,7 +1225,7 @@ export class EpisodePipeline {
         motionPrompt: "",
         camera: "static" as const,
         ambience: s.ambience,
-        vector: { ...s.spec, layers, background },
+        vector: { ...unique, background },
       };
     });
     this.log(

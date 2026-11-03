@@ -172,9 +172,17 @@ export function Episode({ timeline }: EpisodeProps) {
             <FadeIn first={i === 0}>
               {v.kind === "motion_graphic" && v.vector ? (
                 <AbsoluteFill>
-                  <VectorScene visual={v} assets={timeline.vectorAssets} palette={timeline.palette} lineStyle={timeline.lineStyle} texture={timeline.texture} speech={timeline.speech} />
+                  {/* Atmosfer sahnenin içinde çizilir: yazıların, balonun ve formül tahtasının altında kalır. */}
+                  <VectorScene
+                    visual={v}
+                    assets={timeline.vectorAssets}
+                    palette={timeline.palette}
+                    lineStyle={timeline.lineStyle}
+                    texture={timeline.texture}
+                    speech={timeline.speech}
+                    ambience={v.ambience}
+                  />
                   {v.overlay && <MathBoard url={v.overlay} />}
-                  <Ambience kind={v.ambience} seed={v.shotId} />
                 </AbsoluteFill>
               ) : v.kind === "still_motion" ? (
                 <StillMotion visual={v} />

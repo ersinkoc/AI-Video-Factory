@@ -8,18 +8,18 @@ import { PixiParticles } from "./PixiParticles.tsx";
  * `random(seed)` ile deterministik çizilir, böylece paralel render sekmeleri aynı sonucu verir. Parçacıklılar
  * (yağmur, kar, toz, kıvılcım, konfeti) PixiJS/WebGL'de (`PixiParticles`), ışık ve sis CSS gradyanıyla.
  */
-export function Ambience({ kind, seed }: { kind: AmbienceKind; seed: string }) {
+export function Ambience({ kind, seed, size }: { kind: AmbienceKind; seed: string; size?: readonly [number, number] }) {
   switch (kind) {
     case "rain":
       // Yağmurda sahne hafifçe kararır; damlalar ve sıçramalar Pixi'de.
       return (
         <AbsoluteFill style={{ background: "rgba(20,30,45,0.18)" }}>
-          <PixiParticles kind="rain" seed={seed} />
+          <PixiParticles kind="rain" seed={seed} size={size} />
         </AbsoluteFill>
       );
     case "snow":
     case "confetti":
-      return <PixiParticles kind={kind} seed={seed} />;
+      return <PixiParticles kind={kind} seed={seed} size={size} />;
     case "fog":
       return <Fog seed={seed} />;
     case "dust":
@@ -27,7 +27,7 @@ export function Ambience({ kind, seed }: { kind: AmbienceKind; seed: string }) {
       // Işık saçan zerreler ekranın üstüne eklenerek karışır.
       return (
         <AbsoluteFill style={{ mixBlendMode: "screen" }}>
-          <PixiParticles kind={kind} seed={seed} />
+          <PixiParticles kind={kind} seed={seed} size={size} />
         </AbsoluteFill>
       );
     case "flicker":

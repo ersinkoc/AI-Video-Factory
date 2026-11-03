@@ -8,9 +8,12 @@ import { drawShapes, particleFrame, type ParticleKind, type Pen } from "./partic
  * `particleFrame`'den yeniden çizilir ve elle render edilir, kare yalnız zamana bağlıdır. Pixi hazırlanana kadar render
  * bekletilir; WebGL açılamazsa katman boş kalır (atmosfer yüzünden bölüm render'ı düşmesin).
  */
-export function PixiParticles({ kind, seed }: { kind: ParticleKind; seed: string }) {
+export function PixiParticles({ kind, seed, size }: { kind: ParticleKind; seed: string; size?: readonly [number, number] }) {
   const frame = useCurrentFrame();
-  const { width, height, fps } = useVideoConfig();
+  const config = useVideoConfig();
+  const { fps } = config;
+  // Vektör sahnede katman 1920×1080 sahne tuvalinin içindedir (dikey videoda da): parçacıklar o boyda hesaplanır.
+  const [width, height] = size ?? [config.width, config.height];
   const canvas = useRef<HTMLCanvasElement>(null);
   const [ready, setReady] = useState<{ app: Application; pen: Graphics }>();
   const [handle] = useState(() => delayRender(`pixi ${kind}`));

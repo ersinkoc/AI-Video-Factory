@@ -158,6 +158,21 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
   spec.layers.forEach((_, i) => resolve(i));
   const list = [...placed.values()];
 
+  // Aynı oturakta birden çok kişi (bank, kanepe): yönetmenin x sırasıyla oturağın üstünde yan yana dizilir. Oturan
+  // karakter oturağın ortasına konuyordu; iki kişi aynı noktaya oturup iç içe geçiyordu (Google incelemesi, 3 Kas).
+  const seats = new Map<number, PlacedLayer[]>();
+  for (const p of list) if (p.sitting) seats.set(p.on!, [...(seats.get(p.on!) ?? []), p]);
+  for (const [on, sitters] of seats) {
+    if (sitters.length < 2) continue;
+    const seat = placed.get(on)!;
+    sitters.sort((a, b) => spec.layers[a.index]!.x - spec.layers[b.index]!.x || a.index - b.index);
+    const step = Math.min((seat.width * 0.85) / sitters.length, Math.max(...sitters.map((q) => q.width)) * 0.75);
+    sitters.forEach((q, n) => {
+      q.x = seat.x + (n - (sitters.length - 1) / 2) * step;
+      q.fixes.push("aynı oturakta yanındakiyle iç içeydi, yan yana oturtuldu");
+    });
+  }
+
   // Aynı derinlikte üst üste binen ayaktaki karakterleri ayır; kadraj dışına taşanları içeri al.
   const standing = list.filter((p) => !p.sitting && p.heldBy === undefined && assets[spec.layers[p.index]!.asset]?.kind === "character");
   // Üç ve daha fazla karakter tek geçişte ayrılmıyordu; kenar sınırı da onları yeniden üst üste itebiliyordu.
@@ -191,6 +206,31 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
       }
     }
     if (!moved) break;
+  }
+
+  // Öndeki karakter arkadakinin yüzünü örtmesin (3 Kas, Pascal incelemesi: masadaki komite üyelerinin yüzü öndeki
+  // ayaktaki kişinin arkasında kalıyordu; farklı derinlikte oldukları için yukarıdaki ayırma görmüyordu). Öndeki ayaktaki
+  // karakter, arkasındaki hiçbir yüzü örtmediği en yakın x'e kayar; böyle bir yer yoksa yerinde kalır.
+  const people = list.filter((p) => p.heldBy === undefined && assets[spec.layers[p.index]!.asset]?.kind === "character");
+  for (const front of people) {
+    if (front.sitting || entering(spec.layers[front.index]!)) continue;
+    const behind = people.filter((q) => q !== front && q.z < front.z);
+    const covers = (x: number) =>
+      behind.some((q) => {
+        // Yüz bandı kutunun üstünden %10–%30 aşağıda; öndekinin gövdesi kutu genişliğinin ortadaki %60'ı.
+        const faceTop = q.y - q.height * 0.9;
+        const faceBottom = q.y - q.height * 0.7;
+        const vertical = front.y - front.height * 0.9 < faceBottom && front.y > faceTop;
+        return vertical && Math.abs(x - q.x) < front.width * 0.3 + q.width * 0.18;
+      });
+    if (!covers(front.x)) continue;
+    const half = front.width / 2;
+    const free = Array.from({ length: 30 }, (_, n) => front.x + (n % 2 ? 1 : -1) * 40 * Math.ceil((n + 1) / 2)).find(
+      (x) => x >= half + 20 && x <= STAGE.width - half - 20 && !covers(x),
+    );
+    if (free === undefined) continue;
+    front.x = free;
+    note(front, "arkadaki karakterin yüzünü örtüyordu");
   }
 
   // Duvardaki/havadaki öğe (logo, ok, tabela) yerdeki her şeyin arkasında çizilir. Bir mobilya onu yarıdan fazla

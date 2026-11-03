@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyLineStyle, bumpVersion, compareVersions, formatUsd, sanitizeSvg, Shot, stripBackdrop, toDollars, uniqueCharacters, usd, VectorShot } from "../src/index.ts";
+import { applyLineStyle, bumpVersion, compareVersions, formatUsd, keepShotLayers, sanitizeSvg, Shot, stripBackdrop, toDollars, uniqueCharacters, usd, VectorShot } from "../src/index.ts";
 
 describe("SVG temizleyici: kenar durumlar", () => {
   it("iç başvuru olmayan href atılır, #id kalır", () => {
@@ -139,5 +139,13 @@ describe("uniqueCharacters", () => {
       ["p-cup", undefined, undefined, undefined],
     ]);
     expect(out.layers[1]!.anims[0]).toMatchObject({ type: "point", start: 0, end: 1 });
+  });
+
+  it("büyütme balonunun katmanı da yeniden eşlenir; atılan katmana işaret eden balon kalkar", () => {
+    const spec = VectorShot.parse({ layers: [{ asset: "a", x: 0 }, { asset: "b", x: 1 }, { asset: "c", x: 2 }], callout: 2 });
+    expect(keepShotLayers(spec, [false, true, true]).callout).toBe(1);
+    expect(keepShotLayers(spec, [true, true, false])).not.toHaveProperty("callout");
+    expect(keepShotLayers({ ...spec, callout: undefined }, [true, false, true])).not.toHaveProperty("callout");
+    expect(uniqueCharacters(VectorShot.parse({ layers: [{ asset: "c1", x: 0 }, { asset: "c1", x: 1 }, { asset: "p", x: 2 }], callout: 2 }), isChar).callout).toBe(1);
   });
 });

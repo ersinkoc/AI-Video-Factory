@@ -29,6 +29,8 @@ import {
 import { useMemo, type CSSProperties } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
+import { Ambience } from "./Ambience.tsx";
+import { CALLOUT, calloutScale, calloutSpot, calloutTarget, overlap, type Box } from "./callout.ts";
 import { Figure3D } from "./Figure3D.tsx";
 import { Globe3D } from "./Globe3D.tsx";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
@@ -972,6 +974,9 @@ const TEXT_SIZE: Record<VectorText["style"], number> = { title: 64, number: 72, 
 const FONT = "Inter, 'Noto Sans', 'Segoe UI', sans-serif";
 const CARD = { x: 72, verticalX: 300, top: 64, width: 960, gap: 12 };
 
+/** Kukla tuvalinde kafanın tepesi kutunun üstünden bu oranda aşağıda (RIG: kaşlar 140, gözler 170 → tepe ~80/800). */
+const HEAD_TOP = 0.1;
+
 /** Ekranda aynı anda en fazla bu kadar yazı; üst ve alt sınır (alttaki ~%25 altyazının). Stüdyo kurallarından. */
 const { maxTexts: MAX_TEXTS, top: TEXT_TOP, bottom: TEXT_BOTTOM } = TEXT_RULES;
 const TAG_WIDTH = 900;
@@ -1003,12 +1008,14 @@ export function namesMatch(name: string, label: string): boolean {
 
 interface PlacedText {
   text: VectorText;
-  /** Kartta satırın sol kenarı, etikette merkez x. */
+  /** Kartta satırın sol kenarı (sağdaki kartta sağ kenarı), etikette merkez x. */
   x: number;
   /** Kartta satırın üst kenarı, etikette merkez y. */
   y: number;
   size: number;
   card: boolean;
+  /** Bilgi kartı sağ üstte (sol üst bir karakterle doluydu). */
+  right?: boolean;
 }
 
 /**
@@ -1060,6 +1067,8 @@ export function layoutTexts(
   vertical = false,
   anchor: (text: VectorText) => TagAnchor | undefined = (text) => ({ x: text.x, y: text.y }),
   bounds: { left: number; right: number } = { left: 0, right: W },
+  /** Ekranda karakterlerin kafa ve üst gövdesi: bilgi kartı onları örtecekse karşı üst köşeye geçer. */
+  occupied: Box[] = [],
 ): PlacedText[] {
   // Dayanağı olmayan etiket (adı geçen kişi bu çekimde yok) gösterilmez ve sınırdan yer kapmaz: ayıklama sınırdan önce.
   const anchors = new Map(texts.filter((text) => text.style === "label").map((text) => [text, anchor(text)]));
@@ -1074,6 +1083,18 @@ export function layoutTexts(
       cardBottom += height + CARD.gap;
       return { text, x: vertical ? CARD.verticalX : CARD.x, y, size, height, card: true };
     });
+  // Kart sol üstte bir karakterin başını ya da kaldırdığı kolunu örtüyorsa (3 Kas, Pascal: "1970" kartı sevinen kişinin
+  // elinin üstündeydi) ve sağ üst belirgin biçimde boşsa kart sağa, sağa yaslı geçer.
+  const margin = vertical ? CARD.verticalX : CARD.x;
+  const blockWidth = Math.max(0, ...card.map((c) => plateWidth(c.text.text, c.size, CARD.width)));
+  const block = (x: number): Box => ({ x, y: CARD.top, w: blockWidth, h: cardBottom - CARD.top });
+  const covered = (b: Box) => occupied.reduce((n, o) => n + overlap(b, o), 0);
+  // Solda kayda değer bir örtüşme varsa (kartın %15'i; kenara değen kol sayılmaz) ve sağ belirgin biçimde boşsa
+  // (örtülen alan yarıdan az) geçer; eşitlikte yerinde kalır.
+  const leftCovered = covered(block(margin));
+  const right = card.length > 0 && leftCovered > blockWidth * (cardBottom - CARD.top) * 0.15 && covered(block(W - margin - blockWidth)) < leftCovered / 2;
+  // Sağdaki kartta x satırın sağ kenarıdır.
+  if (right) for (const c of card) c.x = W - margin;
   const tags = shown
     .filter((text) => text.style === "label")
     .map((text) => {
@@ -1090,7 +1111,11 @@ export function layoutTexts(
   // Etiket yalnız yatayda örtüştüğü karta ya da etikete binmesin diye onun altına iner: yan yana iki kişinin etiketi
   // kendi kafalarının üstünde kalır (eskiden ikincisi her durumda alta itilip yüzün üstüne düşüyordu; inceleme
   // "text_overlap", 1 Kas). Alt sınırı aşarsa etiketler birlikte yukarı kayar.
-  const boxes = card.map((c) => ({ left: c.x, right: c.x + plateWidth(c.text.text, c.size, CARD.width), bottom: c.y + c.height }));
+  const boxes = card.map((c) => {
+    const w = plateWidth(c.text.text, c.size, CARD.width);
+    const left = right ? c.x - w : c.x;
+    return { left, right: left + w, bottom: c.y + c.height };
+  });
   let bottom: number = TEXT_TOP;
   for (const t of tags) {
     const left = t.x - t.half;
@@ -1102,7 +1127,10 @@ export function layoutTexts(
   }
   const overflow = bottom - TEXT_BOTTOM;
   if (overflow > 0) for (const t of tags) t.y -= overflow;
-  return [...card.map(({ text, x, y, size }) => ({ text, x, y, size, card: true })), ...tags.map(({ text, x, y, size }) => ({ text, x, y, size, card: false }))];
+  return [
+    ...card.map(({ text, x, y, size }) => ({ text, x, y, size, card: true, ...(right ? { right } : {}) })),
+    ...tags.map(({ text, x, y, size }) => ({ text, x, y, size, card: false })),
+  ];
 }
 
 /** Yazı plakasının kaba genişliği: harf başına ~0,55 em (en çok kutu genişliği) + iki yanda 0,5 em dolgu. */
@@ -1152,7 +1180,9 @@ function countUp(text: string, k: number): string {
 }
 
 function Text({ placed, p, t, seed, accent }: { placed: PlacedText; p: number; t: number; seed: string; accent: string }) {
-  const { text, x, y, size, card } = placed;
+  const { text, y, size, card, right } = placed;
+  // Sağdaki kart: x kutunun sağ kenarı, yazı sağa yaslı.
+  const x = right ? placed.x - CARD.width : placed.x;
   const tr = layerTransform(text.anims, p, t, seed, { x, y });
   let shown = text.text;
   for (const a of text.anims) {
@@ -1172,7 +1202,7 @@ function Text({ placed, p, t, seed, accent }: { placed: PlacedText; p: number; t
         left: card ? x : x - TAG_WIDTH / 2,
         top: y,
         width: card ? CARD.width : TAG_WIDTH,
-        textAlign: card ? "left" : "center",
+        textAlign: right ? "right" : card ? "left" : "center",
         transform: `translate(${tr.x}px, ${card ? "" : "calc(-50% + "}${tr.y}px${card ? "" : ")"}) rotate(${tr.rotate}deg) scale(${tr.scale})`,
         transformOrigin: card ? "0 0" : "50% 50%",
         opacity: tr.opacity,
@@ -1196,7 +1226,8 @@ function Text({ placed, p, t, seed, accent }: { placed: PlacedText; p: number; t
             borderRadius: 10,
             background: "rgba(14,16,22,0.66)",
             boxShadow: "0 6px 24px rgba(0,0,0,0.22)",
-            ...(card ? { borderLeft: `6px solid ${bar}`, borderTopLeftRadius: 2, borderBottomLeftRadius: 2 } : {}),
+            ...(card && right ? { borderRight: `6px solid ${bar}`, borderTopRightRadius: 2, borderBottomRightRadius: 2 } : {}),
+            ...(card && !right ? { borderLeft: `6px solid ${bar}`, borderTopLeftRadius: 2, borderBottomLeftRadius: 2 } : {}),
           }}
         >
           {q === undefined ? shown : splitWords(shown)}
@@ -1257,6 +1288,45 @@ function MapOverlay({ meta, p, prefix }: { meta: VectorAsset["meta"]; p: number;
   );
 }
 
+/** Karakterlerin arkasında kalan atmosfer: konfeti, kıvılcım ve toz yüzleri örtmesin (inceleme: "konfeti yüzü kapatıyor"). */
+const BEHIND = new Set<Visual["ambience"]>(["confetti", "embers", "dust"]);
+
+/**
+ * Büyütme balonu: nesnenin çizimi yuvarlak, kenarlı bir pencerede büyük; pencereden nesneye ince bir çizgi ve nesnenin
+ * üstünde küçük bir nokta. Yaylanarak açılır, çekim sonuna kadar kalır.
+ */
+function Callout({ asset, target, at, p, prefix, accent }: { asset: VectorAsset; target: readonly [number, number]; at: readonly [number, number]; p: number; prefix: string; accent: string }) {
+  const s = calloutScale(p);
+  if (s === 0) return null;
+  const { r } = CALLOUT;
+  const svg = prefixSvgIds(fitSvg(asset.svg, "meet"), prefix);
+  return (
+    <div data-callout={asset.id} style={{ position: "absolute", left: 0, top: 0, width: W, height: H, opacity: Math.min(1, s) }}>
+      <svg width={W} height={H} style={{ position: "absolute", left: 0, top: 0 }}>
+        <line x1={at[0]} y1={at[1]} x2={target[0]} y2={target[1]} stroke={accent} strokeWidth={4} strokeDasharray="10 8" strokeLinecap="round" />
+        <circle cx={target[0]} cy={target[1]} r={9} fill={accent} stroke="white" strokeWidth={3} />
+      </svg>
+      <div
+        style={{
+          position: "absolute",
+          left: at[0] - r,
+          top: at[1] - r,
+          width: 2 * r,
+          height: 2 * r,
+          borderRadius: "50%",
+          overflow: "hidden",
+          background: "radial-gradient(circle at 35% 30%, #ffffff, #f1ece2 70%, #e3dccd)",
+          border: `6px solid ${accent}`,
+          boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
+          transform: `scale(${s})`,
+        }}
+      >
+        <div style={{ position: "absolute", inset: "13%" }} dangerouslySetInnerHTML={{ __html: svg }} />
+      </div>
+    </div>
+  );
+}
+
 /** Çekimin ışık havası: aynı palet bütün videoda göz yormasın (30 Eki geri bildirimi). */
 const MOOD_GRADE: Record<VectorMood, CSSProperties> = {
   neutral: {},
@@ -1274,6 +1344,8 @@ export function VectorScene({
   lineStyle = "outline",
   texture = "none",
   speech = [],
+  ambience = "none",
+  insets = true,
 }: {
   visual: Visual;
   assets: Assets;
@@ -1283,6 +1355,10 @@ export function VectorScene({
   texture?: Texture;
   /** Anlatımın kelime zamanları (bölüm başından, ms): konuşan karakterin ağzı bunlarla oynar. */
   speech?: WordTiming[];
+  /** Atmosfer: konfeti, kıvılcım ve toz karakterlerin arkasında; yağmur, kar, sis ve ışık önde; hepsi yazıların altında. */
+  ambience?: Visual["ambience"];
+  /** Büyütme balonu (küçük resimde kapalı: başlıkla yarışmasın). */
+  insets?: boolean;
 }) {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
@@ -1355,8 +1431,15 @@ export function VectorScene({
     .map((pl) => {
       const tr = motions.get(pl.index)!.tr;
       const name = safe[spec.layers[pl.index]!.asset]!.meta.check?.name ?? "";
-      return { at: [pl.x + tr.x, pl.y + tr.y - pl.height * tr.scale] as const, foot: [pl.x + tr.x, pl.y + tr.y] as const, name };
+      // Kafanın tepesi kutunun tepesinden biraz aşağıda (kukla tuvali): etiket çizilen kafanın hemen üstüne oturur.
+      return { at: [pl.x + tr.x, pl.y + tr.y - pl.height * tr.scale * (1 - HEAD_TOP)] as const, foot: [pl.x + tr.x, pl.y + tr.y] as const, name };
     });
+  // Ekranda kafalar ve üst gövdeler (kaldırılan kollar dahil): bilgi kartı bunları örtmesin.
+  const bodies: Box[] = heads.map((h) => {
+    const [x, y] = cameraPoint(cam, k, centre, h.at);
+    const tall = cameraPoint(cam, k, centre, h.foot)[1] - y;
+    return { x: x - tall * 0.3, y: y - tall * 0.15, w: tall * 0.6, h: tall * 0.6 };
+  });
   const present = new Set(placed.map((pl) => spec.layers[pl.index]!.asset));
   const absent = Object.entries(safe).flatMap(([id, a]) => (a.kind === "character" && !present.has(id) && a.meta.check?.name ? [a.meta.check.name] : []));
   const texts = layoutTexts(spec.texts, height > width, (text) => {
@@ -1370,9 +1453,42 @@ export function VectorScene({
     // üst kenarına yapışıyordu (Apple s6-sh6, 1 Kas).
     if (near && !faceOnScreen([x, y], cameraPoint(cam, k, centre, near.foot))) return undefined;
     return { x, y, head: near !== undefined };
-  }, tagBounds(width, height, fit));
+  }, tagBounds(width, height, fit), bodies);
   const [c0 = "#1d2433", c1 = "#3a4a66", accent = "#ffd84d"] = palette;
   const grain = useMemo(() => textureLayer(texture, `${visual.shotId}-tex`), [texture, visual.shotId]);
+  // Katmanların bu karedeki yeri: elde tutulan nesne tutan karakterin elini izler (avucun ortasından tutulur).
+  const drawnAt = new Map(
+    placed.map((pl) => {
+      const holder = pl.heldBy === undefined ? undefined : placed.find((h) => h.index === pl.heldBy);
+      if (!holder) return [pl.index, pl] as const;
+      const [hx, hy] = handPoint(holder, spec.layers[holder.index]!, motions.get(holder.index)!);
+      return [pl.index, { ...pl, x: hx, y: hy + pl.height * 0.45 }] as const;
+    }),
+  );
+  // Büyütme balonu: anlatılan küçük nesne yuvarlak pencerede büyük; yüzleri ve yazıları örtmeyen yerde.
+  const inset = (() => {
+    if (!insets || bg?.meta.exact || visual.overlay) return undefined;
+    const index = calloutTarget(spec, placed, (i) => safe[spec.layers[i]!.asset]!.kind === "prop", Math.max(cam.zoomFrom, cam.zoomTo));
+    if (index === undefined) return undefined;
+    const at = drawnAt.get(index)!;
+    const tr = motions.get(index)!.tr;
+    const target = cameraPoint(cam, k, centre, [at.x + tr.x, at.y + tr.y - (at.height * tr.scale) / 2]);
+    const scale = cameraAt(cam, k, centre).scale;
+    const avoid: Box[] = [
+      // Nesnenin kendisi, yüzler ve yazılar.
+      { x: target[0] - (at.width * scale) / 2, y: target[1] - (at.height * scale) / 2, w: at.width * scale, h: at.height * scale },
+      ...heads.map((h) => {
+        const [x, y] = cameraPoint(cam, k, centre, h.at);
+        const tall = cameraPoint(cam, k, centre, h.foot)[1] - y;
+        return { x: x - tall * 0.12, y, w: tall * 0.24, h: tall * 0.22 };
+      }),
+      ...texts.map((tx) => {
+        const w = Math.min(CARD.width, tx.text.text.length * tx.size * 0.56) + 40;
+        return tx.card ? { x: tx.x, y: tx.y, w, h: tx.size * 1.4 } : { x: tx.x - w / 2, y: tx.y - tx.size * 0.7, w, h: tx.size * 1.4 };
+      }),
+    ];
+    return { asset: safe[spec.layers[index]!.asset]!, target, at: calloutSpot(target, avoid) };
+  })();
 
   const stage = (
     <AbsoluteFill style={{ overflow: "hidden", background: `linear-gradient(160deg, ${c0}, ${c1})` }}>
@@ -1416,27 +1532,17 @@ export function VectorScene({
             <MapOverlay meta={bg.meta} p={bg.meta.globe ? overlayProgress(p) : p} prefix={`${visual.shotId}-bg-`} />
           </div>
         )}
+        {BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} />}
         <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>
           {placed.map((pl) => {
             const layer = spec.layers[pl.index]!;
             const asset = safe[layer.asset]!;
-            let at = pl;
-            if (pl.heldBy !== undefined) {
-              // Tutan karakterin eli her karede yeniden hesaplanır; nesne avucun ortasından tutulur.
-              const holder = placed.find((h) => h.index === pl.heldBy);
-              // resolveLayout heldBy'ı yalnız yerleştirilmiş bir karakter için yazar; tutan bulunamaması savunma amaçlı.
-              /* v8 ignore else */
-              if (holder) {
-                const [hx, hy] = handPoint(holder, spec.layers[holder.index]!, motions.get(holder.index)!);
-                at = { ...pl, x: hx, y: hy + pl.height * 0.45 };
-              }
-            }
             return (
               <Layer
                 key={pl.index}
                 layer={layer}
                 asset={asset}
-                placed={at}
+                placed={drawnAt.get(pl.index)!}
                 motion={motions.get(pl.index)!}
                 prefix={`${visual.shotId}-${pl.index}-`}
                 sketch={lineStyle === "sketch"}
@@ -1457,6 +1563,8 @@ export function VectorScene({
         />
       )}
       <AbsoluteFill style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.32) 100%)" }} />
+      {!BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} />}
+      {inset && <Callout {...inset} p={p} prefix={`${visual.shotId}-co-`} accent={readable(accent) ?? "#ffd84d"} />}
       {/* Yazılar kamera hareketinin dışında: zoom onları altyazı bölgesine itmesin. */}
       <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>
         {texts.map((placed, i) => (
