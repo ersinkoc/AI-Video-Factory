@@ -76,6 +76,16 @@ export const isTransientRenderFailure = (e: unknown) =>
   e instanceof Error && /No such file or directory|ENOENT|EBUSY|EPERM|while setting up the headless browser|render stalled/i.test(e.message);
 
 /**
+ * Chrome kare alamadı ("ran out of memory or disk space"; 3 Kas, Java bölümü %30'da düştü: makinede 60 GB boş bellek
+ * vardı, paralel sekmeler ve aynı anda koşan testler ekran kartını/tarayıcıyı zorladı). Yarı paralellikle bir kez
+ * yeniden denenir.
+ */
+export const isMemoryFailure = (e: unknown) => e instanceof Error && /ran out of memory|out of memory|Could not take a screenshot/i.test(e.message);
+
+/** Varsayılan paralel sekme sayısı: çekirdeklerin yarısı, en çok MAX_DEFAULT_CONCURRENCY. */
+const defaultConcurrency = () => Math.max(1, Math.min(MAX_DEFAULT_CONCURRENCY, Math.floor(availableParallelism() / 2)));
+
+/**
  * Remotion geçici klasörlerini os.tmpdir() altında açar; Windows'ta sistem Temp'i dışarıdan temizlenebiliyor. Render
  * süresince Temp çıktının yanındaki klasöre yönlendirilir (os.tmpdir() her çağrıda TEMP/TMP'yi okur).
  */
@@ -171,12 +181,14 @@ export async function renderEpisode(opts: RenderOptions): Promise<string> {
   const tempDir = join(dirname(resolve(opts.outputPath)), ".render-tmp");
   return withRenderLock(async () => {
     let gl = renderGl();
+    let concurrency = opts.concurrency;
     for (let attempt = 0; ; attempt++) {
       try {
-        return await withTempDir(tempDir, () => renderOnce(opts, gl));
+        return await withTempDir(tempDir, () => renderOnce({ ...opts, concurrency }, gl));
       } catch (e) {
         if (attempt >= 1) throw e;
-        if (gl !== SOFTWARE_GL && isGpuFailure(e)) gl = SOFTWARE_GL;
+        if (isMemoryFailure(e)) concurrency = Math.max(1, Math.floor((concurrency ?? defaultConcurrency()) / 2));
+        else if (gl !== SOFTWARE_GL && isGpuFailure(e)) gl = SOFTWARE_GL;
         else if (!isTransientRenderFailure(e)) throw e;
         // split en az bir parça döndürür; "?? ''" yalnız tip için (at() tipte undefined dönebilir).
         /* v8 ignore next */
@@ -213,8 +225,7 @@ async function renderOnce(opts: RenderOptions, gl: OpenGlRenderer): Promise<stri
       codec: "h264",
       outputLocation: rawPath,
       chromiumOptions,
-      concurrency:
-        opts.concurrency ?? Math.max(1, Math.min(MAX_DEFAULT_CONCURRENCY, Math.floor(availableParallelism() / 2))),
+      concurrency: opts.concurrency ?? defaultConcurrency(),
       timeoutInMilliseconds: BROWSER_TIMEOUT_MS,
       offthreadVideoCacheSizeInBytes: opts.videoCacheBytes ?? DEFAULT_VIDEO_CACHE_BYTES,
       cancelSignal,

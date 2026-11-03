@@ -42,7 +42,7 @@ const DIR = mkdtempSync(join(tmpdir(), "ys-render-"));
 const LOCK = join(DIR, "render.lock");
 process.env.YS_RENDER_LOCK = LOCK;
 const mod = await import("../src/render.ts");
-const { renderEpisode, renderStills, renderThumbnail, renderFigurePreviews, withRenderLock, ifRenderFree, isTransientRenderFailure, isGpuFailure, renderGl, normalizeLoudness, ENTRY } = mod;
+const { renderEpisode, renderStills, renderThumbnail, renderFigurePreviews, withRenderLock, ifRenderFree, isTransientRenderFailure, isGpuFailure, isMemoryFailure, renderGl, normalizeLoudness, ENTRY } = mod;
 
 const timeline = { episodeId: "e1" } as Timeline;
 const browser = { close: vi.fn() };
@@ -153,6 +153,23 @@ describe("renderEpisode", () => {
     remotion.renderMedia.mockImplementation(hang);
     await expect(renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), stallMs: 40 })).rejects.toThrow("render stalled");
     expect(existsSync(LOCK)).toBe(false);
+  });
+
+  it("Chrome kare alamayınca (bellek) aynı arka uçla yarı paralellikle bir kez baştan alır", async () => {
+    const oom = "Could not take a screenshot because Google Chrome ran out of memory or disk space. Decrease the concurrency to use less RAM.";
+    remotion.renderMedia.mockRejectedValueOnce(new Error(oom));
+    await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), concurrency: 6 });
+    expect(remotion.renderMedia.mock.calls.map((c) => [c[0].concurrency, c[0].chromiumOptions.gl])).toEqual([
+      [6, "angle"],
+      [3, "angle"],
+    ]);
+    // Paralellik verilmemişse varsayılanın yarısı (en az 1).
+    remotion.renderMedia.mockClear();
+    remotion.renderMedia.mockRejectedValueOnce(new Error(oom));
+    await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4") });
+    const [first, second] = remotion.renderMedia.mock.calls.map((c) => c[0].concurrency as number);
+    expect(second).toBe(Math.max(1, Math.floor(first! / 2)));
+    expect(isMemoryFailure(new Error("Target closed"))).toBe(false);
   });
 
   it("zaten yazılım GL'deyken çöken render geçici değilse yeniden denenmez", async () => {
