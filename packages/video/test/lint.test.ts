@@ -5,6 +5,18 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("../src/Globe3D.tsx", () => ({ Globe3D: () => null }));
 vi.mock("../src/Ambience.tsx", () => ({ Ambience: () => null }));
 vi.mock("../src/Figure3D.tsx", () => ({ Figure3D: () => null }));
+// Hiçbir jest anatomi sınırını aşmıyor (vector-scene testi); denetimin bildirdiğini görmek için kırpma taklit edilir.
+const strain = vi.hoisted(() => ({ on: false }));
+vi.mock("../src/anatomy.ts", async (orig) => {
+  const real = await orig<typeof import("../src/anatomy.ts")>();
+  return {
+    ...real,
+    anatomical: (pose: Parameters<typeof real.anatomical>[0], profile: boolean) => {
+      const r = real.anatomical(pose, profile);
+      return strain.on ? { pose: r.pose, strains: [{ part: "forearm-r", what: "rotate", value: 158.4, limit: 150 }] } : r;
+    },
+  };
+});
 
 const { frameIssues, LINT, lintShot, snaps } = await import("../src/lint.ts");
 const { faceSafe, FACE_SAFE } = await import("../src/Vector.tsx");
@@ -147,6 +159,20 @@ describe("denetim: çekim", () => {
       { step: 5 },
     );
     expect(codes(pass)).not.toContain("face_cut");
+  });
+
+  it("anatomi: render'ın insan eklem sınırına kırptığı poz kodla düzeltilmiş sayılır (yeniden planlanmaz), kişi başına bir kez", () => {
+    strain.on = true;
+    // Yürüyen (yan çizime geçen) kişinin profil pozu da kırpılır.
+    const walk = { asset: "walker", x: 200, depth: 0.5, anims: [{ type: "walk", toX: 1600 }] };
+    const out = lintShot(visual({ background: "room", layers: [{ asset: "hero", x: 700, depth: 0 }, { asset: "cup", x: 1200, y: 700 }, walk] }), ASSETS);
+    strain.on = false;
+    const detail = "forearm-r rotate 158 beyond the human limit 150";
+    expect(out.filter((i) => i.code === "anatomy")).toEqual([
+      { code: "anatomy", shotId: "s1", layer: 2, frame: 0, detail, replan: false },
+      { code: "anatomy", shotId: "s1", layer: 0, frame: 0, detail, replan: false },
+    ]);
+    expect(codes(lintShot(visual({ background: "room", layers: [{ asset: "hero", x: 700, depth: 0 }] }), ASSETS))).not.toContain("anatomy");
   });
 
   it("iç içe yürüme: yürüyüp aynı derinlikteki birinin hemen yanında duran", () => {

@@ -8,14 +8,14 @@ import { boxOf, CARD, cameraPoint, faceCorners, rigToCanvas, shotFrame, shotMode
  * kur"): render'ın kullandığı aynı kurgu (shotModel) ve kareler (shotFrame) üzerinde, kodla ölçülebilen nesnel hatalar
  * aranır. Model çağrısı yok, ücretsiz; üretim render'dan önce çalıştırır, bulunanı kodla düzeltir ya da sahneyi
  * yeniden planlatır. Yalnız izleyicinin "bu yanlış" diyeceği şeyler: kesilmiş yüz, örtülen yüz, yüzdeki yazı, boşluğu
- * gösteren el, nesnesiz iş jesti, çakışan kol jestleri, karede sıçrayan eklem, birbirinin içinden geçen kişiler, hiçbir
- * şeyin görünmediği kadraj, planlanıp çizilemediği için sessizce düşen nesne.
+ * gösteren el, nesnesiz iş jesti, çakışan kol jestleri, karede sıçrayan eklem, insanın yapamayacağı eklem açısı,
+ * birbirinin içinden geçen kişiler, hiçbir şeyin görünmediği kadraj, planlanıp çizilemediği için sessizce düşen nesne.
  */
 
 type Visual = Timeline["visuals"][number];
 type Assets = Timeline["vectorAssets"];
 
-export type LintCode = StagingCode | "face_cut" | "face_covered" | "text_on_face" | "pose_snap" | "walk_through" | "empty_frame" | "missing_asset";
+export type LintCode = StagingCode | "face_cut" | "face_covered" | "text_on_face" | "pose_snap" | "anatomy" | "walk_through" | "empty_frame" | "missing_asset";
 
 export interface LintIssue {
   code: LintCode;
@@ -172,6 +172,12 @@ export function lintShot(visual: Visual, assets: Assets, o: { fps?: number; step
         cuts.set(layer, c);
       },
     );
+    // İnsan eklemi sınırını aşan poz (anatomy.ts): render sınıra kırptı (anlam kaybolmaz, yeniden planlanmaz); jest
+    // kodunda hatadır, testler hiçbir jestin kırpılmadığını sınar.
+    for (const pl of people) {
+      const s = f.motions.get(pl.index)!.strains?.[0];
+      if (s) add("anatomy", `${s.part} ${s.what} ${Math.round(s.value)} beyond the human limit ${Math.round(s.limit)}`, false, pl.index, frame);
+    }
     // Karede sıçrayan eklem: bir sonraki kareyle karşılaştırılır.
     const next = frame + 1 < visual.durationInFrames ? at(frame + 1) : undefined;
     // Bilerek hızlı jest (irkilme) ve ön çizimden yan çizime geçiş (çizim değişir, poz karşılaştırılamaz) sayılmaz.

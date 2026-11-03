@@ -8,10 +8,12 @@ import {
   LatheGeometry,
   Mesh,
   MeshPhysicalMaterial,
+  Quaternion,
   SphereGeometry,
   SplineCurve,
   TorusGeometry,
   Vector2,
+  Vector3,
   type BufferGeometry,
   type Material,
   type Object3D,
@@ -380,18 +382,50 @@ export function poseFigure(figure: Figure, pose: Partial<Record<FigurePart, Part
       part.scale.set(v.sx, v.sy, 1);
     } else {
       part.position.set(x + v.tx, y - v.ty, armDepth(name, pose));
-      // Kısalan üst kol (sy < 1) figürde gerçekten kameraya döner (önden görünen boyu sy olacak kadar); ön kol bu eğimi
-      // geri alır, ön düzlemde döner. Ölçekle kısaltmak ön kolu da ezerdi.
-      const pitch = ARM_PITCHED.has(name) ? Math.acos(Math.min(1, v.sy)) : 0;
-      const unpitch = name.startsWith("forearm-") ? Math.acos(Math.min(1, pose[`arm-${name.slice(-1)}` as FigurePart]?.sy ?? 1)) : 0;
-      // Kamera +z'de, kol aşağı (−y) sarkar: dirseği öne getiren dönüş x ekseninde eksidir. Üst kolda önce ön düzlemde
-      // dönüş, sonra öne eğim (ZXY: Rz·Rx); ön kolda eğim önce geri alınır (XYZ: Rx·Rz), çarpım ön düzlemde kalır.
-      if (pitch) part.rotation.set(-pitch, 0, -a, "ZXY");
-      else part.rotation.set(unpitch, 0, -a, "XYZ");
-      part.scale.set(v.sx, pitch ? 1 : v.sy, 1);
+      if (!(name in PITCHED)) {
+        part.rotation.set(0, 0, -a, "XYZ");
+        part.scale.set(v.sx, v.sy, 1);
+        continue;
+      }
+      // Kısalan uzuv (sy < 1) figürde gerçekten kameraya döner (önden görünen boyu sy olacak kadar): üst kol dirseği,
+      // uyluk dizi öne getirir; alt parça üst parçanın eğimini geri alıp ön düzlemde döner, kendisi de kısaysa (alkış,
+      // klavye, çeneye giden ön kol; adımda baldır) o da kameraya döner. Ölçekle kısaltmak uzvu eziyordu: kısa, kalın bir
+      // ön kol, oturan figürde basık bir uyluk (anatomiye ters, 3 Kas).
+      const up = PITCHED[name] as FigurePart | undefined;
+      // Görünen boy: baldırda uyluğun ölçeğiyle çarpılır (SVG'de onun içinde ölçeklenir).
+      const seen = (up && CARRIED.has(name) ? (pose[up]?.sy ?? 1) : 1) * v.sy;
+      const own = Math.acos(Math.min(1, seen));
+      // Kamera +z'de, uzuv aşağı (−y) sarkar: ucu öne getiren dönüş x ekseninde eksidir. Üst parçada önce ön düzlemde
+      // dönüş, sonra öne eğim (ZXY: Rz·Rx); alt parçada üst parçanın eğimi önce geri alınır: Rx(geri)·Rz(−a)·Rx(−eğim).
+      if (!up) part.rotation.set(-own, 0, -a, "ZXY");
+      else {
+        part.rotation.order = "XYZ";
+        const undo = Math.acos(Math.min(1, pose[up]?.sy ?? 1));
+        part.quaternion.setFromAxisAngle(X_AXIS, undo).multiply(TURN.setFromAxisAngle(Z_AXIS, -a)).multiply(TURN.setFromAxisAngle(X_AXIS, -own));
+      }
+      part.scale.set(v.sx, Math.max(1, seen), 1);
     }
   }
 }
 
-/** Kısalınca kameraya dönen parçalar (üst kollar). */
-const ARM_PITCHED = new Set(["arm-l", "arm-r"]);
+/** Kısalınca kameraya dönen uzuvlar ve eğimini geri aldıkları üst parça. */
+const PITCHED: Record<string, string | undefined> = {
+  "arm-l": undefined,
+  "arm-r": undefined,
+  "forearm-l": "arm-l",
+  "forearm-r": "arm-r",
+  "leg-l": undefined,
+  "leg-r": undefined,
+  "shin-l": "leg-l",
+  "shin-r": "leg-r",
+};
+
+/**
+ * Üst parçanın ölçeğini taşıyan alt parçalar: SVG'de baldır uyluğun ölçeği içinde kalır (oturuşta baldır 1/uyluk ile
+ * geri alır), görünen boyu ikisinin çarpımıdır. Ön kol taşımaz: CSS üst kolun ölçeğini dirsekte geri alır.
+ */
+const CARRIED = new Set(["shin-l", "shin-r"]);
+
+const X_AXIS = new Vector3(1, 0, 0);
+const Z_AXIS = new Vector3(0, 0, 1);
+const TURN = new Quaternion();

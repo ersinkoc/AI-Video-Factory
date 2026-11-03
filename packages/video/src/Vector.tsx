@@ -35,6 +35,7 @@ import { CALLOUT, calloutScale, calloutSpot, calloutTarget, overlap, type Box } 
 import { Figure3D } from "./Figure3D.tsx";
 import { clapClosed, GESTURE_RHYTHM, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
+import { anatomical, flexion, type Strain } from "./anatomy.ts";
 import { bend, reach } from "./ik.ts";
 import { revealWindow } from "./kinetic-timing.ts";
 import { lipLine, mouthIds, withMouths, type SpeakingMouth } from "./mouthShape.ts";
@@ -667,11 +668,20 @@ function rigPose(
         const below = lips === undefined ? -Infinity : lips + THINK.gap + fingers[side];
         const at: [number, number] = [chin[0] + jaw * THINK.x * hand, Math.max(chin[1] + THINK.y, below)];
         const lean = (THINK.lean * Math.PI) / 180;
-        const elbow: [number, number] = [at[0] + Math.sin(lean) * ARM.reach * hand, at[1] + Math.cos(lean) * ARM.reach];
-        const main = bend(RIG.pivots[`arm-${side}`], elbow, at, ARM.upper, ARM.reach, THINK.min);
+        // Dirsek 3B'de en çok THINK.flex bükülür (anatomy.ts): çenesi omza yakın çizimde tam boy ön kol dikilince üst kol
+        // da tam boy kalıyor, dirsek 158° katlanıyordu (3 Kas ölçümü, 5 bölüm). Gerçekte dirsek öne, kameraya gelir: ön kol
+        // da kameraya uzanıp kısalır, bükülme sınırın altına inene dek.
+        const arm = (fore: number) => {
+          const elbow: [number, number] = [at[0] + Math.sin(lean) * ARM.reach * fore * hand, at[1] + Math.cos(lean) * ARM.reach * fore];
+          return bend(RIG.pivots[`arm-${side}`], elbow, at, ARM.upper, ARM.reach * fore, THINK.min);
+        };
+        let fore = 1;
+        let main = arm(fore);
+        while (fore > THINK.fore + 1e-9 && flexion(main.scale, fore, main.forearm) > THINK.flex) main = arm((fore -= 0.02));
         mix(`arm-${side}`, "rotate", main.arm);
         mix(`arm-${side}`, "sy", main.scale);
         mix(`forearm-${side}`, "rotate", main.forearm);
+        mix(`forearm-${side}`, "sy", fore);
         // Parmaklar çeneye doğru.
         mix(`hand-${side}`, "rotate", -5 * hand);
         if (hand > 0) {
@@ -989,9 +999,10 @@ const GIVE = { reach: 0.85, drop: 0.5 } as const;
  * Düşünme pozu (iskelet px): el çenenin altına gelir (x: çene hattının kesri kadar el tarafına, y: çeneden aşağı; parmak
  * uçları çeneye değer), ön kol dikeyden lean derece dışa yatık durur, dirsek onun ucunda; üst kol dirseğe kameraya
  * uzanarak (en az min boyla) ulaşır. Öbür elin avucu dirseğin support px altını tutar. Parmak uçları ağzın alt
- * kenarının en az gap px altında kalır.
+ * kenarının en az gap px altında kalır. Dirsek 3B'de en çok flex derece bükülür: gerekirse ön kol da kameraya uzanıp
+ * en az fore boyuna kısalır.
  */
-export const THINK = { x: 0.4, y: 14, lean: 8, min: 0.62, support: 16, gap: 6 } as const;
+export const THINK = { x: 0.4, y: 14, lean: 8, min: 0.62, support: 16, gap: 6, flex: 140, fore: 0.6 } as const;
 
 /** Düşünme duruşları: çene elde ("düşünen adam"), başını kaşıma, kollar kavuşuk yukarı bakma. */
 export type ThinkPose = "chin" | "scratch" | "ponder";
@@ -1443,6 +1454,8 @@ export interface Motion {
   speak?: Viseme;
   /** Bu çekimde yüze giden kol (düşünme): çizimde başın önüne alınır (armInFront). */
   front?: "arm-l" | "arm-r";
+  /** Anatomi sınırına kırpılan eklemler (anatomy.ts): olmamalı, denetim (lint) bildirir. */
+  strains?: Strain[];
 }
 
 /**
@@ -1485,8 +1498,17 @@ function motionOf(
   if ((sideAsset || figure) && !placed.sitting && gait.amount > 0.2) {
     if (gait.amount >= 0.5) {
       const flip = gait.dir ? gait.dir < 0 : layer.flip;
-      const pose = rigPose(anims, p, t, prefix, false, layer.expression, gait, flip, focus.holding ? { holding: true } : {}, dur, true);
-      return { tr, flip, squash: figure ? 1 : 0.6 + 0.4 * Math.min(1, (gait.amount - 0.5) / 0.3), side: sideAsset, profile: true, turn: figure && 1, pose };
+      const { pose, strains } = anatomical(rigPose(anims, p, t, prefix, false, layer.expression, gait, flip, focus.holding ? { holding: true } : {}, dur, true), true);
+      return {
+        tr,
+        flip,
+        squash: figure ? 1 : 0.6 + 0.4 * Math.min(1, (gait.amount - 0.5) / 0.3),
+        side: sideAsset,
+        profile: true,
+        turn: figure && 1,
+        pose,
+        ...(strains.length ? { strains } : {}),
+      };
     }
     // Kısmi genlik yalnız hedefe yürürken olur (yerinde yürüyüş hemen tam genlikte): yön hep vardır.
     if (figure) turn = ((gait.amount - 0.2) / 0.3) * gait.dir * mirror;
@@ -1512,14 +1534,15 @@ function motionOf(
     voice,
     face,
   };
-  const pose = rigPose(anims, p, t, prefix, placed.sitting, layer.expression, gait, layer.flip, attention, dur);
+  // Son poz anatomiye kırpılır (anatomy.ts): jestler ve karışımları sınırı aşmamalı; aşan denetimde görünür.
+  const { pose, strains } = anatomical(rigPose(anims, p, t, prefix, placed.sitting, layer.expression, gait, layer.flip, attention, dur), false);
   // Konuşma yarıdan fazla girmişken ses varsa şekil koddan çizilir; sessizlikte (X) çizimin kendi ağzı görünür.
   const viseme = voice?.viseme;
   const talking = face.mouth && viseme && viseme !== "X" && anims.some((a) => a.type === "talk" && gestureWeight(p, a, dur) >= 0.5);
   // Çeneyi tutan kol (sağ; sağ el nesne tutuyorsa sol) çekim boyunca başın önünde çizilir: kol yandayken başla
   // örtüşmez. Başını kaşıyan el başın arkasında kalır (saçın içinde), kavuşuk kollar başa değmez.
   const front = anims.some((a) => a.type === "think") && thinkPoseOf(prefix, focus.holding) === "chin" ? (focus.holding ? "arm-l" : "arm-r") : undefined;
-  return { tr, flip: layer.flip, squash, turn, pose, ...(talking ? { speak: viseme } : {}), ...(front ? { front } : {}) };
+  return { tr, flip: layer.flip, squash, turn, pose, ...(talking ? { speak: viseme } : {}), ...(front ? { front } : {}), ...(strains.length ? { strains } : {}) };
 }
 
 /**

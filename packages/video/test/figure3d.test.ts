@@ -136,7 +136,9 @@ describe("3D figür: poz", () => {
     expect(f.parts["arm-r"].rotation.z).toBeCloseTo(-Math.PI / 2);
     expect([f.parts["arm-r"].position.x, f.parts["arm-r"].position.y]).toEqual([hx + 4, hy - 10]);
     expect([f.parts["arm-r"].scale.x, f.parts["arm-r"].scale.y]).toEqual([1.2, 1]);
-    expect(f.parts["leg-r"].scale.y).toBe(0.5);
+    // Kısalan uyluk ezilmez, kameraya döner (önden boyu sy kat).
+    expect(f.parts["leg-r"].scale.y).toBe(1);
+    expect(f.parts["leg-r"].rotation.x).toBeCloseTo(-Math.acos(0.5));
     expect(f.parts.mouth.scale.y).toBe(-0.8);
     // Ekranda saat yönü: aşağı sarkan sağ kol 90° dönünce el omzun soluna (gövdeye doğru) kalkar; SVG kuklasıyla aynı.
     f.root.updateMatrixWorld(true);
@@ -148,6 +150,35 @@ describe("3D figür: poz", () => {
     expect(f.parts["arm-r"].rotation.z).toBeCloseTo(0);
     expect([f.parts["arm-r"].position.x, f.parts["arm-r"].position.y]).toEqual([hx, hy]);
     expect(f.parts.mouth.scale.y).toBe(1);
+  });
+
+  it("kısalan ön kol ve uyluk ezilmez, kameraya döner (gerçek boyu korunur); oturan figürün baldırı yine dik iner", () => {
+    const f = buildFigure(BASE);
+    const at = (o: { getWorldPosition: (v: Vector3) => Vector3 }) => o.getWorldPosition(new Vector3());
+    poseFigure(f, {});
+    f.root.updateMatrixWorld(true);
+    const rest = { elbow: at(f.parts["forearm-r"]), wrist: at(f.parts["hand-r"]), hip: at(f.parts["leg-l"]), knee: at(f.parts["shin-l"]) };
+    const fore = rest.elbow.distanceTo(rest.wrist);
+    const thigh = rest.hip.distanceTo(rest.knee);
+    // Alkış/klavye: ön kol yarı boy görünür, el kameraya gelir; uzuv ezilmez.
+    poseFigure(f, { "forearm-r": { rotate: 30, sx: 1, sy: 0.5, tx: 0, ty: 0 } });
+    f.root.updateMatrixWorld(true);
+    expect(f.parts["forearm-r"].scale.y).toBe(1);
+    const [elbow, wrist] = [at(f.parts["forearm-r"]), at(f.parts["hand-r"])];
+    expect(elbow.distanceTo(wrist)).toBeCloseTo(fore, 3);
+    expect(Math.hypot(wrist.x - elbow.x, wrist.y - elbow.y)).toBeCloseTo(fore * 0.5, 3);
+    expect(wrist.z).toBeGreaterThan(elbow.z + fore * 0.8);
+    // Oturuş: uyluk kameraya döner (önden boyu 0,35 kat), baldır uyluğun ölçeğini geri alan 1/0,35 ile tam boy dik iner.
+    poseFigure(f, { "leg-l": { rotate: 0, sx: 1, sy: 0.35, tx: 0, ty: 0 }, "shin-l": { rotate: 0, sx: 1, sy: 1 / 0.35, tx: 0, ty: 0 } });
+    f.root.updateMatrixWorld(true);
+    expect([f.parts["leg-l"].scale.y, f.parts["shin-l"].scale.y]).toEqual([1, 1]);
+    const [hip, knee, ankle] = [at(f.parts["leg-l"]), at(f.parts["shin-l"]), f.parts["shin-l"].localToWorld(new Vector3(0, -100, 0))];
+    expect(hip.distanceTo(knee)).toBeCloseTo(thigh, 3);
+    expect(Math.hypot(knee.x - hip.x, knee.y - hip.y)).toBeCloseTo(thigh * 0.35, 3);
+    expect(knee.z).toBeGreaterThan(hip.z + thigh * 0.9);
+    // Baldır dik: ayak dizin altında, aynı derinlikte.
+    expect([ankle.x - knee.x, ankle.z - knee.z].map((v) => Math.round(v))).toEqual([0, 0]);
+    expect(ankle.y).toBeLessThan(knee.y - 99);
   });
 
   it("kısalan üst kol (sy < 1) kameraya döner: dirsek öne gelir, önden boyu sy kat; ön kol ön düzlemde kendi boyunda kalır", () => {
@@ -190,7 +221,7 @@ describe("3D figür: poz", () => {
     // Kısmi dönüş: yalnız gövde döner, poz önden bakıştaki gibi uygulanır.
     poseFigure(f, { "leg-r": { rotate: 30, sx: 1, sy: 1, tx: 0, ty: 0 } }, { turn: -0.5 });
     expect(f.root.rotation.y).toBeCloseTo(-Math.PI / 4);
-    expect(f.parts["leg-r"].rotation.x).toBe(0);
+    expect(f.parts["leg-r"].rotation.x).toBeCloseTo(0);
     expect(f.parts["leg-r"].rotation.z).toBeCloseTo(-Math.PI / 6);
   });
 });

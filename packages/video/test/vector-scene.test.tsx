@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { cleanup, render } from "@testing-library/react";
-import { RIG, RIG_SIDE, textureLayer, TimelineVisual, VectorAsset, VectorLayer, VectorShot, type LineStyle, type Texture } from "@ys/core";
+import { RIG, RIG_SIDE, textureLayer, TimelineVisual, VectorAnimType, VectorAsset, VectorLayer, VectorShot, type LineStyle, type Texture } from "@ys/core";
 import { random } from "remotion";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -35,8 +35,9 @@ vi.mock("../src/Figure3D.tsx", () => ({
 
 const { clapClosed, penDown, typingTaps } = await import("../src/gesture-timing.ts");
 const { tip } = await import("../src/ik.ts");
+const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -476,7 +477,9 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(f.fingers).toEqual({ l: 60, r: 60 });
     expect(f.lips).toBeCloseTo(210, 0);
     const { g, order } = thinkAt([{ asset: "thinker", x: 960, depth: 0, anims: [{ type: "think" }] }]);
-    const [hx, hy] = tip(RIG.pivots["arm-r"], ARM.upper * g("arm-r").sy, ARM.reach, g("arm-r").rotate, g("forearm-r").rotate);
+    const [hx, hy] = tip(RIG.pivots["arm-r"], ARM.upper * g("arm-r").sy, ARM.reach * g("forearm-r").sy, g("arm-r").rotate, g("forearm-r").rotate);
+    // Dirsek insan dirseğinin bükülebildiği kadar bükülür (3B açı; çenesi omza yakın çizimde ön kol da kameraya uzanır).
+    expect(flexion(g("arm-r").sy, g("forearm-r").sy, g("forearm-r").rotate)).toBeLessThanOrEqual(THINK.flex + 0.01);
     expect(hx).toBeCloseTo(f.chin[0] + f.jaw * THINK.x, 0);
     expect(hy).toBeCloseTo(f.lips! + THINK.gap + 60, 0);
     expect(hy).toBeGreaterThan(f.chin[1] + THINK.y);
@@ -2277,5 +2280,55 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     const box = [...c.querySelectorAll("div")].find((d) => d.style.transformOrigin === "0 0" || d.style.transformOrigin === "0px 0px") as HTMLElement;
     expect(box.style.transform).toBe(`scale(${1080 / 1920})`);
     expect(c.querySelector('[id^="s1-bd-"]')).toBeNull();
+  });
+});
+
+describe("vektör sahne: anatomi", () => {
+  // Karakter jestleri (katman ve yazı animasyonları iskelete dokunmaz).
+  const GESTURES = VectorAnimType.options.filter((t) => !["fade_in", "fade_out", "slide_in", "pop", "float", "sway", "pulse", "spin", "shake", "move", "draw_on", "typewriter", "count_up", "kinetic"].includes(t));
+  const FRAMES = 150;
+  // Bir çekimin bütün karelerinde anatomi sınırına kırpılan eklemler (olmamalı); bakılan profil kareleri sayılır.
+  let profiles = 0;
+  const strained = (shot: object, shotId: string, step = 5) => {
+    const m = shotModel(VectorShot.parse(shot), ASSETS, "outline", 1920, 1080, false, FRAMES / 30);
+    const out = new Set<string>();
+    for (let frame = 0; frame < FRAMES; frame += step) {
+      const f = shotFrame(m, { shotId, frame, fps: 30, durationInFrames: FRAMES, width: 1920, height: 1080, insets: true, overlay: false });
+      for (const [i, mo] of f.motions) {
+        if (mo.profile) profiles++;
+        for (const s of mo.strains ?? []) out.add(`${shotId} L${i} ${m.spec.layers[i]!.anims.map((a) => a.type).join("+")}: ${s.part}.${s.what} ${s.value.toFixed(1)} > ${s.limit.toFixed(1)}`);
+      }
+    }
+    return [...out];
+  };
+  // Kişi, konuşulan ikinci kişi, gösterilecek/alınacak nesne ve iş yüzeyi (klavye, kâğıt).
+  const stage = (person: object, extra: object[] = []) => ({
+    background: "room",
+    layers: [{ asset: "thinker", x: 900, depth: 0, ...person }, { asset: "hero", x: 1250, depth: 0 }, { asset: "cup", x: 1450, y: 700, height: 80 }, { asset: "box", x: 900, depth: 0 }, ...extra],
+  });
+
+  it("her jest, her tohumda (düşünme duruşları), nesne tutarken, otururken ve aynalanmışken insan eklem sınırında kalır", () => {
+    const out: string[] = [];
+    for (const type of GESTURES)
+      for (const seed of ["s1", "s2", "s3", "s4", "s5", "s6"]) {
+        const anims = [{ type }];
+        out.push(...strained(stage({ anims }), seed));
+        out.push(...strained(stage({ anims, flip: true, expression: "surprised" }), seed));
+        out.push(...strained(stage({ anims }, [{ asset: "cup", x: 0, heldBy: 0 }]), seed));
+        // Sandalyede oturan (katman 1, sandalyenin üstünde).
+        out.push(...strained({ background: "room", layers: [{ asset: "chair", x: 900, depth: 0 }, { asset: "thinker", x: 900, on: 0, anims }, { asset: "hero", x: 1250, depth: 0 }, { asset: "cup", x: 1450, y: 700, height: 80 }] }, seed));
+      }
+    expect(out).toEqual([]);
+  });
+
+  it("iki jestin karışımı (geçişler dahil) ve yürürken yapılan jest (önden, yan çizimde, 3D figürde) sınırda kalır", () => {
+    const out: string[] = [];
+    for (const a of GESTURES)
+      for (const b of GESTURES) if (a < b) out.push(...strained(stage({ anims: [{ type: a, start: 0, end: 0.6 }, { type: b, start: 0.4, end: 1 }] }), "s1", 10));
+    for (const type of GESTURES)
+      for (const asset of ["walker", "toy"]) out.push(...strained({ background: "room", layers: [{ asset, x: 300, depth: 0, anims: [{ type: "walk", toX: 1500 }, { type }] }] }, "s2", 10));
+    expect(out).toEqual([]);
+    // Yan çizim ve 3D figür yürürken gerçekten profile döndü: profil sınırlarına da bakıldı.
+    expect(profiles).toBeGreaterThan(GESTURES.length * 10);
   });
 });
