@@ -2,6 +2,61 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.2.0 (2026-11-03)
+
+- Word timings aligned to the pauses in the recorded voice
+- Speech beats: head, brows and hands move with the stressed words
+- Lip sync: talking mouths take the shape of each sound
+- Arm IK and measured faces: the thinking hand reaches each drawing's own jaw
+- Devices cast as people are drawn as props
+- Render: retry with half the tabs when Chrome cannot take a screenshot
+- Room shells: a calm stage band instead of a bare wall
+- Auto callout also for tiny props resting on furniture
+- Ready-made SVGs: skip text-only drawings and year-only title matches
+- Walking-steps test samples every third frame
+- Think gesture becomes the thinker pose
+- Text animations play at a readable pace, then hold
+- Surprise reads as a startle instead of joy
+- Person close-ups framed from the waist up; shot sizes vary across cuts
+- Render watchdog: cancel and retry a render that stops making progress
+- Framing: never cut a standing person at the ankles, shins or knees
+- Action gestures: typing, writing, reading, show, clap, hands on hips, arms crossed
+- Readable scenes: magnified inset for small key props, cleaner text and people layout
+- 3D figure previews in the concept step, character bank and style gallery
+- 3D packs use 3D figures: figure-designer agent, walking turn, low-poly finish
+- 3D figures: code-built three.js characters on the puppet rig; GPU render backend
+- Four 3D-look style packs: soft 3D, claymation, vinyl toy, low-poly
+- Style packs get a code-drawn texture over vector scenes
+- Short render logs its progress
+- Style gallery with sample drawings in the new-episode form
+- Vertical Short from every horizontal episode
+- CLAUDE.md in English
+- Background music synthesized from scene moods, ducked under narration
+- Publishing package: YouTube title, description with chapters, tags and thumbnail
+- Thumbnail keeps the title's casing and avoids covering faces
+- Episodes get a YouTube thumbnail rendered locally
+- Studio toggle for sound effects
+- Vertical videos keep captions and labels clear of the platform UI
+- Fix director schema rejected by the API (Manim graph points)
+- Desk scenes frame the person at the desk
+- Frame-locked sound effects synthesized from the animations
+- Videos open on a filled first frame instead of black
+- Wide shots recentre content piled to one side
+- Manim work folder is named by hash, not by shot id
+- Formula and data graph boards rendered locally with Manim
+- Key text can land with GSAP kinetic typography
+- Objects can be sketched onto the screen stroke by stroke
+- Planet-scale maps render as a three.js 3D globe
+- Particle atmospheres render with PixiJS (WebGL)
+- Close-ups of a held object keep the holder's face in frame
+- Quality gate catches plans that change what an asset is
+- Wrist joint for newly drawn characters
+- Talking characters move their lips with the narration
+- Characters move their whole upper body, not just their arms
+- Empty wide shots move in to a medium shot
+- Close-ups frame the object in a hand or on a desk
+- Close-ups keep the narrated props in frame
+
 ## v0.1.2 (2026-11-01)
 
 - Shot previews appear while props are still being drawn
