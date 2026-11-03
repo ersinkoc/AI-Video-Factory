@@ -368,6 +368,23 @@ describe("kadro aşaması", () => {
     expect(h.logs).toContain("  insan olmayan 2 oyuncu nesne olarak çizilecek: Horse, Bag");
   });
 
+  it("vektör modu: kişi diye işaretlenmiş cihaz nesneye döner; insan ve maskot kişi kalır", async () => {
+    const h = harness();
+    onAgent("castingDirector", () => ({
+      characters: [
+        { id: "c1", name: "Gosling", kind: "person", role: "Java's creator, engineer at Sun", visualDescription: "Man with glasses", scenes: ["s1"] },
+        { id: "c2", name: "Duke", kind: "person", role: "Java mascot waving on screens", visualDescription: "Cartoon mascot: a wedge-shaped figure", scenes: ["s1"] },
+        { id: "c3", name: "Star7", kind: "person", role: "Early handheld prototype device", visualDescription: "Handheld PDA prototype: boxy plastic body, small touchscreen", scenes: ["s1"] },
+      ],
+      locations: CAST.locations,
+    }));
+    const id = await h.seed(makeState({ motionMode: "vector" }, { style: STYLE, script: SCRIPT }));
+    const state = await h.pipeline.run(id, { only: "cast" });
+    expect(state.cast!.characters.map((c) => c.id)).toEqual(["c1", "c2"]);
+    expect(state.vectorProps!.c3).toMatchObject({ kind: "prop", description: "Handheld PDA prototype: boxy plastic body, small touchscreen" });
+    expect(h.logs).toContain("  Star7 kişi diye işaretlenmişti ama tarifi bir cihaz/eşya: nesne olarak çizilecek");
+  });
+
   it("değişiklik yoksa konsept onayı korunur", async () => {
     const h = harness();
     onAgent("castingDirector", () => CAST);

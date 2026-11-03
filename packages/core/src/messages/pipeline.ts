@@ -182,6 +182,10 @@ export const PIPELINE_MESSAGES = {
   "log.script.doctor": { tr: "  doktor: {words} kelime; {notes} düzeltme{kept}", en: "  doctor: {words} words; {notes} fixes{kept}" },
   "log.script.keptDraft": { tr: " (sahne yapısı değişti, taslak kullanıldı)", en: " (scene structure changed, the draft was used)" },
   "log.cast.reuse": { tr: "  ♻ kütüphaneden tekrar kullanılacak: {names}", en: "  ♻ reused from the library: {names}" },
+  "log.cast.asObject": {
+    tr: "  {name} kişi diye işaretlenmişti ama tarifi bir cihaz/eşya: nesne olarak çizilecek",
+    en: "  {name} was marked as a person but is described as a device/thing: it will be drawn as a prop",
+  },
   "log.cast.nonHuman": {
     tr: "  insan olmayan {n} oyuncu nesne olarak çizilecek: {names}",
     en: "  {n} non-human cast members will be drawn as props: {names}",

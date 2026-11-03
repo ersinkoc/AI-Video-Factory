@@ -116,6 +116,7 @@ import { existingSamples, loadStyleSamples, SAMPLE_BRIEF, STYLE_SAMPLES_ID, STYL
 import { shortRange, shortTimeline } from "./short.ts";
 import { buildTimeline, clipSeconds, estimateWordTimings, resolveShotTimes, sceneOffsets, toSrt } from "./timing.ts";
 import { varyShotSizes } from "./variety.ts";
+import { looksLikeObject } from "./cast-kind.ts";
 import type { EpisodeReview } from "./state.ts";
 
 /** Günlük satırının önemi: aşama başlangıcı, uyarı (atlanan/başarısız alt adım) ya da bilgi. */
@@ -1965,6 +1966,14 @@ export class EpisodePipeline {
           bank.map((c) => ({ name: c.name, role: this.bankRole(state, c) })),
         ),
       );
+      // Vektör kişisi insan iskeletli kukladır: kişi diye işaretlenmiş cihaz robot olarak çiziliyordu (cast-kind.ts).
+      if (vector) {
+        for (const c of state.cast.characters) {
+          if (c.kind !== "person" || !looksLikeObject(c)) continue;
+          c.kind = "object";
+          this.log(msg("log.cast.asObject", { name: c.name }));
+        }
+      }
       // Yeni kadro eski kimlikleri (c1, l2…) yeniden kullanır: adı ya da tarifi değişen varlığın eski konsepti ve
       // kadrodan türemiş nesnesi atılır (yoksa yeni c1'e eskisinin çizimi giderdi); değişmeyenler korunur (para gitmez).
       if (oldCast) {
