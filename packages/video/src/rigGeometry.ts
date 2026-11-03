@@ -29,9 +29,14 @@ export interface Face {
   mouthFrame?: [number, number, number, number, number, number];
   /** Ağız çizgisinin rengi (ilk geçerli çizgi, yoksa dolgu rengi). */
   mouthInk?: string;
+  /**
+   * Kolun dinlenmedeki en alt noktası (ön kol + el; sarkan elde parmak uçları), iskelet y. Ele bir yer gösterilirken
+   * (çeneye) parmakların nereye kadar uzandığı bundan bilinir: uzun elli çizimde el ağzı kapatıyordu.
+   */
+  hands?: { l?: number; r?: number };
 }
 
-const PARTS = new Set(["head", "mouth", "eyes"]);
+const PARTS = new Set(["head", "mouth", "eyes", "forearm-l", "forearm-r", "hand-l", "hand-r"]);
 /** Render pozunun CSS dönüşümüyle ezdiği kimlikler. */
 const POSED = new Set<string>([...Object.keys(RIG.pivots), "torso"]);
 const SKIP = /^(defs|clipPath|mask|pattern|symbol|marker|linearGradient|radialGradient|filter|metadata|title|desc|style)$/i;
@@ -128,7 +133,7 @@ export function faceOf(svg: string, rig: { width: number; height: number } = { w
   const k = Math.min(rig.width / vw!, rig.height / vh!);
   const root = new g.Matrix().translate((rig.width - vw! * k) / 2, (rig.height - vh! * k) / 2).scale(k).translate(-vx!, -vy!);
   const stack: { matrix: paper.Matrix; part?: string; stroke?: string; fill?: string }[] = [{ matrix: root }];
-  const found: Partial<Record<"head" | "mouth" | "eyes", Bounds>> = {};
+  const found: Partial<Record<string, Bounds>> = {};
   let frame: paper.Matrix | undefined;
   let line: string | undefined;
   let fill: string | undefined;
@@ -161,13 +166,20 @@ export function faceOf(svg: string, rig: { width: number; height: number } = { w
     if (!own) continue;
     const b = shapeBounds(name!, a, top.matrix);
     if (!b) continue;
-    found[own as "head"] = union(found[own as "head"], b);
+    found[own] = union(found[own], b);
     if (own === "mouth") {
       line ??= stroke;
       fill ??= paint;
     }
   }
   const { head, mouth, eyes } = found;
+  // Ön kol ve el (el grubu yoksa el ön kolun içinde çizilir): en alt nokta.
+  const lowest = (side: "l" | "r") => {
+    const ys = [found[`forearm-${side}`], found[`hand-${side}`]].filter((b) => b !== undefined).map((b) => b.y + b.h);
+    return ys.length ? Math.max(...ys) : undefined;
+  };
+  const l = lowest("l");
+  const r = lowest("r");
   let chin: [number, number] | undefined;
   if (mouth && eyes) {
     // Çene ağzın altında, gözle ağız arası mesafenin ~yarısı kadar aşağıda.
@@ -176,7 +188,10 @@ export function faceOf(svg: string, rig: { width: number; height: number } = { w
   } else if (head) chin = [head.x + head.w / 2, head.y + head.h * 0.92];
   const ink = line ?? fill;
   return {
-    ...found,
+    ...(head ? { head } : {}),
+    ...(mouth ? { mouth } : {}),
+    ...(eyes ? { eyes } : {}),
+    ...(l !== undefined || r !== undefined ? { hands: { ...(l !== undefined ? { l } : {}), ...(r !== undefined ? { r } : {}) } } : {}),
     ...(chin ? { chin } : {}),
     ...(frame && mouth ? { mouthFrame: [frame.a, frame.b, frame.c, frame.d, frame.tx, frame.ty] as Face["mouthFrame"] } : {}),
     ...(ink ? { mouthInk: ink } : {}),

@@ -53,6 +53,38 @@ export function reach(shoulder: readonly [number, number], target: readonly [num
   return { ...best, reached: Math.abs(d - dist) < 1e-3 };
 }
 
+export interface Bend extends Reach {
+  /** Üst kolun önden görünen boyu (1 tam; kameraya doğru uzanan kolda kısa: CSS'te üst kolun dikey ölçeği). */
+  scale: number;
+}
+
+/**
+ * Dirseği verilen noktaya koyarak elin hedefe gitmesi: üst kol omuzdan dirseğe döner ve oraya kısalarak (kameraya
+ * doğru uzanarak) ulaşır, ön kol dirsekten ele gider. Önden bakışta öne uzanan üst kol kısa görünür; tam boy kolla
+ * çeneye giden el dirseği omuz hizasında göğsün karşı yanına atıyordu (3 Kas, React bölümü: her sahnede kötü görünüyordu).
+ * Dirsek üst kol boyundan uzaksa kısalarak ulaşılamaz: düz IK (reach). min: en kısa görünüş (dirsek omza çok yakınsa
+ * aynı yönde o kadar uzağa konur, el hedefin yakınında kalır).
+ */
+export function bend(
+  shoulder: readonly [number, number],
+  elbow: readonly [number, number],
+  hand: readonly [number, number],
+  upper: number,
+  lower: number,
+  min: number,
+): Bend {
+  const ux = elbow[0] - shoulder[0];
+  const uy = elbow[1] - shoulder[1];
+  const len = Math.hypot(ux, uy);
+  if (len > upper) return { ...reach(shoulder, hand, upper, lower), scale: 1 };
+  const scale = Math.max(min, len / upper);
+  const arm = Math.atan2(-ux, uy) * DEG;
+  const [ex, ey] = along(arm);
+  const at: [number, number] = [shoulder[0] + ex * upper * scale, shoulder[1] + ey * upper * scale];
+  const fore = Math.atan2(-(hand[0] - at[0]), hand[1] - at[1]) * DEG;
+  return { arm: wrap(arm), forearm: wrap(fore - arm), elbow: at, scale, reached: Math.abs(Math.hypot(hand[0] - at[0], hand[1] - at[1]) - lower) < 1e-6 };
+}
+
 /** İleri kinematik: omuz, iki kemik ve dönüşlerden elin (ikinci kemiğin ucunun) yeri. Testler ve el konumu için. */
 export function tip(shoulder: readonly [number, number], upper: number, lower: number, arm: number, forearm: number): [number, number] {
   const [ex, ey] = along(arm);

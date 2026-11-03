@@ -44,6 +44,17 @@ describe("çizimin yüz geometrisi", () => {
     expect(face('<g id="mouth"><path d="M190 300 L210 300" fill="none" stroke="currentColor"/></g>').mouthInk).toBeUndefined();
   });
 
+  it("kolun en alt noktası (ön kol + el; el grubu yoksa ön kolun içindeki el): parmakların nereye uzandığı", () => {
+    const f = face(`
+      <g id="arm-l"><rect x="130" y="290" width="20" height="110"/><g id="forearm-l" transform="rotate(90 140 400)"><rect x="130" y="400" width="20" height="130"/></g></g>
+      <g id="arm-r"><g id="forearm-r"><rect x="250" y="400" width="20" height="90"/><g id="hand-r"><rect x="250" y="490" width="20" height="62"/></g></g></g>`);
+    // İskelet parçasının kendi transform'u sayılmaz (dinlenme duruşu).
+    expect(f.hands).toEqual({ l: 530, r: 552 });
+    expect(face('<g id="forearm-r"><rect x="250" y="400" width="20" height="100"/></g>').hands).toEqual({ r: 500 });
+    expect(face('<g id="hand-l"><rect x="130" y="490" width="20" height="40"/></g>').hands).toEqual({ l: 530 });
+    expect(face('<g id="head"><circle cx="200" cy="150" r="80"/></g>').hands).toBeUndefined();
+  });
+
   it("viewBox iskelet tuvaline ölçeklenir ve ortalanır; yalnız baş varsa çene başın altına yakın", () => {
     const f = face('<g id="head"><ellipse cx="100" cy="75" rx="40" ry="50"/></g>', "0 0 200 400");
     expect(f.head).toEqual({ x: 120, y: 50, w: 160, h: 200 });

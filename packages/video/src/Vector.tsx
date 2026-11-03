@@ -35,7 +35,7 @@ import { CALLOUT, calloutScale, calloutSpot, calloutTarget, overlap, type Box } 
 import { Figure3D } from "./Figure3D.tsx";
 import { clapClosed, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
-import { reach } from "./ik.ts";
+import { bend, reach } from "./ik.ts";
 import { revealWindow } from "./kinetic-timing.ts";
 import { lipLine, mouthIds, withMouths, type SpeakingMouth } from "./mouthShape.ts";
 import { faceOf, type Face } from "./rigGeometry.ts";
@@ -219,7 +219,14 @@ export interface FaceFit {
   chin: [number, number];
   jaw: number;
   mouth?: SpeakingMouth;
+  /** Ağzın alt kenarı (ölçülen ağız makul çenenin üstündeyse): yüze giden el bunun altında kalır. */
+  lips?: number;
+  /** Parmak uçlarının elin değme noktasının (ARM.reach) ötesine uzanması, kol başına (çizimden; sınırlı). */
+  fingers: { l: number; r: number };
 }
+
+/** Parmakların değme noktasının ötesine uzanması (iskelet px): ölçülemezse rest, ölçüleni [min, max] içinde. */
+const FINGERS = { rest: 22, min: 8, max: 60 } as const;
 
 /**
  * Ölçülen ağız makul mü: başın içinde ve ondan çok küçük (başsız çizimde mutlak sınır). Ağız grubuna bıyık, sakal ya da
@@ -244,7 +251,10 @@ export function fitFace(face: Face): FaceFit {
       ? cx! >= head.x && cx! <= head.x + head.w && cy! >= head.y && cy! <= head.y + head.h && m.w <= head.w * MOUTH_FIT.width && m.h <= head.h * MOUTH_FIT.height
       : m.w <= MOUTH_FIT.maxW && m.h <= MOUTH_FIT.maxH);
   const mouth = fits ? { box: m, frame: face.mouthFrame!, ink: face.mouthInk ?? "#2b1d1d", drop: Math.max(6, chin[1] - lipLine(m!) - 3) } : undefined;
-  return { chin, jaw, ...(mouth ? { mouth } : {}) };
+  const lips = inside && m && m.y + m.h < y ? m.y + m.h : undefined;
+  const elbowY = RIG.pivots["forearm-r"][1];
+  const finger = (low: number | undefined) => (low === undefined ? FINGERS.rest : Math.min(FINGERS.max, Math.max(FINGERS.min, low - elbowY - ARM.reach)));
+  return { chin, jaw, ...(mouth ? { mouth } : {}), ...(lips !== undefined ? { lips } : {}), fingers: { l: finger(face.hands?.l), r: finger(face.hands?.r) } };
 }
 
 /** Yüzü ölçülemeyen kukla (yan görünüş, test). */
@@ -528,23 +538,33 @@ function rigPose(
         // Sağ el nesne tutuyorsa sol el çeneye gider; yoksa tutulan defter yüzü kapatıyordu.
         const hand = attention.holding ? -1 : 1;
         const side = hand > 0 ? "r" : "l";
-        // "Düşünen adam" (ölçülen yüz + iki kemikli IK): el çizimin kendi çene hattına yandan değer, ön kol çapraz
-        // durur (el çenenin tam altındayken ten rengi ön kol boyunla birleşip "uzun boyun" gibi okunuyordu); öbür el bu
-        // kolun dirseğini alttan tutar. Sabit açılar eli kimi çizimde omuzda, kiminde boyunda bırakıyordu (3 Kas).
-        const { chin, jaw } = attention.face ?? NO_FACE;
-        const main = reach(RIG.pivots[`arm-${side}`], [chin[0] + jaw * hand, chin[1] + 4], ARM.upper, ARM.reach);
+        // "Düşünen adam" (ölçülen yüz): el çizimin kendi çenesinin altına gelir, ön kol göğsün önünde hafif yatık dikilir,
+        // dirsek göğsün altında; üst kol oraya kameraya uzanarak kısalır (bend). Öbür el bu dirseği alttan tutar. Eskiden el
+        // çenenin yanındaydı ve üst kol tam boydu: dirsek omuz hizasında göğsün karşı yanına gidiyor, iki kol göğsü yatay
+        // çizgilerle kesiyordu (3 Kas, React incelemesi: her sahnede kötü). Kol bu çekimde başın önüne alınır (armInFront):
+        // çizimde baş kollardan sonra geldiği için el çenenin arkasında kalıyordu.
+        // Parmak uçları ağzın altında kalır: uzun elli çizimde el ağzı kapatıyor, şaşkınlık ("eliyle ağzını kapattı")
+        // gibi okunuyordu.
+        const { chin, jaw, lips, fingers } = attention.face ?? NO_FACE;
+        const below = lips === undefined ? -Infinity : lips + THINK.gap + fingers[side];
+        const at: [number, number] = [chin[0] + jaw * THINK.x * hand, Math.max(chin[1] + THINK.y, below)];
+        const lean = (THINK.lean * Math.PI) / 180;
+        const elbow: [number, number] = [at[0] + Math.sin(lean) * ARM.reach * hand, at[1] + Math.cos(lean) * ARM.reach];
+        const main = bend(RIG.pivots[`arm-${side}`], elbow, at, ARM.upper, ARM.reach, THINK.min);
         mix(`arm-${side}`, "rotate", main.arm);
+        mix(`arm-${side}`, "sy", main.scale);
         mix(`forearm-${side}`, "rotate", main.forearm);
         // Parmaklar çeneye doğru.
         mix(`hand-${side}`, "rotate", -5 * hand);
         if (hand > 0) {
-          const support = reach(RIG.pivots["arm-l"], [main.elbow[0], main.elbow[1] + 22], ARM.upper, ARM.reach);
+          const support = reach(RIG.pivots["arm-l"], [main.elbow[0], main.elbow[1] + THINK.support], ARM.upper, ARM.reach);
           mix("arm-l", "rotate", support.arm);
           mix("forearm-l", "rotate", support.forearm);
           // Avuç yukarı, dirseği taşır.
           mix("hand-l", "rotate", -25);
         }
-        mix("head", "rotate", 7);
+        // Baş çeneyi tutan ele yaslanır.
+        mix("head", "rotate", 7 * hand);
         mix("brows", "ty", -5);
         mix("eyes", "tx", 5);
         // Düşünürken çeneyi tutan elin tarafına yaslanır.
@@ -812,6 +832,14 @@ export function stanceAt(t: number, seed: string): number {
 
 /** Uzatma: elin omuzdan uzaklığı (kol boyunun kesri) ve öne uzanırken aşağı eğimi (yatay 1'e karşı). */
 const GIVE = { reach: 0.85, drop: 0.5 } as const;
+
+/**
+ * Düşünme pozu (iskelet px): el çenenin altına gelir (x: çene hattının kesri kadar el tarafına, y: çeneden aşağı; parmak
+ * uçları çeneye değer), ön kol dikeyden lean derece dışa yatık durur, dirsek onun ucunda; üst kol dirseğe kameraya
+ * uzanarak (en az min boyla) ulaşır. Öbür elin avucu dirseğin support px altını tutar. Parmak uçları ağzın alt
+ * kenarının en az gap px altında kalır.
+ */
+export const THINK = { x: 0.4, y: 14, lean: 8, min: 0.62, support: 16, gap: 6 } as const;
 /** Kısalan uyluk kadar karakter aşağı iner ki ayaklar yerde kalsın (iskelet pikseli). */
 const SIT_DROP = (RIG.pivots["shin-l"][1] - RIG.pivots["leg-l"][1]) * (1 - SIT_THIGH);
 
@@ -1153,6 +1181,8 @@ interface Motion {
   squash: number;
   /** Konuşuyor: çizimin ağzı gizlenir, yerine bu vizemin koddan çizilmiş şekli görünür (ifadenin köşeleriyle). */
   speak?: Viseme;
+  /** Bu çekimde yüze giden kol (düşünme): çizimde başın önüne alınır (armInFront). */
+  front?: "arm-l" | "arm-r";
 }
 
 /**
@@ -1225,7 +1255,9 @@ function motionOf(
   // Konuşma yarıdan fazla girmişken ses varsa şekil koddan çizilir; sessizlikte (X) çizimin kendi ağzı görünür.
   const viseme = voice?.viseme;
   const talking = face.mouth && viseme && viseme !== "X" && anims.some((a) => a.type === "talk" && gestureWeight(p, a, dur) >= 0.5);
-  return { tr, flip: layer.flip, squash, turn, pose, ...(talking ? { speak: viseme } : {}) };
+  // Düşünen kol (sağ; sağ el nesne tutuyorsa sol) çekim boyunca başın önünde çizilir: kol yandayken başla örtüşmez.
+  const front = anims.some((a) => a.type === "think") ? (focus.holding ? "arm-l" : "arm-r") : undefined;
+  return { tr, flip: layer.flip, squash, turn, pose, ...(talking ? { speak: viseme } : {}), ...(front ? { front } : {}) };
 }
 
 /**
@@ -1251,20 +1283,38 @@ export function heldFraming(placed: PlacedLayer[], layers: VectorLayer[]): Place
 /** Kalçadan birlikte eğilen parçalar (çizimde kardeş gruplar). */
 const TORSO_PARTS = ["body", "arm-l", "arm-r", "head"] as const;
 
+/** Kimlikli `<g>` gruplarının metindeki aralığı, derinliği ve ebeveyninin başlangıcı (kökte −1). */
+function groupSpans(svg: string): Map<string, { start: number; end: number; depth: number; parent: number }> {
+  const spans = new Map<string, { start: number; end: number; depth: number; parent: number }>();
+  const open: { start: number; id?: string }[] = [];
+  for (const m of svg.matchAll(/<(\/?)g\b[^>]*?(\/?)>/g)) {
+    if (m[1]) {
+      const g = open.pop();
+      if (g?.id) spans.set(g.id, { start: g.start, end: m.index + m[0].length, depth: open.length, parent: open.at(-1)?.start ?? -1 });
+    } else if (!m[2]) open.push({ start: m.index, id: /\sid="([^"]+)"/.exec(m[0])?.[1] });
+  }
+  return spans;
+}
+
+/**
+ * Kolu (üst kol, ön kol, el) başın önüne alır: çizimde baş kollardan sonra gelir, düşünürken çeneye giden el başın
+ * arkasında kalıyordu (3 Kas). Kol ve baş aynı ebeveynde kardeş değilse ya da kol zaten sonraysa çizime dokunulmaz.
+ */
+export function armInFront(svg: string, prefix: string, arm: "arm-l" | "arm-r"): string {
+  const spans = groupSpans(svg);
+  const a = spans.get(prefix + arm);
+  const h = spans.get(prefix + "head");
+  if (!a || !h || a.parent !== h.parent || a.start > h.start) return svg;
+  return svg.slice(0, a.start) + svg.slice(a.end, h.end) + svg.slice(a.start, a.end) + svg.slice(h.end);
+}
+
 /**
  * Gövde, kollar ve başı tek grupta toplar ki kalçadan birlikte eğilsinler: çizimde bunlar kardeş gruplardır, gövdeyi
  * döndürmek kolları ve başı yerinde bırakırdı. Parçalardan biri yoksa, aynı düzeyde değillerse ya da aralarında
  * bacak varsa (bacak gövdeyle eğilmemeli) çizime dokunulmaz.
  */
 export function wrapTorso(svg: string, prefix: string): string {
-  const spans = new Map<string, { start: number; end: number; depth: number }>();
-  const open: { start: number; id?: string }[] = [];
-  for (const m of svg.matchAll(/<(\/?)g\b[^>]*?(\/?)>/g)) {
-    if (m[1]) {
-      const g = open.pop();
-      if (g?.id) spans.set(g.id, { start: g.start, end: m.index + m[0].length, depth: open.length });
-    } else if (!m[2]) open.push({ start: m.index, id: /\sid="([^"]+)"/.exec(m[0])?.[1] });
-  }
+  const spans = groupSpans(svg);
   const parts = TORSO_PARTS.map((p) => spans.get(prefix + p));
   if (parts.some((p) => !p || p.depth !== parts[0]!.depth)) return svg;
   const start = Math.min(...parts.map((p) => p!.start));
@@ -1285,9 +1335,12 @@ function handPoint(placed: PlacedLayer, layer: VectorLayer, m: Motion): [number,
   // Kameraya uzanan (kısalan) ön kolda el de dirseğe yakın.
   /* v8 ignore next */
   const fs = m.pose?.["forearm-r"]?.sy ?? 1;
+  // Kısalan üst kolda dirsek omza yakın (ön kol kendi boyunda kalır).
+  /* v8 ignore next */
+  const us = m.pose?.["arm-r"]?.sy ?? 1;
   const [sx, sy] = (m.profile ? RIG_SIDE : RIG).pivots["arm-r"];
   const [ex, ey] = (m.profile ? RIG_SIDE : RIG).pivots["forearm-r"];
-  const elbow = rot([ex - sx, ey - sy], a);
+  const elbow = rot([ex - sx, (ey - sy) * us], a);
   const hand = rot([0, ARM.reach * fs], a + f);
   let rx = sx + elbow[0] + hand[0];
   let ry = sy + elbow[1] + hand[1];
@@ -1350,7 +1403,9 @@ function Layer({
   // 3D figür: SVG yerine three.js kuklası (yürürken kendisi yana döner). WebGL açılamazsa SVG pozuyla birlikte yedek
   // olarak gösterilir.
   const figure = asset.meta.figure;
-  const raw = prefixSvgIds(fitSvg((motion.side ?? asset).svg, "meet"), prefix);
+  const prefixed = prefixSvgIds(fitSvg((motion.side ?? asset).svg, "meet"), prefix);
+  // Düşünen el yüzün önünde (yandan yürürken front yok: yan çizimde kol jesti uygulanmaz).
+  const raw = motion.front ? armInFront(prefixed, prefix, motion.front) : prefixed;
   const shaped = pose?.torso ? wrapTorso(raw, prefix) : raw;
   // Elle çizim: öğeler bir kez işaretlenir (paper.js uzunlukları), her karede yalnız CSS değişir.
   const drawing = draw !== undefined && !figure;
@@ -1371,7 +1426,11 @@ function Layer({
         .map(([k, v]) => {
           const pivots = (motion.side ? RIG_SIDE : RIG).pivots;
           const [px, py] = k === "torso" ? pivots.body : pivots[k as RigPart];
-          const transform = `translate(${v.tx.toFixed(2)}px, ${v.ty.toFixed(2)}px) rotate(${v.rotate.toFixed(2)}deg) scale(${v.sx.toFixed(3)}, ${v.sy.toFixed(3)})`;
+          // Kısalan üst kol (kameraya uzanan) ön kolu bozmaz: ön kol üst kolun ölçeğini dirsekte geri alır, yalnız
+          // dirsek omza yaklaşır (ön kol üst kola göre döndüğü için kendi ölçeğiyle geri almak onu eğerdi).
+          const up = k.startsWith("forearm-") ? pose[`arm-${k.slice(-1)}` as RigPart] : undefined;
+          const undo = up && (up.sx !== 1 || up.sy !== 1) ? `scale(${(1 / up.sx).toFixed(4)}, ${(1 / up.sy).toFixed(4)}) ` : "";
+          const transform = `${undo}translate(${v.tx.toFixed(2)}px, ${v.ty.toFixed(2)}px) rotate(${v.rotate.toFixed(2)}deg) scale(${v.sx.toFixed(3)}, ${v.sy.toFixed(3)})`;
           return `#${prefix}${k}{transform:${transform};transform-origin:${px}px ${py}px;transform-box:view-box}`;
         })
         .join("")

@@ -132,10 +132,11 @@ describe("3D figür: poz", () => {
   it("dönüş ekranda saat yönü artı (three'de −z), öteleme y aşağı, ölçek dönme noktasında; verilmeyen parça dinlenir", () => {
     const f = buildFigure(BASE);
     const [hx, hy] = f.parts["arm-r"].userData.rest as [number, number];
-    poseFigure(f, { "arm-r": { rotate: 90, sx: 1.2, sy: 0.5, tx: 4, ty: 10 }, mouth: { rotate: 0, sx: 1, sy: -0.8, tx: 0, ty: 0 } });
+    poseFigure(f, { "arm-r": { rotate: 90, sx: 1.2, sy: 1, tx: 4, ty: 10 }, "leg-r": { rotate: 0, sx: 1, sy: 0.5, tx: 0, ty: 0 }, mouth: { rotate: 0, sx: 1, sy: -0.8, tx: 0, ty: 0 } });
     expect(f.parts["arm-r"].rotation.z).toBeCloseTo(-Math.PI / 2);
     expect([f.parts["arm-r"].position.x, f.parts["arm-r"].position.y]).toEqual([hx + 4, hy - 10]);
-    expect([f.parts["arm-r"].scale.x, f.parts["arm-r"].scale.y]).toEqual([1.2, 0.5]);
+    expect([f.parts["arm-r"].scale.x, f.parts["arm-r"].scale.y]).toEqual([1.2, 1]);
+    expect(f.parts["leg-r"].scale.y).toBe(0.5);
     expect(f.parts.mouth.scale.y).toBe(-0.8);
     // Ekranda saat yönü: aşağı sarkan sağ kol 90° dönünce el omzun soluna (gövdeye doğru) kalkar; SVG kuklasıyla aynı.
     f.root.updateMatrixWorld(true);
@@ -147,6 +148,34 @@ describe("3D figür: poz", () => {
     expect(f.parts["arm-r"].rotation.z).toBeCloseTo(0);
     expect([f.parts["arm-r"].position.x, f.parts["arm-r"].position.y]).toEqual([hx, hy]);
     expect(f.parts.mouth.scale.y).toBe(1);
+  });
+
+  it("kısalan üst kol (sy < 1) kameraya döner: dirsek öne gelir, önden boyu sy kat; ön kol ön düzlemde kendi boyunda kalır", () => {
+    const f = buildFigure(BASE);
+    const at = (o: { getWorldPosition: (v: Vector3) => Vector3 }) => o.getWorldPosition(new Vector3());
+    const rest = (() => {
+      poseFigure(f, {});
+      f.root.updateMatrixWorld(true);
+      return { shoulder: at(f.parts["arm-r"]), elbow: at(f.parts["forearm-r"]), wrist: at(f.parts["hand-r"]) };
+    })();
+    poseFigure(f, { "arm-r": { rotate: 30, sx: 1, sy: 0.6, tx: 0, ty: 0 }, "forearm-r": { rotate: 120, sx: 1, sy: 1, tx: 0, ty: 0 } });
+    expect(f.parts["arm-r"].rotation.order).toBe("ZXY");
+    expect(f.parts["arm-r"].rotation.x).toBeCloseTo(-Math.acos(0.6));
+    expect(f.parts["arm-r"].scale.y).toBe(1);
+    expect(f.parts["forearm-r"].rotation.x).toBeCloseTo(Math.acos(0.6));
+    f.root.updateMatrixWorld(true);
+    const shoulder = at(f.parts["arm-r"]);
+    const elbow = at(f.parts["forearm-r"]);
+    const wrist = at(f.parts["hand-r"]);
+    const upper = rest.shoulder.distanceTo(rest.elbow);
+    // Önden (x, y) boyu sy kat; dirsek kameraya (+z) gelir.
+    expect(Math.hypot(elbow.x - shoulder.x, elbow.y - shoulder.y)).toBeCloseTo(upper * 0.6, 3);
+    expect(elbow.z).toBeGreaterThan(shoulder.z + upper * 0.7);
+    // Ön kol ön düzlemde (z sabit), boyu aynı; ekranda üst kola göre 120° dönmüş: toplam 150°.
+    expect(wrist.z).toBeCloseTo(elbow.z, 3);
+    expect(wrist.distanceTo(elbow)).toBeCloseTo(rest.wrist.distanceTo(rest.elbow), 3);
+    const angle = (Math.atan2(-(wrist.x - elbow.x), -(wrist.y - elbow.y)) * 180) / Math.PI;
+    expect(angle).toBeCloseTo(150, 3);
   });
 
   it("profil: figür sağa döner, ekranda saat yönü öne-arkaya salınımdır (ayak geriye, sola gider), yatay öteleme ileri", () => {

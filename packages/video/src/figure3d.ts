@@ -361,8 +361,9 @@ function armDepth(name: string, pose: Partial<Record<FigurePart, PartPose>>): nu
   const rad = (d: number) => (d * Math.PI) / 180;
   const arm = pose[name]?.rotate ?? 0;
   const fore = pose[`forearm-${side}`]?.rotate ?? 0;
+  const upper = (ey - sy) * (pose[name]?.sy ?? 1);
   // Elin yeri (ileri kinematik; üst kol omuzdan dirseğe, ön kol dirsekten elin ortasına).
-  const hx = sx - Math.sin(rad(arm)) * (ey - sy) - Math.sin(rad(arm + fore)) * 112;
+  const hx = sx - Math.sin(rad(arm)) * upper - Math.sin(rad(arm + fore)) * 112;
   const inward = side === "r" ? sx - hx : hx - sx;
   return ARM_FRONT.depth * Math.min(1, Math.max(0, inward / ARM_FRONT.span));
 }
@@ -376,10 +377,21 @@ export function poseFigure(figure: Figure, pose: Partial<Record<FigurePart, Part
     if (view.profile) {
       part.position.set(x, y - v.ty, v.tx);
       part.rotation.set(a, 0, 0);
+      part.scale.set(v.sx, v.sy, 1);
     } else {
       part.position.set(x + v.tx, y - v.ty, armDepth(name, pose));
-      part.rotation.set(0, 0, -a);
+      // Kısalan üst kol (sy < 1) figürde gerçekten kameraya döner (önden görünen boyu sy olacak kadar); ön kol bu eğimi
+      // geri alır, ön düzlemde döner. Ölçekle kısaltmak ön kolu da ezerdi.
+      const pitch = ARM_PITCHED.has(name) ? Math.acos(Math.min(1, v.sy)) : 0;
+      const unpitch = name.startsWith("forearm-") ? Math.acos(Math.min(1, pose[`arm-${name.slice(-1)}` as FigurePart]?.sy ?? 1)) : 0;
+      // Kamera +z'de, kol aşağı (−y) sarkar: dirseği öne getiren dönüş x ekseninde eksidir. Üst kolda önce ön düzlemde
+      // dönüş, sonra öne eğim (ZXY: Rz·Rx); ön kolda eğim önce geri alınır (XYZ: Rx·Rz), çarpım ön düzlemde kalır.
+      if (pitch) part.rotation.set(-pitch, 0, -a, "ZXY");
+      else part.rotation.set(unpitch, 0, -a, "XYZ");
+      part.scale.set(v.sx, pitch ? 1 : v.sy, 1);
     }
-    part.scale.set(v.sx, v.sy, 1);
   }
 }
+
+/** Kısalınca kameraya dönen parçalar (üst kollar). */
+const ARM_PITCHED = new Set(["arm-l", "arm-r"]);
