@@ -35,7 +35,7 @@ vi.mock("../src/Figure3D.tsx", () => ({
 
 const { clapClosed, penDown, typingTaps } = await import("../src/gesture-timing.ts");
 const { tip } = await import("../src/ik.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, mouthOpen, stageFit, tagBounds, contentFit } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -96,6 +96,26 @@ const ASSETS = {
     figure: { skin: "#f1c7a5", hair: { style: "short", color: "#3a2a20" }, top: { style: "sweater", color: "#5b7fbf" }, bottom: { style: "trousers", color: "#3b3f4a" }, shoes: "#2b2622" },
   }),
   "toy~side": asset("toy~side", "character", `<svg viewBox="0 0 400 800">${PARTS.map((p) => `<g id="${p}"><rect width="10" height="10" fill="#0000aa"/></g>`).join("")}</svg>`, 400, 800),
+  // Yüzü ölçülebilen karakter: konuşurken ağzı koddan çizilir (mouthShape).
+  talker: asset(
+    "talker",
+    "character",
+    `<svg viewBox="0 0 400 800">${PARTS.filter((p) => !["head", "eyes", "mouth"].includes(p))
+      .map((p) => `<g id="${p}"><rect width="10" height="10" fill="#335577"/></g>`)
+      .join("")}<g id="head"><circle cx="200" cy="170" r="80" fill="#f2c9a5"/><g id="eyes"><circle cx="180" cy="160" r="6"/><circle cx="220" cy="160" r="6"/></g><g id="mouth"><path d="M185 205 Q200 215 215 205" fill="none" stroke="#3a2020"/></g></g></svg>`,
+    400,
+    800,
+  ),
+  // Ağzının ebeveyn matrisi tersinmez (yassı): ağız ölçülür ama koddan çizilemez, çizimin ağzı kalır.
+  flat: asset(
+    "flat",
+    "character",
+    `<svg viewBox="0 0 400 800">${PARTS.filter((p) => p !== "mouth" && p !== "head")
+      .map((p) => `<g id="${p}"><rect width="10" height="10" fill="#557733"/></g>`)
+      .join("")}<g id="head"><circle cx="200" cy="170" r="80"/><g transform="matrix(1 0 0 0 0 205)"><g id="mouth"><rect x="180" y="200" width="40" height="10"/></g></g></g></svg>`,
+    400,
+    800,
+  ),
   "walker~side": asset("walker~side", "character", `<svg viewBox="0 0 400 800">${PARTS.map((p) => `<g id="${p}"><rect width="10" height="10" fill="#0000aa"/></g>`).join("")}</svg>`, 400, 800),
 };
 
@@ -367,8 +387,26 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(fitFace({ chin: [210, 250], head: { x: 0, y: 0, w: 200, h: 10 } })).toEqual({ chin: [210, 250], jaw: 42 });
     expect(fitFace({ chin: [210, 250], head: { x: 0, y: 0, w: 50, h: 10 } }).jaw).toBe(26);
     for (const chin of [[100, 250], [300, 250], [200, 100], [200, 400]] as [number, number][]) expect(fitFace({ chin }).chin).toEqual([200, 242]);
+    // Konuşan ağız: başın içinde ve ondan küçükse; çeneye kadar açılabilir, çizgi rengi yoksa koyu kahve.
     const mouth = { x: 180, y: 210, w: 40, h: 10 };
-    expect(fitFace({ mouth }).mouth).toBe(mouth);
+    const frame: [number, number, number, number, number, number] = [1, 0, 0, 1, 0, 0];
+    const head = { x: 120, y: 90, w: 160, h: 160 };
+    expect(fitFace({ mouth, mouthFrame: frame, head, chin: [200, 250], mouthInk: "#111" }).mouth).toEqual({ box: mouth, frame, ink: "#111", drop: 32 });
+    expect(fitFace({ mouth, mouthFrame: frame }).mouth).toEqual({ box: mouth, frame, ink: "#2b1d1d", drop: 24 });
+    expect(fitFace({ mouth, mouthFrame: frame, chin: [200, 400] }).mouth!.drop).toBe(24);
+    expect(fitFace({ mouth, mouthFrame: frame, chin: [200, 216], head: { x: 0, y: 0, w: 400, h: 400 } }).mouth!.drop).toBe(6);
+    expect(fitFace({ mouth }).mouth).toBeUndefined();
+    for (const m of [
+      { x: 0, y: 210, w: 40, h: 10 },
+      { x: 300, y: 210, w: 40, h: 10 },
+      { x: 180, y: 0, w: 40, h: 10 },
+      { x: 180, y: 300, w: 40, h: 10 },
+      { x: 150, y: 210, w: 100, h: 10 },
+      { x: 180, y: 150, w: 40, h: 70 },
+    ])
+      expect(fitFace({ mouth: m, mouthFrame: frame, head }).mouth).toBeUndefined();
+    expect(fitFace({ mouth: { x: 100, y: 200, w: 120, h: 10 }, mouthFrame: frame }).mouth).toBeUndefined();
+    expect(fitFace({ mouth: { x: 180, y: 200, w: 40, h: 80 }, mouthFrame: frame }).mouth).toBeUndefined();
     // Varlık başına bir kez ölçülür; 3D figürün yüzü sabit (SVG yedeği figürle aynı değil).
     expect(faceFor(ASSETS.hero)).toBe(faceFor(ASSETS.hero));
     expect(faceFor(ASSETS.toy)).toEqual({ chin: [200, 242], jaw: 33.6 });
@@ -460,24 +498,61 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(nod - still).toBeCloseTo(Math.sin(5 * 6) * 7, 1);
   });
 
-  it("talk ağzı açıp kapar; somurtan yüzde ağız ters kalır", () => {
+  it("talk ağzı açıp kapar; somurtan yüzde ağız ters kalır (kelime zamanı yoksa sabit ritim)", () => {
     const want = 0.35 + Math.abs(Math.sin(5 * 13)) * 0.9;
     expect(heroAt(150, { anims: [{ type: "talk" }] }).get("mouth").sy).toBeCloseTo(want, 2);
     cleanup();
     expect(heroAt(150, { anims: [{ type: "talk" }], expression: "sad" }).get("mouth").sy).toBeCloseTo(-want, 2);
   });
 
-  it("anlatımın kelime zamanı varsa konuşan ağız hecelerle açılır, sessizlikte kapanır", () => {
-    // Kare 150 = 5000 ms: "kedi" 4800–5200 (iki hece) ortasında, ilk hecenin sonunda (kapalı) ve kelime arasında.
-    const talk = (speech: { text: string; startMs: number; endMs: number }[]) => {
-      const c = scene(heroShot({ anims: [{ type: "talk" }] }), { frame: 150, speech });
-      const sy = pose(c, "mouth").sy;
+  it("ağzı ölçülemeyen çizimde anlatımın sesine göre ağız ölçeklenir: A çok açık, U dar, sessizlikte kapalı", () => {
+    // Kare 150 = 5000 ms.
+    const talk = (speech: { text: string; startMs: number; endMs: number }[], layer: object = {}) => {
+      const c = scene(heroShot({ anims: [{ type: "talk" }], ...layer }), { frame: 150, speech });
+      const { sx, sy } = pose(c, "mouth");
       cleanup();
-      return sy;
+      return [sx, sy];
     };
-    expect(talk([{ text: "kedi", startMs: 4900, endMs: 5300 }])).toBeCloseTo(0.35 + 0.9, 2);
-    expect(talk([{ text: "kedi", startMs: 4800, endMs: 5200 }])).toBeCloseTo(0.35, 2);
-    expect(talk([{ text: "bir", startMs: 4000, endMs: 4500 }, { text: "iki", startMs: 5500, endMs: 6000 }])).toBeCloseTo(0.35, 2);
+    expect(talk([{ text: "aaa", startMs: 4900, endMs: 5300 }])).toEqual([1.05, 1.25]);
+    expect(talk([{ text: "uuu", startMs: 4900, endMs: 5300 }])).toEqual([0.55, 0.75]);
+    expect(talk([{ text: "bir", startMs: 4000, endMs: 4500 }, { text: "iki", startMs: 5500, endMs: 6000 }])).toEqual([1, 0.35]);
+    // Somurtan yüzde eğri ters kalır; şaşkın yüzün dar ağzı konuşurken şekle bırakılır.
+    expect(talk([{ text: "aaa", startMs: 4900, endMs: 5300 }], { expression: "sad" })).toEqual([1.05, -1.25]);
+    expect(talk([{ text: "aaa", startMs: 4900, endMs: 5300 }], { expression: "surprised" })).toEqual([1.05, 1.25]);
+  });
+
+  it("ölçülen ağız konuşurken gizlenir, yerine o anın şekli koddan çizilir; sessizlikte çizimin ağzı görünür", () => {
+    const talker = (speech: { text: string; startMs: number; endMs: number }[], layer: object = { anims: [{ type: "talk" }] }) => {
+      const c = scene({ layers: [{ asset: "talker", x: 960, depth: 0, ...layer }] }, { frame: 150, speech });
+      const css = c.querySelector("style")!.textContent!;
+      const out = { css, mouth: pose(css, "mouth"), shapes: [...c.querySelectorAll("[id^='s1-0-viseme-']")].map((g) => `${g.id}:${g.getAttribute("display")}`) };
+      cleanup();
+      return out;
+    };
+    const aaa = talker([{ text: "aaa", startMs: 4900, endMs: 5300 }]);
+    expect(aaa.css).toContain("#s1-0-mouth{visibility:hidden}#s1-0-viseme-D{display:inline}");
+    // Bütün şekiller bir kez, gizli konur (CSS seçer); çizimin ağzı ölçeklenmez.
+    expect(aaa.shapes).toEqual(["A", "B", "C", "D", "E", "F", "G", "H"].map((v) => `s1-0-viseme-${v}:none`));
+    expect([aaa.mouth.sx, aaa.mouth.sy]).toEqual([1, 1]);
+    const silent = talker([{ text: "aaa", startMs: 6000, endMs: 6400 }]);
+    expect(silent.css).not.toContain("visibility:hidden");
+    expect(silent.shapes).toHaveLength(8);
+    // Konuşmayan karaktere şekil konmaz.
+    expect(talker([{ text: "aaa", startMs: 4900, endMs: 5300 }], {}).shapes).toEqual([]);
+    // Konuşma penceresi dışında (yarıdan az girmiş) çizimin ağzı.
+    expect(talker([{ text: "aaa", startMs: 4900, endMs: 5300 }], { anims: [{ type: "talk", start: 0.6, end: 0.9 }] }).css).not.toContain("visibility:hidden");
+  });
+
+  it("konuşan ağız: tersinmez ebeveynde çizimin ağzı kalır; 3D figürde ve yürürken yan çizimde şekil konmaz", () => {
+    const speech = [{ text: "aaa", startMs: 4900, endMs: 5300 }];
+    let c = scene({ layers: [{ asset: "flat", x: 960, depth: 0, anims: [{ type: "talk" }] }] }, { frame: 150, speech });
+    expect(c.querySelector("style")!.textContent).not.toContain("visibility:hidden");
+    expect(c.querySelector("[id^='s1-0-viseme-']")).toBeNull();
+    cleanup();
+    c = scene({ layers: [{ asset: "toy", x: 960, depth: 0, anims: [{ type: "talk" }] }] }, { frame: 150, speech });
+    expect(c.querySelector("[id^='s1-0-viseme-']")).toBeNull();
+    expect([pose(c, "mouth").sx, pose(c, "mouth").sy]).toEqual([1.05, 1.25]);
+    cleanup();
   });
 
   it("bilek: boşta ön kolu izler, el sallarken kıvrılır, anlatırken avuç dışa döner, nesne tutan el düz kalır", () => {
@@ -499,21 +574,6 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(pose(c, "hand-r").rotate).toBe(0);
   });
 
-  it("mouthOpen: kelimeyi heceye böler, ünlüsüz kelime tek hecedir, kelime dışında 0", () => {
-    const words = [
-      { text: "bir", startMs: 0, endMs: 300 },
-      { text: "kedi", startMs: 400, endMs: 800 },
-      { text: "Şşt", startMs: 900, endMs: 1100 },
-      { text: "ağaç", startMs: 1200, endMs: 1200 },
-    ];
-    expect(mouthOpen(words, 150)).toBeCloseTo(1);
-    expect(mouthOpen(words, 500)).toBeCloseTo(1);
-    expect(mouthOpen(words, 600)).toBeCloseTo(0);
-    expect(mouthOpen(words, 1000)).toBeCloseTo(1);
-    expect(mouthOpen(words, 350)).toBe(0);
-    expect(mouthOpen(words, 5000)).toBe(0);
-    expect(mouthOpen([], 10)).toBe(0);
-  });
 
   it("jest girerken ön kol üst kolu geriden izler", () => {
     // Pencere 5. sn'de (kare 150) başlar; 2 kare sonra üst kol kalkmaya başlamış, ön kol (0,08 sn gecikme) henüz değil.

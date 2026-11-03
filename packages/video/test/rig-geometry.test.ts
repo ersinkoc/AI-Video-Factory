@@ -11,13 +11,37 @@ describe("çizimin yüz geometrisi", () => {
       <g id="head">
         <circle cx="200" cy="150" r="80"/>
         <g id="eyes"><circle cx="180" cy="140" r="10"/><circle cx="220" cy="140" r="10"/></g>
-        <g id="mouth" transform="translate(0,10)"><path d="M180 200 L220 200 L220 210 L180 210 Z"/></g>
+        <g transform="translate(0,10)"><g id="mouth" transform="translate(0,99)"><path d="M180 200 L220 200 L220 210 L180 210 Z"/></g></g>
       </g>`);
     expect(f.head).toEqual({ x: 120, y: 70, w: 160, h: 160 });
     expect(f.eyes).toEqual({ x: 170, y: 130, w: 60, h: 20 });
+    // Ağzın kendi transform'u sayılmaz (render pozu CSS ile ezer), sarmalayan grubunki sayılır.
     expect(f.mouth).toEqual({ x: 180, y: 210, w: 40, h: 10 });
     // Ağzın altı 220, göz ortası 140: 220 + 80 × 0,45.
     expect(f.chin).toEqual([200, 256]);
+    expect(f.mouthFrame).toEqual([1, 0, 0, 1, 0, 10]);
+    expect(f.mouthInk).toBeUndefined();
+  });
+
+  it("ağzın ebeveyn matrisi ve çizgi rengi: iskelet parçasının transform'u yok sayılır; renk kalıtılır, yoksa dolgu", () => {
+    const f = face(`
+      <g id="head" transform="translate(500,0)"><circle cx="200" cy="150" r="80"/>
+        <g id="hat" transform="translate(0,0)" stroke="#123">
+          <g transform="scale(2)"><g id="mouth"><path d="M90 100 L110 100" stroke="url(#g)" fill="#ff0000"/><path d="M95 101 L105 101" stroke="#999"/></g></g>
+        </g>
+      </g>`);
+    expect(f.head).toEqual({ x: 120, y: 70, w: 160, h: 160 });
+    expect(f.mouth).toEqual({ x: 180, y: 200, w: 40, h: 2 });
+    expect(f.mouthFrame).toEqual([2, 0, 0, 2, 0, 0]);
+    // Geçersiz boya (url) atlanır, gruptan kalıtılan çizgi rengi kullanılır; ilk bulunan kalır.
+    expect(f.mouthInk).toBe("#123");
+    // Çizgi yoksa (none) dolgu; style özniteliği de okunur; doğrudan şekildeki ağız kimliği.
+    expect(face('<g id="mouth"><path d="M190 300 L210 300 L210 310 Z" style="stroke:none; fill: #aa0000"/></g>').mouthInk).toBe("#aa0000");
+    const shape = face('<path id="mouth" d="M190 300 L210 300" stroke="rgb(10, 20, 30)" transform="translate(0,50)"/>');
+    expect([shape.mouth, shape.mouthFrame, shape.mouthInk]).toEqual([{ x: 190, y: 300, w: 20, h: 0 }, [1, 0, 0, 1, 0, 0], "rgb(10, 20, 30)"]);
+    // Ölçülemeyen ağızda matris ve renk de yok; boya hiç yoksa renk yok.
+    expect(face('<g id="mouth" stroke="#000"><path d="Z"/></g>')).toEqual({});
+    expect(face('<g id="mouth"><path d="M190 300 L210 300" fill="none" stroke="currentColor"/></g>').mouthInk).toBeUndefined();
   });
 
   it("viewBox iskelet tuvaline ölçeklenir ve ortalanır; yalnız baş varsa çene başın altına yakın", () => {

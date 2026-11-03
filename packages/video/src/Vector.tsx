@@ -36,7 +36,9 @@ import { clapClosed, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
 import { reach } from "./ik.ts";
 import { revealWindow } from "./kinetic-timing.ts";
+import { lipLine, mouthIds, withMouths, type SpeakingMouth } from "./mouthShape.ts";
 import { faceOf, type Face } from "./rigGeometry.ts";
+import { visemeAt, visemeCues, type Viseme } from "./visemes.ts";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
 import { FOREARM_LAG, gaitOf, gestureWeight, hop, paceWalks, physicalAnims, type Gait } from "./motion.ts";
@@ -180,8 +182,8 @@ interface Attention {
   lookDir?: number;
   /** Sağ elinde nesne var: yüze giden jest sol elle yapılır. */
   holding?: boolean;
-  /** Anlatımın bu andaki ağız açıklığı (0 kapalı – 1 açık); kelime zamanı yoksa undefined. */
-  voice?: number;
+  /** Anlatımın bu andaki ağız şekli (vizem); kelime zamanı yoksa undefined. */
+  viseme?: Viseme;
   /** Çizimin ölçülmüş yüzü (rigGeometry, fitFace): el çeneye, ağız şekli ağzın yerine. */
   face?: FaceFit;
 }
@@ -194,19 +196,37 @@ const CHIN: [number, number] = [200, 242];
 /** Ölçülen çenenin makul bölgesi (iskelet tuvali): dışındaysa çizim kurala uymuyor, varsayılan çene kullanılır. */
 const CHIN_ZONE = { x: [140, 260], y: [180, 330] } as const;
 
-/** Jestlerin kullandığı yüz: çene (doğrulanmış) ve çene hattının yana uzaklığı (yüz genişliğinden). */
+/** Jestlerin kullandığı yüz: çene (doğrulanmış), çene hattının yana uzaklığı (yüz genişliğinden), konuşan ağız. */
 export interface FaceFit {
   chin: [number, number];
   jaw: number;
-  mouth?: Face["mouth"];
+  mouth?: SpeakingMouth;
 }
+
+/**
+ * Ölçülen ağız makul mü: başın içinde ve ondan çok küçük (başsız çizimde mutlak sınır). Ağız grubuna bıyık, sakal ya da
+ * yüzün yarısı konmuşsa konuşurken gizlemek onları da silerdi; o çizimde ağız eski yöntemle ölçeklenir.
+ */
+const MOUTH_FIT = { width: 0.6, height: 0.4, maxW: 110, maxH: 70 } as const;
 
 /** Ölçülen yüzden jest yüzü: çene makul bölgede değilse ya da yoksa varsayılan; çene hattı yüz genişliğinin ~%28'i. */
 export function fitFace(face: Face): FaceFit {
   const [x, y] = face.chin ?? CHIN;
   const inside = x >= CHIN_ZONE.x[0] && x <= CHIN_ZONE.x[1] && y >= CHIN_ZONE.y[0] && y <= CHIN_ZONE.y[1];
   const jaw = Math.min(42, Math.max(26, (face.head?.w ?? 120) * 0.28));
-  return { chin: inside ? [x, y] : CHIN, jaw, ...(face.mouth ? { mouth: face.mouth } : {}) };
+  const chin: [number, number] = inside ? [x, y] : CHIN;
+  const m = face.mouth;
+  const head = face.head;
+  const cx = m && m.x + m.w / 2;
+  const cy = m && m.y + m.h / 2;
+  const fits =
+    m &&
+    face.mouthFrame &&
+    (head
+      ? cx! >= head.x && cx! <= head.x + head.w && cy! >= head.y && cy! <= head.y + head.h && m.w <= head.w * MOUTH_FIT.width && m.h <= head.h * MOUTH_FIT.height
+      : m.w <= MOUTH_FIT.maxW && m.h <= MOUTH_FIT.maxH);
+  const mouth = fits ? { box: m, frame: face.mouthFrame!, ink: face.mouthInk ?? "#2b1d1d", drop: Math.max(6, chin[1] - lipLine(m!) - 3) } : undefined;
+  return { chin, jaw, ...(mouth ? { mouth } : {}) };
 }
 
 /** Yüzü ölçülemeyen kukla (yan görünüş, test). */
@@ -230,14 +250,31 @@ export function faceFor(asset: VectorAsset): FaceFit {
  * ellerle birlikte izleyici bunu sevinç diye okuyordu (3 Kas, C# incelemesi: "endişeli değil, kollarını kaldırmış neşeli";
  * 21 bölümün 9'unda benzer not).
  */
-const EXPRESSIONS: Record<VectorExpression, { brows: number; eyes: number; mouth: number; mouthW?: number; head: number; droop: number; lookX?: number }> = {
-  neutral: { brows: 0, eyes: 1, mouth: 1, head: 0, droop: 0 },
-  happy: { brows: -4, eyes: 0.9, mouth: 1.35, head: -1, droop: 0 },
-  sad: { brows: 4, eyes: 0.75, mouth: -0.8, head: 6, droop: 6 },
-  angry: { brows: 7, eyes: 0.8, mouth: -0.45, head: 2, droop: -3 },
-  worried: { brows: -5, eyes: 1.1, mouth: -0.5, head: 3, droop: 3 },
-  surprised: { brows: -10, eyes: 1.25, mouth: 0.3, mouthW: 0.6, head: -2, droop: 0 },
-  thinking: { brows: -3, eyes: 0.9, mouth: 0.45, head: 0, droop: 0, lookX: 6 },
+/** mood: koddan çizilen konuşan ağzın köşeleri (−1 somurtkan … 1 gülen; mouthShape). */
+const EXPRESSIONS: Record<VectorExpression, { brows: number; eyes: number; mouth: number; mouthW?: number; mood: number; head: number; droop: number; lookX?: number }> = {
+  neutral: { brows: 0, eyes: 1, mouth: 1, mood: 0.3, head: 0, droop: 0 },
+  happy: { brows: -4, eyes: 0.9, mouth: 1.35, mood: 0.8, head: -1, droop: 0 },
+  sad: { brows: 4, eyes: 0.75, mouth: -0.8, mood: -0.7, head: 6, droop: 6 },
+  angry: { brows: 7, eyes: 0.8, mouth: -0.45, mood: -0.5, head: 2, droop: -3 },
+  worried: { brows: -5, eyes: 1.1, mouth: -0.5, mood: -0.4, head: 3, droop: 3 },
+  surprised: { brows: -10, eyes: 1.25, mouth: 0.3, mouthW: 0.6, mood: 0, head: -2, droop: 0 },
+  thinking: { brows: -3, eyes: 0.9, mouth: 0.45, mood: 0.15, head: 0, droop: 0, lookX: 6 },
+};
+
+/**
+ * Ağzı koddan çizilemeyen yüzde (3D figür, ağzı ölçülemeyen çizim) vizemin ağız ölçeği: [genişlik, açıklık]. Sessizlik
+ * (X) kapalı ağızdır; D en açık, F en dar.
+ */
+const VISEME_SCALE: Record<Viseme, [number, number]> = {
+  X: [1, 0.35],
+  A: [0.95, 0.15],
+  B: [0.95, 0.45],
+  C: [1, 0.85],
+  D: [1.05, 1.25],
+  E: [0.72, 1.05],
+  F: [0.55, 0.75],
+  G: [0.92, 0.35],
+  H: [0.95, 0.8],
 };
 
 function rigPose(
@@ -604,10 +641,16 @@ function rigPose(
         part("head").rotate += Math.sin(t * 6) * 7 * w;
         break;
       case "talk":
-        // Konuşurken ağız açılıp kapanır; somurtan yüzde eğri ters kalır. Kelime zamanı varsa anlatımın hecelerine
-        // göre (sessizlikte kapalı), yoksa sabit ritimle.
-        const open = attention.voice ?? Math.abs(Math.sin(t * 13));
-        part("mouth").sy = Math.sign(face.mouth) * (0.35 + open * 0.9 * w + (1 - w) * 0.65);
+        // Konuşurken ağız anlatımın seslerine göre şekil alır (vizem). Ölçülen ağızda şekil koddan çizilir (Layer), çizimin
+        // ağzına dokunulmaz; 3D figürde ve ölçülemeyen ağızda ağız şekle göre ölçeklenir (somurtan yüzde eğri ters
+        // kalır). Kelime zamanı yoksa sabit ritimle açılıp kapanır.
+        if (attention.viseme) {
+          if (!attention.face?.mouth) {
+            const [sx, sy] = VISEME_SCALE[attention.viseme];
+            part("mouth").sx = (face.mouthW ?? 1) * (1 - w) + sx * w;
+            part("mouth").sy = Math.sign(face.mouth) * (Math.abs(face.mouth) * (1 - w) + sy * w);
+          }
+        } else part("mouth").sy = Math.sign(face.mouth) * (0.35 + Math.abs(Math.sin(t * 13)) * 0.9 * w + (1 - w) * 0.65);
         part("brows").ty += Math.sin(t * 4) * 2 * w;
         // Konuşurken baş ve gövde cümle ritmiyle hafifçe oynar.
         part("head").rotate += Math.sin(t * 3.1) * 2.5 * w;
@@ -957,6 +1000,8 @@ interface Motion {
   flip: boolean;
   /** Önden yana dönüşte yatay daralma (1 = yok): karakter dönüyormuş gibi görünür. */
   squash: number;
+  /** Konuşuyor: çizimin ağzı gizlenir, yerine bu vizemin koddan çizilmiş şekli görünür (ifadenin köşeleriyle). */
+  speak?: Viseme;
 }
 
 /**
@@ -973,7 +1018,7 @@ function motionOf(
   dur: number,
   focus: Focus = {},
   sideAsset?: VectorAsset,
-  voice?: number,
+  viseme?: Viseme,
 ): Motion {
   const pxPerMeter = STAGE.pxPerMeter * placed.scale;
   const anims = paceWalks(
@@ -1016,14 +1061,18 @@ function motionOf(
     const rx = (x - tr.x - (placed.x - placed.width / 2)) / k;
     return layer.flip ? RIG.width - rx : rx;
   };
+  const face = faceFor(asset);
   const attention: Attention = {
     aim: focus.aim ? [toRigX(focus.aim[0]), (focus.aim[1] - tr.y - (placed.y - placed.height)) / k] : undefined,
     lookDir: focus.lookX === undefined ? undefined : Math.sign(toRigX(focus.lookX) - RIG.width / 2),
     holding: focus.holding,
-    voice,
-    face: faceFor(asset),
+    viseme,
+    face,
   };
-  return { tr, flip: layer.flip, squash, turn, pose: rigPose(anims, p, t, prefix, placed.sitting, layer.expression, gait, layer.flip, attention, dur) };
+  const pose = rigPose(anims, p, t, prefix, placed.sitting, layer.expression, gait, layer.flip, attention, dur);
+  // Konuşma yarıdan fazla girmişken ses varsa şekil koddan çizilir; sessizlikte (X) çizimin kendi ağzı görünür.
+  const talking = face.mouth && viseme && viseme !== "X" && anims.some((a) => a.type === "talk" && gestureWeight(p, a, dur) >= 0.5);
+  return { tr, flip: layer.flip, squash, turn, pose, ...(talking ? { speak: viseme } : {}) };
 }
 
 /**
@@ -1044,28 +1093,6 @@ export function heldFraming(placed: PlacedLayer[], layers: VectorLayer[]): Place
     const [hx, hy] = handPoint(holder, layer, m);
     return { ...pl, x: hx, y: hy + pl.height * 0.45 };
   });
-}
-
-/**
- * Dudak senkronu: anlatımın o anki ağız açıklığı (0–1). Söylenen kelimenin süresi hece sayısına bölünür, her hecede
- * ağız açılıp kapanır; kelime arası ve sessizlikte kapalıdır. Eskiden konuşan karakterin ağzı anlatımdan bağımsız sabit
- * ritimle oynuyordu; sesle uyuşmayan ağız yapay duruyordu.
- */
-export function mouthOpen(words: WordTiming[], ms: number): number {
-  let lo = 0;
-  let hi = words.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const w = words[mid]!;
-    if (ms < w.startMs) hi = mid - 1;
-    else if (ms >= w.endMs) lo = mid + 1;
-    else {
-      const syllables = Math.max(1, w.text.match(/[aeıioöuüâîûyáéíóúàèìòùäë]+/giu)?.length ?? 0);
-      const phase = ((ms - w.startMs) / Math.max(1, w.endMs - w.startMs)) * syllables;
-      return Math.sin(Math.PI * (phase % 1)) ** 0.7;
-    }
-  }
-  return 0;
 }
 
 /** Kalçadan birlikte eğilen parçalar (çizimde kardeş gruplar). */
@@ -1175,7 +1202,15 @@ function Layer({
   // Elle çizim: öğeler bir kez işaretlenir (paper.js uzunlukları), her karede yalnız CSS değişir.
   const drawing = draw !== undefined && !figure;
   const plan = useMemo(() => (drawing ? drawPlan(shaped, `${prefix}d`) : undefined), [drawing, shaped, prefix]);
-  const svg = plan?.svg ?? shaped;
+  const drawnSvg = plan?.svg ?? shaped;
+  // Konuşan ağız: şekiller bir kez ağzın yanına gizli konur; konuşurken çizimin ağzı gizlenir, o anın şekli görünür.
+  // Yan çizimin ve 3D figürün ağzı ölçülmez.
+  const mouth = !figure && !motion.side && layer.anims.some((a) => a.type === "talk") ? faceFor(asset).mouth : undefined;
+  const mood = EXPRESSIONS[layer.expression ?? "neutral"].mood;
+  const mouths = useMemo(() => (mouth ? withMouths(drawnSvg, prefix, mouth, mood) : undefined), [drawnSvg, prefix, mouth, mood]);
+  const svg = mouths ?? drawnSvg;
+  const ids = mouthIds(prefix);
+  const speakCss = mouths && motion.speak ? `#${ids.mouth}{visibility:hidden}#${ids.shape(motion.speak)}{display:inline}` : "";
 
   // İskeletli karakterde parça dönüşleri kimlik seçicisiyle uygulanır (dönme noktaları RIG'de sabit).
   const rigCss = pose
@@ -1203,7 +1238,7 @@ function Layer({
   const drawn = <div style={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: svg }} />;
   return (
     <div style={style}>
-      {rigCss && <style>{rigCss}</style>}
+      {rigCss && <style>{rigCss + speakCss}</style>}
       {plan && <style>{drawCss(plan, draw!)}</style>}
       {figure ? (
         <>
@@ -1619,7 +1654,9 @@ export function VectorScene({
 }) {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
-  const voice = speech.length ? mouthOpen(speech, ((visual.fromFrame + frame) / fps) * 1000) : undefined;
+  // Dudak senkronu: anlatımın kelime zamanlarından ağız şekilleri (bölüm başından ms); her kare o anın şekli.
+  const cues = useMemo(() => visemeCues(speech), [speech]);
+  const viseme = speech.length ? visemeAt(cues, ((visual.fromFrame + frame) / fps) * 1000) : undefined;
   // Eski planlarda aynı karakterin kopyaları olabilir; render'da da tek kalır.
   const spec = useMemo(() => uniqueCharacters(visual.vector!, (id) => assets[id]?.kind === "character"), [visual.vector, assets]);
   const p = Math.min(1, frame / Math.max(1, visual.durationInFrames));
@@ -1679,7 +1716,7 @@ export function VectorScene({
       const layer = spec.layers[pl.index]!;
       const asset = safe[layer.asset]!;
       const focus = asset.kind === "character" ? focusOf(spec, placed, pl.index, (i) => safe[spec.layers[i]!.asset]?.kind) : {};
-      return [pl.index, motionOf(layer, asset, pl, p, t, `${visual.shotId}-${pl.index}-`, dur, focus, safe[sideAssetId(layer.asset)], voice)] as const;
+      return [pl.index, motionOf(layer, asset, pl, p, t, `${visual.shotId}-${pl.index}-`, dur, focus, safe[sideAssetId(layer.asset)], viseme)] as const;
     }),
   );
   // Kişi etiketi yazı katmanında (kamera dışında) çizilir ama kişiye aittir: yönetmenin noktasına en yakın kafaya

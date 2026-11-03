@@ -1,10 +1,12 @@
+import { RIG } from "@ys/core";
 import paper from "paper/dist/paper-core";
 
 /**
  * Çizimin gerçek yüz geometrisi (3 Kas): iskelet dönme noktaları sabit ama tasarımcılar başı farklı yüksekliğe, ağzı
  * farklı yere çiziyor (uzun boyunlu çizimde çene varsayılandan ~40 px yukarıdaydı; el çeneye ulaşmıyordu). "head",
  * "mouth" ve "eyes" gruplarının sınırları SVG'den ölçülür (grup dönüşümleri dahil; DOM gerekmez, render ve test aynı).
- * Koordinatlar viewBox'tan iskelet tuvaline (400×800) çevrilir.
+ * Koordinatlar viewBox'tan iskelet tuvaline (400×800) çevrilir. İskelet parçalarının kendi transform öznitelikleri
+ * sayılmaz: render pozu bunları CSS ile ezer (çizim render'da öyle görünür).
  */
 
 export interface Bounds {
@@ -20,9 +22,18 @@ export interface Face {
   eyes?: Bounds;
   /** Çene (elin değeceği yer): ağız ve gözlerden, yoksa başın altından; ikisi de yoksa undefined. */
   chin?: [number, number];
+  /**
+   * Ağzın ebeveyninin koordinatından iskelet tuvaline matris [a, b, c, d, e, f]: koddan çizilen ağız bunun tersiyle
+   * ağzın kardeşi olarak çizime konur (başla birlikte döner).
+   */
+  mouthFrame?: [number, number, number, number, number, number];
+  /** Ağız çizgisinin rengi (ilk geçerli çizgi, yoksa dolgu rengi). */
+  mouthInk?: string;
 }
 
 const PARTS = new Set(["head", "mouth", "eyes"]);
+/** Render pozunun CSS dönüşümüyle ezdiği kimlikler. */
+const POSED = new Set<string>([...Object.keys(RIG.pivots), "torso"]);
 const SKIP = /^(defs|clipPath|mask|pattern|symbol|marker|linearGradient|radialGradient|filter|metadata|title|desc|style)$/i;
 const SHAPE = /^(path|rect|circle|ellipse|line|polyline|polygon)$/i;
 
@@ -87,7 +98,7 @@ function shapeBounds(tag: string, a: Record<string, string>, matrix: paper.Matri
         item = new g.Path({ segments: Array.from({ length: Math.floor(p.length / 2) }, (_, i) => [p[2 * i]!, p[2 * i + 1]!]), insert: false });
       }
     }
-    item.transform(matrix.appended(transformOf(a.transform)));
+    item.transform(a.id && POSED.has(a.id) ? matrix : matrix.appended(transformOf(a.transform)));
   } catch {
     return undefined;
   }
@@ -102,6 +113,12 @@ const union = (a: Bounds | undefined, b: Bounds): Bounds => {
   return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
 };
 
+/** Öznitelikteki ya da style'daki boya; renk değilse (none, url(), currentColor) undefined. */
+function paintOf(a: Record<string, string>, key: "stroke" | "fill"): string | undefined {
+  const v = (a[key] ?? new RegExp(`(?:^|;)\\s*${key}\\s*:\\s*([^;]+)`).exec(a.style ?? "")?.[1])?.trim();
+  return v && /^(#[0-9a-f]{3,8}|rgba?\([\d.,\s%]+\)|[a-z]+)$/i.test(v) && !/^(none|transparent|currentcolor|inherit)$/i.test(v) ? v : undefined;
+}
+
 /** Çizimin baş, ağız ve göz grupları ile çenesi (iskelet tuvali koordinatında). */
 export function faceOf(svg: string, rig: { width: number; height: number } = { width: 400, height: 800 }): Face {
   const g = geometry();
@@ -110,8 +127,11 @@ export function faceOf(svg: string, rig: { width: number; height: number } = { w
   // viewBox → iskelet tuvali ("meet": oran korunur, ortalanır).
   const k = Math.min(rig.width / vw!, rig.height / vh!);
   const root = new g.Matrix().translate((rig.width - vw! * k) / 2, (rig.height - vh! * k) / 2).scale(k).translate(-vx!, -vy!);
-  const stack: { matrix: paper.Matrix; part?: string; group: boolean }[] = [{ matrix: root, group: true }];
+  const stack: { matrix: paper.Matrix; part?: string; stroke?: string; fill?: string }[] = [{ matrix: root }];
   const found: Partial<Record<"head" | "mouth" | "eyes", Bounds>> = {};
+  let frame: paper.Matrix | undefined;
+  let line: string | undefined;
+  let fill: string | undefined;
   let skip = 0;
   for (const [, close, name, raw, self] of svg.matchAll(/<(\/?)([a-zA-Z][\w:-]*)([^>]*?)(\/?)>/g)) {
     if (SKIP.test(name!)) {
@@ -126,17 +146,26 @@ export function faceOf(svg: string, rig: { width: number; height: number } = { w
     }
     const a = attrsOf(raw!);
     const top = stack.at(-1)!;
+    if (a.id === "mouth") frame ??= top.matrix;
+    const stroke = paintOf(a, "stroke") ?? top.stroke;
+    const paint = paintOf(a, "fill") ?? top.fill;
     if (name === "g" || name === "svg") {
       if (self) continue;
       const id = a.id && PARTS.has(a.id) ? a.id : top.part;
-      stack.push({ matrix: name === "svg" ? top.matrix : top.matrix.appended(transformOf(a.transform)), part: id, group: true });
+      const matrix = name === "svg" || (a.id && POSED.has(a.id)) ? top.matrix : top.matrix.appended(transformOf(a.transform));
+      stack.push({ matrix, part: id, stroke, fill: paint });
       continue;
     }
     if (!SHAPE.test(name!)) continue;
     const own = a.id && PARTS.has(a.id) ? a.id : top.part;
     if (!own) continue;
     const b = shapeBounds(name!, a, top.matrix);
-    if (b) found[own as "head"] = union(found[own as "head"], b);
+    if (!b) continue;
+    found[own as "head"] = union(found[own as "head"], b);
+    if (own === "mouth") {
+      line ??= stroke;
+      fill ??= paint;
+    }
   }
   const { head, mouth, eyes } = found;
   let chin: [number, number] | undefined;
@@ -145,5 +174,11 @@ export function faceOf(svg: string, rig: { width: number; height: number } = { w
     const bottom = mouth.y + mouth.h;
     chin = [mouth.x + mouth.w / 2, bottom + Math.max(6, (bottom - (eyes.y + eyes.h / 2)) * 0.45)];
   } else if (head) chin = [head.x + head.w / 2, head.y + head.h * 0.92];
-  return { ...found, ...(chin ? { chin } : {}) };
+  const ink = line ?? fill;
+  return {
+    ...found,
+    ...(chin ? { chin } : {}),
+    ...(frame && mouth ? { mouthFrame: [frame.a, frame.b, frame.c, frame.d, frame.tx, frame.ty] as Face["mouthFrame"] } : {}),
+    ...(ink ? { mouthInk: ink } : {}),
+  };
 }
