@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LocalizedError, msg } from "@ys/core";
 import { runMediaTool } from "@ys/video/tools";
+import { ALIGN, parseSilences, type Silence } from "./align.ts";
 
 /** ffprobe ile medya süresi (ms). PATH'te ffprobe yoksa Remotion'un kopyası kullanılır. */
 export async function probeDurationMs(bytes: Uint8Array, ext: string): Promise<number> {
@@ -22,6 +23,24 @@ export async function probeDurationMs(bytes: Uint8Array, ext: string): Promise<n
     const sec = Number.parseFloat(stdout.trim());
     if (!Number.isFinite(sec)) throw new LocalizedError(msg("err.media.probe", { output: stdout }));
     return Math.round(sec * 1000);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Sesteki sessizlikler (ms; ffmpeg silencedetect): kelime zamanları bunlara hizalanır (align.ts). Ölçülemezse (ffmpeg
+ * yok, filtre yok, bozuk dosya) boş liste: zamanlar noktalamadan tahmin edilir, seslendirme düşmez.
+ */
+export async function detectSilences(bytes: Uint8Array, ext: string, durationMs: number): Promise<Silence[]> {
+  const dir = await mkdtemp(join(tmpdir(), "ys-silence-"));
+  const file = join(dir, `voice.${ext}`);
+  try {
+    await writeFile(file, bytes);
+    const { stderr } = await runMediaTool("ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-af", `silencedetect=noise=${ALIGN.noiseDb}dB:d=${ALIGN.minSilence}`, "-f", "null", "-"]);
+    return parseSilences(stderr, durationMs);
+  } catch {
+    return [];
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

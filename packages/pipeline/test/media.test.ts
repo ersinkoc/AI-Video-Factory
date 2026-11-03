@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Gerçek ffmpeg/ffprobe çalıştırılmaz: execFile sahte, son çağrının argümanları saklanır.
-const proc = vi.hoisted(() => ({ calls: [] as { cmd: string; args: string[] }[], stdout: "", fileSeen: false }));
+const proc = vi.hoisted(() => ({ calls: [] as { cmd: string; args: string[] }[], stdout: "", stderr: "", fileSeen: false }));
 vi.mock("node:child_process", async () => {
   const fs = await import("node:fs");
   return {
@@ -11,12 +11,12 @@ vi.mock("node:child_process", async () => {
       // ffprobe çağrıldığında geçici dosya yazılmış olmalı.
       if (cmd === "ffprobe") proc.fileSeen = fs.existsSync(args.at(-1)!);
       if (proc.stdout === "çök") cb(new Error("ffprobe yok"));
-      else cb(null, { stdout: proc.stdout, stderr: "" });
+      else cb(null, { stdout: proc.stdout, stderr: proc.stderr });
     },
   };
 });
 
-const { mapLimit, normalizeClip, probeDurationMs } = await import("../src/media.ts");
+const { detectSilences, mapLimit, normalizeClip, probeDurationMs } = await import("../src/media.ts");
 
 beforeEach(() => {
   proc.calls = [];
@@ -41,6 +41,22 @@ describe("medya araçları", () => {
     expect(existsSync(proc.calls[0]!.args.at(-1)!)).toBe(false);
     proc.stdout = "çök";
     await expect(probeDurationMs(new Uint8Array([1]), "wav")).rejects.toThrow("ffprobe yok");
+  });
+
+  it("sesteki sessizlikleri ffmpeg silencedetect ile bulur; ffmpeg çökerse boş liste, geçici klasör silinir", async () => {
+    proc.stdout = "";
+    proc.stderr = "[silencedetect] silence_start: 0\n[silencedetect] silence_end: 0.2 | silence_duration: 0.2\nsilence_start: 1.5\nsilence_end: 1.9\n";
+    expect(await detectSilences(new Uint8Array([1]), "wav", 3000)).toEqual([
+      { start: 0, end: 200 },
+      { start: 1500, end: 1900 },
+    ]);
+    const { cmd, args } = proc.calls[0]!;
+    expect(cmd).toBe("ffmpeg");
+    expect(args[args.indexOf("-af") + 1]).toBe("silencedetect=noise=-35dB:d=0.12");
+    expect(existsSync(args[args.indexOf("-i") + 1]!)).toBe(false);
+    proc.stdout = "çök";
+    expect(await detectSilences(new Uint8Array([1]), "wav", 3000)).toEqual([]);
+    proc.stderr = "";
   });
 
   it("klibi hedef boyuta kırpar, sabit fps ve sessiz yazar", async () => {

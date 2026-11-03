@@ -89,7 +89,8 @@ import { seriesEpisodeIds, seriesOf, seriesStylePack } from "./series.ts";
 import { EpisodeRepo } from "./actions.ts";
 import { loadLessons, mergeLessons, saveLessons, topLessons, type LessonBook } from "./lessons.ts";
 import { invalidateFrom, missingSelections, newEpisodeState } from "./actions.ts";
-import { mapLimit, normalizeClip, probeDurationMs } from "./media.ts";
+import { alignWords } from "./align.ts";
+import { detectSilences, mapLimit, normalizeClip, probeDurationMs } from "./media.ts";
 import { anonymizeNames, castAliases } from "./names.ts";
 import { generateFlag, generateMap } from "./geo.ts";
 import { boardAccent, cleanMath, renderBoard } from "./manim.ts";
@@ -114,7 +115,7 @@ import {
 } from "./state.ts";
 import { existingSamples, loadStyleSamples, SAMPLE_BRIEF, STYLE_SAMPLES_ID, STYLE_SAMPLES_KEY, type StyleSample, type StyleSamples } from "./samples.ts";
 import { shortRange, shortTimeline } from "./short.ts";
-import { buildTimeline, clipSeconds, estimateWordTimings, resolveShotTimes, sceneOffsets, toSrt } from "./timing.ts";
+import { buildTimeline, clipSeconds, resolveShotTimes, sceneOffsets, toSrt } from "./timing.ts";
 import { varyShotSizes } from "./variety.ts";
 import { looksLikeObject } from "./cast-kind.ts";
 import type { EpisodeReview } from "./state.ts";
@@ -2128,12 +2129,15 @@ export class EpisodePipeline {
         state.voiceProviderId = res.providerId;
         const file = res.files[0]!;
         const bytes = await this.bytes(file.key);
-        const durationMs = await probeDurationMs(bytes, EXT[file.mimeType] ?? "bin");
+        const ext = EXT[file.mimeType] ?? "bin";
+        const durationMs = await probeDurationMs(bytes, ext);
+        // Sağlayıcı kelime zamanı vermediyse sesin sessizlikleri noktalamaya hizalanır (align.ts).
+        const words = res.words ?? alignWords(scene.narration, durationMs, await detectSilences(bytes, ext, durationMs));
         const sceneVoice: SceneVoice = {
           key: file.key,
           mimeType: file.mimeType,
           durationMs,
-          words: res.words ?? estimateWordTimings(scene.narration, durationMs),
+          words,
           estimatedTiming: !res.words,
           text: scene.narration,
         };

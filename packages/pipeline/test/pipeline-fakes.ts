@@ -105,6 +105,7 @@ export async function renderModule() {
 
 export const media = {
   probe: loose(async () => 2000),
+  silences: loose(async () => [] as { start: number; end: number }[]),
   normalize: loose(async (_input: string, output: string) => {
     await writeFile(output, "normalized");
   }),

@@ -13,7 +13,12 @@ vi.mock("@ys/video/render", async () => {
 });
 vi.mock("../src/media.ts", async (orig) => {
   const f = await import("./pipeline-fakes.ts");
-  return { ...(await orig<object>()), probeDurationMs: (...a: any[]) => f.media.probe(...a), normalizeClip: (...a: any[]) => f.media.normalize(...a) };
+  return {
+    ...(await orig<object>()),
+    probeDurationMs: (...a: any[]) => f.media.probe(...a),
+    normalizeClip: (...a: any[]) => f.media.normalize(...a),
+    detectSilences: (...a: any[]) => f.media.silences(...a),
+  };
 });
 vi.mock("../src/reference.ts", async (orig) => {
   const f = await import("./pipeline-fakes.ts");
@@ -482,7 +487,14 @@ describe("seslendirme aşaması", () => {
       return { files: [{ key, mimeType: "audio/x-unknown" }], providerId: "tts:plain", cacheHit: false, capability: req.capability };
     });
     const id = await h.seed(voiced({ voice: { s1: { ...voiceOf("s1"), text: "eski metin" } } }));
+    // Sesin baştaki ve sondaki sessizliğinde kelime yok (align.ts).
+    media.silences.mockResolvedValueOnce([
+      { start: 0, end: 100 },
+      { start: 1900, end: 2000 },
+    ]);
     const state = await h.pipeline.run(id, { only: "voice" });
+    expect(media.silences.mock.calls[0]).toEqual([expect.any(Uint8Array), "bin", 2000]);
+    expect([state.voice!.s1!.words[0]!.startMs, state.voice!.s1!.words.at(-1)!.endMs]).toEqual([100, 1900]);
     expect(h.gateway.generate.mock.calls.map((c) => [c[0].capability, c[1].policy.allow])).toEqual([
       ["tts", ["tts:plain"]],
       ["tts", ["tts:plain"]],
