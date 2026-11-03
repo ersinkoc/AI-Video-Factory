@@ -2,6 +2,18 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.3.0 (2026-11-03)
+
+- Twelve more style packs: painting and material studies
+- Real people get a likeness sheet measured from their photos
+- Force minimatch 11 for the DoS fix; patch trigger.dev's removed makeRe import
+- Brows carry the emotion: each drawing's brows split and tilt per expression
+- No pose goes past human joint limits; 3D limbs turn toward the camera instead of squashing
+- Typing hands rest on the keyboard instead of rubbing; writing no longer crosses the arms
+- Foreign terms are read the way the narration language says them
+- Animation lint: shots are checked before render, fixed in code or replanned; 24 more style packs
+- Key props that fail the gate get an iconic retry, then their scenes are replanned
+
 ## v0.2.1 (2026-11-03)
 
 - Pointing at something within reach stops at its edge
