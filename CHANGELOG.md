@@ -2,6 +2,10 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.3.1 (2026-11-03)
+
+- README: sponsor section (WrongStack)
+
 ## v0.3.0 (2026-11-03)
 
 - Twelve more style packs: painting and material studies
