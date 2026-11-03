@@ -517,8 +517,64 @@ describe("seslendirme aşaması", () => {
     const state = await h.pipeline.run(id, { only: "voice" });
     expect(h.gateway.generate.mock.calls[0]![1].policy.allow).toEqual(["tts:pinned"]);
     expect(h.gateway.generate.mock.calls[0]![0].capability).toBe("tts_timestamps");
-    expect(state.voice!.s1).toMatchObject({ estimatedTiming: false, words: [{ text: "x", startMs: 0, endMs: 10 }] });
+    // Zamanlar sağlayıcıdan; kelimeler anlatımın kendi kelimeleri (okunuş metninden geri çevrilir).
+    expect(state.voice!.s1!.estimatedTiming).toBe(false);
+    expect(state.voice!.s1!.words.map((w) => w.text)).toEqual(SCRIPT.scenes[0]!.narration.split(" "));
+    expect(state.voice!.s1!.words.every((w) => w.startMs >= 0 && w.endMs <= 10)).toBe(true);
     expect(media.probe.mock.calls[0]![1]).toBe("mp3");
+  });
+
+  const pinned = (h: ReturnType<typeof harness>) =>
+    h.gateway.generate.mockImplementation(async (_req, run) => {
+      const key = `assets/voice/${run.refId}.mp3`;
+      await h.store.put(key, new Uint8Array([1]));
+      return { files: [{ key, mimeType: "audio/mpeg" }], providerId: "tts:pinned", cacheHit: false };
+    });
+
+  it("yabancı terimler TTS'e okunuşlarıyla gider; altyazı yazılışı gösterir, ağız okunuşu izler; ajanın buldukları saklanır", async () => {
+    const h = harness();
+    pinned(h);
+    onAgent("pronouncer", (input: { language: string; known: string[]; text: string }) => {
+      expect(input.language).toBe("tr");
+      expect(input.known).toContain("C++");
+      expect(input.known).toContain("Wozniak");
+      expect(input.text).toBe("C++ ile Steve Jobs geldi.\n\nWozniak da geldi.");
+      return { terms: [{ written: "Steve Jobs", spoken: "Stiv Cobs" }, { written: "C++", spoken: "yanlış" }, { written: " ", spoken: "x" }, { written: "Apple", spoken: "Apple" }] };
+    });
+    const script = { ...SCRIPT, scenes: [scene("s1", "C++ ile Steve Jobs geldi."), scene("s2", "Wozniak da geldi.")] };
+    const id = await h.seed(voiced({ script, voiceProviderId: "tts:pinned", pronunciations: { Wozniak: "Vozniyak" } }));
+    const state = await h.pipeline.run(id, { only: "voice" });
+    expect(h.gateway.generate.mock.calls.map((c) => c[0].text)).toEqual(["si plas plas ile Stiv Cobs geldi.", "Vozniyak da geldi."]);
+    expect(state.pronunciations).toEqual({ Wozniak: "Vozniyak", "Steve Jobs": "Stiv Cobs" });
+    const s1 = state.voice!.s1!;
+    expect(s1.text).toBe("C++ ile Steve Jobs geldi.");
+    expect(s1.spoken).toBe("si plas plas ile Stiv Cobs geldi.");
+    expect(s1.words.map((w) => [w.text, w.say])).toEqual([
+      ["C++", "si plas plas"],
+      ["ile", undefined],
+      ["Steve", "Stiv"],
+      ["Jobs", "Cobs"],
+      ["geldi.", undefined],
+    ]);
+    expect(h.logs).toContain("  okunuş: C++ → si plas plas, Steve Jobs → Stiv Cobs, Wozniak → Vozniyak");
+    expect(callsOf("pronouncer")).toHaveLength(1);
+  });
+
+  it("okunuş ajanı çalışamazsa yalnız yerleşik sözlükle seslendirilir; değişmeyen metinde okunuş alanı yok", async () => {
+    const h = harness();
+    pinned(h);
+    onAgent("pronouncer", () => {
+      throw new Error("ajan düştü");
+    });
+    const script = { ...SCRIPT, scenes: [scene("s1", "Python dili."), scene("s2", "bir iki üç")] };
+    const base = voiced({ script, voiceProviderId: "tts:pinned" });
+    const id = await h.seed({ ...base, input: { ...base.input, lang: "xx" } });
+    const state = await h.pipeline.run(id, { only: "voice" });
+    // Bilinmeyen dilde yerleşik sözlük yok: metin olduğu gibi gider.
+    expect(h.gateway.generate.mock.calls.map((c) => c[0].text)).toEqual(["Python dili.", "bir iki üç"]);
+    expect(h.logs.some((l) => l.startsWith("⚠ yabancı terimlerin okunuşu çıkarılamadı") && l.includes("ajan düştü"))).toBe(true);
+    expect(state.voice!.s1!.spoken).toBeUndefined();
+    expect(h.logs.some((l) => l.startsWith("  okunuş:"))).toBe(false);
   });
 
   it("uygun sağlayıcı yoksa hata", async () => {

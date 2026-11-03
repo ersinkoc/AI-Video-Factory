@@ -212,6 +212,11 @@ export const PIPELINE_MESSAGES = {
   },
   "log.cast.done": { tr: "  {characters} karakter, {locations} mekân", en: "  {characters} characters, {locations} locations" },
   "log.voice.scene": { tr: "  {scene}: {sec} sn ({provider})", en: "  {scene}: {sec} s ({provider})" },
+  "log.voice.pronounce": { tr: "  okunuş: {terms}", en: "  pronunciation: {terms}" },
+  "log.voice.pronounceFailed": {
+    tr: "⚠ yabancı terimlerin okunuşu çıkarılamadı, yalnız yerleşik sözlük kullanılıyor: {error}",
+    en: "⚠ could not work out how foreign terms are read, using the built-in list only: {error}",
+  },
   "log.shots.done": { tr: "  {shots} çekim ({clips} AI klip)", en: "  {shots} shots ({clips} AI clips)" },
   "log.keyframe.failed": { tr: "  {shot} çizilemedi: {error}", en: "  {shot} could not be drawn: {error}" },
   "log.keyframe.redrawFailed": {

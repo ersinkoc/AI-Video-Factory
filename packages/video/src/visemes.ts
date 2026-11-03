@@ -65,7 +65,8 @@ export function visemeCues(words: readonly WordTiming[]): VisemeCue[] {
   const raw: VisemeCue[] = [];
   let last = -Infinity;
   for (const w of words) {
-    const parts = letters(w.text);
+    // Okunuşu farklı terimde ("C++" → "si plas plas") ağız okunuşu izler.
+    const parts = letters(w.say ?? w.text);
     if (!parts.length || w.endMs <= w.startMs) continue;
     const from = Math.max(0, last);
     if (w.startMs - last > VISEME_TIMING.rest && w.startMs > from) raw.push({ start: from, end: w.startMs, value: "X" });

@@ -36,6 +36,7 @@ export const AGENT_NAMES = [
   "lessonCurator",
   "packager",
   "figureDesigner",
+  "pronouncer",
 ] as const;
 export type AgentName = (typeof AGENT_NAMES)[number];
 
@@ -125,6 +126,8 @@ export const geo = {
 /** Her testten önce: işleyiciler, çağrı kayıtları ve sahtelerin varsayılan davranışı sıfırlanır. */
 export function resetFakes(): void {
   handlers.clear();
+  // Telaffuz ajanı her seslendirmede çağrılır: varsayılan olarak okunuşu değişecek terim yok.
+  handlers.set("pronouncer", () => ({ terms: [] }));
   agentCalls.length = 0;
   for (const group of [render, media, refs, geo]) for (const fn of Object.values(group)) fn.mockReset();
 }

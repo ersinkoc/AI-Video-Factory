@@ -7,7 +7,7 @@ import { useI18n } from "../locale-provider";
 
 /** Aşamaya göre gruplu ajanlar: kullanıcı hangi işin hangi modelle yapıldığını bir bakışta görür. */
 const GROUPS: { title: MessageKey; roles: AgentRole[] }[] = [
-  { title: "models.group.story", roles: ["style-picker", "art-director", "story-architect", "screenwriter", "script-doctor", "casting-director"] },
+  { title: "models.group.story", roles: ["style-picker", "art-director", "story-architect", "screenwriter", "script-doctor", "casting-director", "pronouncer"] },
   {
     title: "models.group.vector",
     roles: ["vector-director", "asset-planner", "vector-designer:character", "vector-designer:background", "vector-designer:prop", "vector-designer:redraw", "prop-physics", "figure-designer"],

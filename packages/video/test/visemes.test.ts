@@ -38,4 +38,11 @@ describe("ağız şekilleri (vizem)", () => {
     expect(visemeCues([w("IŞIK", 0, 400)]).map((c) => c.value)).toEqual(["B", "X"]);
     expect(visemeCues([w("Ünlü", 0, 400)]).map((c) => c.value)).toEqual(["F", "B", "H", "F", "X"]);
   });
+
+  it("okunuşu farklı terimde ağız okunuşu izler: C++ 'si plas plas' diye söylenir", () => {
+    const said = visemeCues([{ ...w("C++", 0, 900), say: "si plas plas" }]).map((c) => c.value);
+    expect(said).toEqual(visemeCues([w("si plas plas", 0, 900)]).map((c) => c.value));
+    expect(said).toContain("A");
+    expect(visemeCues([w("C++", 0, 900)]).map((c) => c.value)).not.toContain("A");
+  });
 });

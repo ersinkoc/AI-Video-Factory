@@ -51,7 +51,7 @@ export function speechBeats(words: readonly WordTiming[]): Beat[] {
     const phrase = w.startMs - last >= BEAT.pause;
     last = w.endMs;
     // Ünlüsüz "kelime" (rakam, kısaltma) vurgu taşımaz ama öbeği sürdürür.
-    const n = syllablesOf(w.text);
+    const n = syllablesOf(w.say ?? w.text);
     if (!n || (!phrase && n < BEAT.syllables)) continue;
     const beat = { at: w.startMs, strength: phrase ? 1 : 0.6, phrase };
     const prev = out.at(-1);

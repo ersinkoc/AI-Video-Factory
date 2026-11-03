@@ -18,6 +18,9 @@ describe("konuşma vurguları", () => {
       { at: 720, strength: 0.6, phrase: false },
       { at: 1600, strength: 1, phrase: true },
     ]);
+    // Hece sayısı okunuştan: "IBM" ("ay bi em", 3 hece) vurgu değil; "PHPnin" ("pi eyç pinin", 4 hece) vurgulu.
+    const said = speechBeats([w("Bugün", 0, 300), { ...w("IBM", 320, 900), say: "ay bi em" }, { ...w("PHPnin", 920, 1500), say: "pi eyç pinin" }]);
+    expect(said.map((b) => b.at)).toEqual([0, 920]);
   });
 
   it("iki vurgu çok yakınsa güçlü olan kalır; ünlüsüz kelime vurgu taşımaz ama öbeği sürdürür; süresiz kelime atlanır", () => {

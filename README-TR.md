@@ -35,7 +35,7 @@ Mimari, sağlayıcı seçimi ve yol haritası: [docs/PROJE_PLANI.md](docs/PROJE_
 - **Çok sayıda medya modeli, tek yönlendirici.** Ücretli çağrılar tek bir ağ geçidinden geçer: sağlayıcılar bölümün bütçe seviyesine göre kalite ve fiyatla sıralanır, istekler içerik hash'iyle önbelleğe alınır, bir sağlayıcı düşerse sıradakine geçilir. Bugün kullanılabilenler: fal (FLUX, Kontext, Seedream 4.5, Kling 3 / 2.6, MiniMax H3 Max Turbo, PixVerse V6, Vidu Q3 Turbo, Seedance 2), Gemini (Nano Banana görsel modelleri, TTS, isteğe bağlı Omni Flash video), ElevenLabs (ses, efekt, müzik) ve yerel ComfyUI. Para harcamadan sıralamayı görmek için: `pnpm ys plan`.
 - **Önce maliyet.** Para harcanmadan önce tahmin gösterilir. İstekler içerik hash'iyle önbelleğe alınır, aynı istek iki kez ödenmez. Bölüm bütçe tavanı ücretli görsel, ses ve video API'leri içindir. Claude ajan çağrıları ayrıca gösterilir ve tavana sayılmaz.
 - **Ajan başına model seçimi.** Stüdyo'nun **Modeller** sayfasından her ajanın hangi Claude modeliyle çalışacağını seçersin (ör. kalite kapısı için Haiku yerine Sonnet).
-- **İki dilli Stüdyo.** Arayüz Türkçe ve İngilizce. Videolar ses sağlayıcısının desteklediği her dilde üretilebilir.
+- **İki dilli Stüdyo.** Arayüz Türkçe ve İngilizce. Videolar ses sağlayıcısının desteklediği her dilde üretilebilir. Yabancı ad ve terimler anlatım dilini konuşanların söylediği gibi okunur: seslendirmeden önce yerleşik bir sözlük ve ucuz bir ajan bunları ses için okunuşa çevirir (Türkçe anlatım "C++"yı "ce artı artı" değil "si plas plas" diye söyler); altyazı özgün yazımı gösterir, dudaklar okunuşu izler.
 
 ## Gereksinimler
 

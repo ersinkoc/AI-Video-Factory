@@ -22,6 +22,7 @@ import {
   figureDesigner,
   fullDescription,
   packager,
+  pronouncer,
   type AgentImage,
   type VectorAssetOut,
   vectorDirector,
@@ -96,6 +97,7 @@ import { anonymizeNames, castAliases } from "./names.ts";
 import { generateFlag, generateMap } from "./geo.ts";
 import { boardAccent, cleanMath, renderBoard } from "./manim.ts";
 import { lintShot } from "@ys/video/lint";
+import { LEXICON, restoreWords, sayPlan } from "./pronounce.ts";
 import { MUSIC_RATE, musicTrack } from "@ys/video/music";
 import { mixSfx, sfxEvents, wavFile } from "@ys/video/sfx";
 import { findReferences, findVectorSources, rasterizeSvg, searchQuery, type References } from "./reference.ts";
@@ -1550,6 +1552,33 @@ export class EpisodePipeline {
   }
 
   /**
+   * Seslendirilecek sahnelerdeki yabancı terimlerin okunuşu: yerleşik sözlük (dile göre) ve telaffuz ajanının buldukları
+   * (bölüm başına bir ucuz çağrı; sonuç state.pronunciations'a yazılır, elle düzeltilen okunuş korunur). Ajan
+   * çalışamazsa yalnız sözlükle sürer: ses yine üretilir.
+   */
+  private async pronunciations(state: EpisodeState, scenes: NonNullable<EpisodeState["script"]>["scenes"]): Promise<Record<string, string>> {
+    const lexicon = LEXICON[state.input.lang.split("-")[0]!] ?? {};
+    state.pronunciations ??= {};
+    const known = { ...lexicon, ...state.pronunciations };
+    try {
+      const out = await this.agent(
+        state,
+        "voice",
+        pronouncer({ language: state.input.lang, text: scenes.map((s) => s.narration).join("\n\n"), known: Object.keys(known) }, this.agentDeps),
+      );
+      for (const t of out.terms) {
+        const written = t.written.trim();
+        const spoken = t.spoken.trim();
+        if (written && spoken && spoken !== written && !Object.hasOwn(known, written)) state.pronunciations[written] = spoken;
+      }
+      await this.save(state);
+    } catch (e) {
+      this.log(msg("log.voice.pronounceFailed", { error: errorText(e) }));
+    }
+    return { ...lexicon, ...state.pronunciations };
+  }
+
+  /**
    * Animasyon denetimi (3 Kas, kullanıcı: "SVG ve animasyonda sıfır hata, anlamsız hata olmasın; gerektiğinde sahneleri
    * yeniden kur"): planın her çekimi render'ın kurgusuyla ölçülür (@ys/video/lint; model yok, ücretsiz). İzleyicinin
    * göreceği hatası olan sahneler bulgularla bir tur yeniden planlanır (en çok hatalıdan, en çok ANIMATION_LINT.maxShare);
@@ -2245,17 +2274,24 @@ export class EpisodePipeline {
         );
       }
 
+      // Yabancı terimler TTS'e okunuşlarıyla gider ("C++" → "si plas plas"); altyazı yazılışı gösterir.
+      const terms = await this.pronunciations(state, todo);
+      const said: Record<string, string> = {};
       for (const scene of todo) {
         const run = this.runOptions(state, "voice", opts.signal, scene.id);
         run.policy = { ...run.policy, allow: [provider] };
-        const res = await gateway.generate(requestFor(scene.narration), run);
+        const plan = sayPlan(scene.narration, terms);
+        Object.assign(said, plan.used);
+        const res = await gateway.generate(requestFor(plan.spoken), run);
         state.voiceProviderId = res.providerId;
         const file = res.files[0]!;
         const bytes = await this.bytes(file.key);
         const ext = EXT[file.mimeType] ?? "bin";
         const durationMs = await probeDurationMs(bytes, ext);
-        // Sağlayıcı kelime zamanı vermediyse sesin sessizlikleri noktalamaya hizalanır (align.ts).
-        const words = res.words ?? alignWords(scene.narration, durationMs, await detectSilences(bytes, ext, durationMs));
+        // Sağlayıcı kelime zamanı vermediyse sesin sessizlikleri noktalamaya hizalanır (align.ts); zamanlar okunuş
+        // metninin kelimeleridir, yazılışın kelimelerine geri çevrilir.
+        const spokenWords = res.words ?? alignWords(plan.spoken, durationMs, await detectSilences(bytes, ext, durationMs));
+        const words = restoreWords(spokenWords, plan);
         const sceneVoice: SceneVoice = {
           key: file.key,
           mimeType: file.mimeType,
@@ -2263,11 +2299,20 @@ export class EpisodePipeline {
           words,
           estimatedTiming: !res.words,
           text: scene.narration,
+          ...(plan.spoken === scene.narration ? {} : { spoken: plan.spoken }),
         };
         voice[scene.id] = sceneVoice;
         await this.save(state);
         this.log(msg("log.voice.scene", { scene: scene.id, sec: (durationMs / 1000).toFixed(1), provider: res.providerId }));
       }
+      if (Object.keys(said).length)
+        this.log(
+          msg("log.voice.pronounce", {
+            terms: Object.entries(said)
+              .map(([w, s]) => `${w} → ${s}`)
+              .join(", "),
+          }),
+        );
     },
 
     shots: async (state) => {

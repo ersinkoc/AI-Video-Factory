@@ -107,6 +107,8 @@ export interface SceneVoice {
   estimatedTiming: boolean;
   /** Seslendirilen metin: senaryo değişince eski ses kullanılmasın (yoksa eski kayıt, yeniden üretilmez). */
   text?: string;
+  /** TTS'e giden okunuşlu metin, yazılıştan farklıysa (pronounce.ts). */
+  spoken?: string;
 }
 
 export interface PlannedShotState {
@@ -220,6 +222,11 @@ export interface EpisodeState {
   cast?: CastOut;
   concept?: ConceptState;
   voice?: Record<string, SceneVoice>;
+  /**
+   * Yabancı terimlerin seslendirmedeki okunuşu (yazılış → okunuş): telaffuz ajanının bulduğu ya da elle düzeltilen;
+   * yerleşik sözlüğün (pronounce.ts LEXICON) üstüne yazar.
+   */
+  pronunciations?: Record<string, string>;
   shotPlan?: ShotPlanOut;
   /**
    * Yarıda kalan vektör çekim planı: sahne → (girdilerin parmak izi, çekimler). Aşama düşerse ödenmiş sahne planları
