@@ -15,6 +15,19 @@ describe("büyütme balonu: hangi nesne", () => {
     expect(calloutTarget(shot(), [pl(0, 600), pl(2, 40)], props, 1)).toBeUndefined();
   });
 
+  it("elde nesne yoksa masaya konan çok küçük nesnelerin en küçüğü; masa, üstünde bir şey duran nesne ve okunur boydaki nesne değil", () => {
+    // Masa (1), üstünde monitör (2, 100 px: okunur), zarf (3, 30 px), kalem (4, 20 px), monitörün üstünde etiket (5, 25 px).
+    const desk = [pl(0, 600), pl(1, 300), pl(2, 100, { on: 1 }), pl(3, 30, { on: 1 }), pl(4, 20, { on: 1 }), pl(5, 25, { on: 2 })];
+    const all = () => true;
+    expect(calloutTarget(shot(), desk, all, 1)).toBe(4);
+    // Eşit boyda kimlik sırası; okunur boydakiler (6%'nın üstü) aday değil.
+    expect(calloutTarget(shot(), [pl(1, 300), pl(3, 30, { on: 1 }), pl(4, 30, { on: 1 })], all, 1)).toBe(3);
+    expect(calloutTarget(shot(), [pl(1, 300), pl(2, 100, { on: 1 })], all, 1)).toBeUndefined();
+    // Masada yalnız karakter oturuyorsa (nesne değil) balon yok; elde tutulan küçük nesne masadakinden önce gelir.
+    expect(calloutTarget(shot(), [pl(1, 300), pl(4, 20, { on: 1 })], (i) => i !== 4, 1)).toBeUndefined();
+    expect(calloutTarget(shot(), [...desk, pl(6, 60, { heldBy: 0 })], all, 1)).toBe(6);
+  });
+
   it("yönetmenin seçtiği nesne: küçükse balon, büyük, karakter ya da yerleşmemişse yok", () => {
     const placed = [pl(0, 600), pl(1, 60, { heldBy: 0 }), pl(2, 200)];
     expect(calloutTarget(shot({ callout: 2 }), placed, props, 1)).toBe(2);

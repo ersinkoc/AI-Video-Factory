@@ -10,6 +10,8 @@ export const CALLOUT = {
   r: 175,
   /** Yönetmen istemeden balon: elde tutulan nesne ekranda kare yüksekliğinin bundan azıysa. */
   autoBelow: 0.1,
+  /** Masaya/rafa konan nesneye yönetmen istemeden balon: yalnız gerçekten okunmayacak kadar küçükse. */
+  restingBelow: 0.06,
   /** Yönetmen istese de bundan büyük görünen nesneye balon açılmaz (zaten okunuyor). */
   askedBelow: 0.25,
   /** Bu zoom'dan itibaren yakın çekim: nesne zaten büyük. */
@@ -30,8 +32,10 @@ export interface Box {
 }
 
 /**
- * Balonla gösterilecek katman: yönetmenin seçtiği küçük nesne, yoksa elde tutulan küçük nesne. Yakın çekimde, haritada ve
- * Manim tahtalı çekimde balon yok (nesne zaten büyük ya da orta alan dolu).
+ * Balonla gösterilecek katman: yönetmenin seçtiği küçük nesne, yoksa elde tutulan küçük nesne, o da yoksa masaya/rafa
+ * konan çok küçük nesnelerin en küçüğü (3 Kas, Java planı: yönetmen 27 çekimde hiç balon seçmedi; C# incelemesi: "zarf
+ * masada minik", "Java penceresi küçük"). Üstünde bir şey duran yüzey aday değil. Yakın çekimde, haritada ve Manim tahtalı
+ * çekimde balon yok (nesne zaten büyük ya da orta alan dolu).
  */
 export function calloutTarget(spec: VectorShot, placed: PlacedLayer[], isProp: (index: number) => boolean, zoom: number): number | undefined {
   if (zoom >= CALLOUT.closeUp || spec.math) return undefined;
@@ -40,7 +44,11 @@ export function calloutTarget(spec: VectorShot, placed: PlacedLayer[], isProp: (
     const asked = placed.find((pl) => pl.index === spec.callout);
     return asked && isProp(asked.index) && small(asked, CALLOUT.askedBelow) ? asked.index : undefined;
   }
-  return placed.find((pl) => pl.heldBy !== undefined && isProp(pl.index) && small(pl, CALLOUT.autoBelow))?.index;
+  const held = placed.find((pl) => pl.heldBy !== undefined && isProp(pl.index) && small(pl, CALLOUT.autoBelow));
+  if (held) return held.index;
+  const surfaces = new Set(placed.map((pl) => pl.on));
+  const resting = placed.filter((pl) => pl.on !== undefined && !surfaces.has(pl.index) && isProp(pl.index) && small(pl, CALLOUT.restingBelow));
+  return resting.sort((a, b) => a.height - b.height || a.index - b.index)[0]?.index;
 }
 
 /** İki kutunun kesişim alanı. */
