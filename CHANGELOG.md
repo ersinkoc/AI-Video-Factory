@@ -2,6 +2,14 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.2.1 (2026-11-03)
+
+- Pointing at something within reach stops at its edge
+- Talking distance: standing people in a wide shot come within 1.5 m
+- Thinking poses: chin on hand, head scratch or arms crossed, picked per shot
+- Thinking pose: chin rests on the hand in front of the face
+- Standing poses: weight on one leg, listener rest poses, give, nod and head shake
+
 ## v0.2.0 (2026-11-03)
 
 - Word timings aligned to the pauses in the recorded voice
