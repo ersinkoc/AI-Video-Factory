@@ -555,6 +555,34 @@ describe("vektör sahne: karakter iskeleti", () => {
     cleanup();
   });
 
+  it("konuşurken baş vurguda iner, öbek başında kaşlar kalkar, el vurgulu kelimede en uçta; vurgu yokken el inik", () => {
+    // Kare 150 = 5000 ms. "merhaba" 5000'de başlar: öbek başı (güç 1). Uzak konuşmada bu anda vurgu yok.
+    const at = (startMs: number, anims: object[] = [{ type: "talk" }]) => {
+      const c = scene(heroShot({ anims }), { frame: 150, speech: [{ text: "merhaba", startMs, endMs: startMs + 600 }] });
+      const css = c.querySelector("style")!.textContent!;
+      cleanup();
+      return (part: string) => pose(css, part);
+    };
+    const beat = at(5000);
+    const calm = at(9000);
+    const nod = Math.sin((Math.PI * 80) / 380);
+    const brow = Math.sin((Math.PI * 80) / 650);
+    expect(beat("head").ty - calm("head").ty).toBeCloseTo(nod * 3.5, 1);
+    // Kaş öbek başında kalkar; el vurgusu da kaşı 3 px kaldırır.
+    expect(beat("brows").ty - calm("brows").ty).toBeCloseTo(-brow * 3.5 - 3, 1);
+    expect(beat("head").rotate).toBeCloseTo(calm("head").rotate, 5);
+    // Kelime başında el vurgusu tutuluyor: bir kol 62°(+titreme) dışa açık; vurgu yokken kendiliğinden jest yapılmaz.
+    const lift = (g: (p: string) => { rotate: number }) => Math.max(Math.abs(g("forearm-r").rotate - calm("forearm-r").rotate), Math.abs(g("forearm-l").rotate - calm("forearm-l").rotate));
+    expect(lift(beat)).toBeCloseTo(62 + Math.sin(5 * 5) * 6, 1);
+    const still = heroAt(150).get;
+    expect(calm("forearm-r").rotate).toBeCloseTo(still("forearm-r").rotate, 5);
+    cleanup();
+    // Anlatırken baskın el vurgulu kelimede aşağı vurur, arada kalkık durur.
+    const explain = [{ type: "explain" }, { type: "talk" }];
+    expect(at(5000, explain)("forearm-r").rotate).toBeCloseTo(-(60 + (0.5 - 1.5 * nod) * 12), 1);
+    expect(at(9000, explain)("forearm-r").rotate).toBeCloseTo(-(60 + 0.5 * 12), 1);
+  });
+
   it("bilek: boşta ön kolu izler, el sallarken kıvrılır, anlatırken avuç dışa döner, nesne tutan el düz kalır", () => {
     const idle = heroAt(150).get("hand-r").rotate;
     cleanup();
@@ -768,6 +796,13 @@ describe("vektör sahne: yan görünüş", () => {
     const legs = [pose(css, "leg-l").rotate, pose(css, "leg-r").rotate];
     expect(legs[0]).toBeCloseTo(-legs[1]!, 5);
     expect(pose(css, "eyes").tx).toBe(0);
+    cleanup();
+  });
+
+  it("yürürken konuşan yan çizime koddan ağız konmaz (yan çizimin ağzı ölçülmez)", () => {
+    const { side, c } = walkerAt(25, { anims: [{ type: "walk", toX: 1500 }, { type: "talk" }] });
+    expect(side).toBe(true);
+    expect(c.querySelector("[id^='s1-0-viseme-']")).toBeNull();
     cleanup();
   });
 

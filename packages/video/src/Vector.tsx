@@ -30,6 +30,7 @@ import { useMemo, type CSSProperties } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
 import { Ambience } from "./Ambience.tsx";
+import { armBeats, BEAT, pulseAt, speechBeats, strokeAt } from "./beats.ts";
 import { CALLOUT, calloutScale, calloutSpot, calloutTarget, overlap, type Box } from "./callout.ts";
 import { Figure3D } from "./Figure3D.tsx";
 import { clapClosed, penDown, typingTaps } from "./gesture-timing.ts";
@@ -182,10 +183,25 @@ interface Attention {
   lookDir?: number;
   /** Sağ elinde nesne var: yüze giden jest sol elle yapılır. */
   holding?: boolean;
-  /** Anlatımın bu andaki ağız şekli (vizem); kelime zamanı yoksa undefined. */
-  viseme?: Viseme;
+  /** Anlatımın bu anı (ağız şekli ve vurgular); kelime zamanı yoksa undefined. */
+  voice?: Voice;
   /** Çizimin ölçülmüş yüzü (rigGeometry, fitFace): el çeneye, ağız şekli ağzın yerine. */
   face?: FaceFit;
+}
+
+/**
+ * Anlatımın bu karesi: ağız şekli (vizem) ve konuşma vurguları (beats.ts). Yalnız konuşan karakter kullanır: baş
+ * vurguda iner kalkar, öbek başında kaşlar kalkar, el vurgusu vurgulu kelimeye denk gelir.
+ */
+export interface Voice {
+  viseme: Viseme;
+  /** Baş vurgusu (0–1). */
+  nod: number;
+  /** Öbek başında kaş kalkışı (0–1). */
+  brow: number;
+  /** El vurgusunun genliği (0–1) ve kaçıncı vurgu olduğu (hangi el). */
+  stroke: number;
+  strokeIndex: number;
 }
 
 /** Kol boyları (iskelet): omuzdan dirseğe; dirsekten elin tuttuğu/değdiği noktaya (bilek + elin ortası). */
@@ -335,13 +351,18 @@ function rigPose(
 
   // --- kendiliğinden jest: kolu meşgul eden bir animasyon yoksa ara ara anlatır gibi el hareketi
   const armsBusy = gait.amount > 0.05 || anims.some((a) => ARM_GESTURES.includes(a.type) && active(p, a));
+  // Konuşuyor (talk penceresinde) ve kelime zamanı var: jestler sesin vurgularına bağlanır.
+  const talking = Math.max(0, ...anims.filter((a) => a.type === "talk").map((a) => Math.min(1, gestureWeight(p, a, dur))));
+  const voice = talking > 0 ? attention.voice : undefined;
   if (!armsBusy) {
+    // Konuşurken el, öbek başındaki vurgulu kelimede en uçta olacak şekilde kalkar; yoksa ara ara (rastgele zamanlı).
     const every = 4 + r("g") * 2.5;
     const phase = (t + r("gp") * every) % every;
-    if (phase < 1.4) {
-      const k = Math.sin((phase / 1.4) * Math.PI);
+    const k = voice ? voice.stroke * talking : phase < 1.4 ? Math.sin((phase / 1.4) * Math.PI) : 0;
+    const which = voice ? voice.strokeIndex : Math.floor((t + r("gp") * every) / every);
+    if (k > 0) {
       // Sağ el nesne tutuyorsa kendiliğinden jest sol elle yapılır.
-      const right = !attention.holding && random(`${seed}-gs-${Math.floor((t + r("gp") * every) / every)}`) < 0.6;
+      const right = !attention.holding && random(`${seed}-gs-${which}`) < 0.6;
       // El dışa, avuç yukarı açılır. (Eski işaretler ters: el karna gidiyordu.) Dönüş ekranda saat yönü artıdır; sarkan
       // kol artıda ekranın soluna döner, yani sağdaki kol (arm-r) eksiyle, soldaki artıyla dışa açılır.
       if (right) {
@@ -448,10 +469,12 @@ function rigPose(
         const other = dom === "r" ? "l" : "r";
         // Sağdaki kol (r) eksiyle, soldaki artıyla dışa açılır.
         const out = dom === "r" ? -1 : 1;
-        mix(`arm-${dom}`, "rotate", out * (20 + Math.sin(t * 3) * 5));
-        mix(`forearm-${dom}`, "rotate", out * (60 + Math.sin(t * 3.4) * 12));
-        // Avuç yukarı-dışa döner, vurguyla bilek kıvrılır.
-        mix(`hand-${dom}`, "rotate", out * (26 + Math.sin(t * 3.4 - 0.7) * 12));
+        // Konuşurken el vurgulu kelimede aşağı vurur (jest vurgusu), arada kalkık durur; yoksa sabit ritim.
+        const beat = voice ? 0.5 - 1.5 * voice.nod : Math.sin(t * 3.4);
+        mix(`arm-${dom}`, "rotate", out * (20 + (voice ? beat * 3 : Math.sin(t * 3) * 5)));
+        mix(`forearm-${dom}`, "rotate", out * (60 + beat * 12));
+        // Avuç yukarı-dışa döner, vurguyla bilek kıvrılır (bilek ön kolu geriden izler).
+        mix(`hand-${dom}`, "rotate", out * (26 + (voice ? beat : Math.sin(t * 3.4 - 0.7)) * 12));
         mix(`arm-${other}`, "rotate", -out * (8 + Math.sin(t * 2.6 + 1) * 3));
         mix(`forearm-${other}`, "rotate", -out * (28 + Math.sin(t * 3 + 1) * 8));
         mix("brows", "ty", -3 + Math.sin(t * 3) * 2);
@@ -644,17 +667,25 @@ function rigPose(
         // Konuşurken ağız anlatımın seslerine göre şekil alır (vizem). Ölçülen ağızda şekil koddan çizilir (Layer), çizimin
         // ağzına dokunulmaz; 3D figürde ve ölçülemeyen ağızda ağız şekle göre ölçeklenir (somurtan yüzde eğri ters
         // kalır). Kelime zamanı yoksa sabit ritimle açılıp kapanır.
-        if (attention.viseme) {
+        if (attention.voice) {
           if (!attention.face?.mouth) {
-            const [sx, sy] = VISEME_SCALE[attention.viseme];
+            const [sx, sy] = VISEME_SCALE[attention.voice.viseme];
             part("mouth").sx = (face.mouthW ?? 1) * (1 - w) + sx * w;
             part("mouth").sy = Math.sign(face.mouth) * (Math.abs(face.mouth) * (1 - w) + sy * w);
           }
         } else part("mouth").sy = Math.sign(face.mouth) * (0.35 + Math.abs(Math.sin(t * 13)) * 0.9 * w + (1 - w) * 0.65);
-        part("brows").ty += Math.sin(t * 4) * 2 * w;
-        // Konuşurken baş ve gövde cümle ritmiyle hafifçe oynar.
-        part("head").rotate += Math.sin(t * 3.1) * 2.5 * w;
-        part("torso").rotate += Math.sin(t * 2.3) * 1.5 * w;
+        if (voice) {
+          // Vurguda baş iner kalkar, öbek başında kaşlar kalkar; baş ve gövde arada yalnız hafifçe salınır.
+          part("head").ty += voice.nod * 3.5 * w;
+          part("brows").ty -= voice.brow * 3.5 * w;
+          part("head").rotate += Math.sin(t * 1.7) * 1.2 * w;
+          part("torso").rotate += (Math.sin(t * 1.3) * 0.8 + voice.nod * 0.8) * w;
+        } else {
+          // Kelime zamanı yok: baş, kaş ve gövde sabit ritimle oynar.
+          part("brows").ty += Math.sin(t * 4) * 2 * w;
+          part("head").rotate += Math.sin(t * 3.1) * 2.5 * w;
+          part("torso").rotate += Math.sin(t * 2.3) * 1.5 * w;
+        }
         break;
       default:
         break;
@@ -1018,7 +1049,7 @@ function motionOf(
   dur: number,
   focus: Focus = {},
   sideAsset?: VectorAsset,
-  viseme?: Viseme,
+  voice?: Voice,
 ): Motion {
   const pxPerMeter = STAGE.pxPerMeter * placed.scale;
   const anims = paceWalks(
@@ -1066,11 +1097,12 @@ function motionOf(
     aim: focus.aim ? [toRigX(focus.aim[0]), (focus.aim[1] - tr.y - (placed.y - placed.height)) / k] : undefined,
     lookDir: focus.lookX === undefined ? undefined : Math.sign(toRigX(focus.lookX) - RIG.width / 2),
     holding: focus.holding,
-    viseme,
+    voice,
     face,
   };
   const pose = rigPose(anims, p, t, prefix, placed.sitting, layer.expression, gait, layer.flip, attention, dur);
   // Konuşma yarıdan fazla girmişken ses varsa şekil koddan çizilir; sessizlikte (X) çizimin kendi ağzı görünür.
+  const viseme = voice?.viseme;
   const talking = face.mouth && viseme && viseme !== "X" && anims.some((a) => a.type === "talk" && gestureWeight(p, a, dur) >= 0.5);
   return { tr, flip: layer.flip, squash, turn, pose, ...(talking ? { speak: viseme } : {}) };
 }
@@ -1655,8 +1687,16 @@ export function VectorScene({
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
   // Dudak senkronu: anlatımın kelime zamanlarından ağız şekilleri (bölüm başından ms); her kare o anın şekli.
+  // Konuşma vurguları: baş, kaş ve el bunlara denk gelir (beats.ts).
   const cues = useMemo(() => visemeCues(speech), [speech]);
-  const viseme = speech.length ? visemeAt(cues, ((visual.fromFrame + frame) / fps) * 1000) : undefined;
+  const beats = useMemo(() => speechBeats(speech), [speech]);
+  const strokes = useMemo(() => armBeats(beats), [beats]);
+  const phrases = useMemo(() => beats.filter((b) => b.phrase), [beats]);
+  const ms = ((visual.fromFrame + frame) / fps) * 1000;
+  const stroke = strokeAt(strokes, ms);
+  const voice: Voice | undefined = speech.length
+    ? { viseme: visemeAt(cues, ms), nod: pulseAt(beats, ms, BEAT.nod), brow: pulseAt(phrases, ms, BEAT.brow), stroke: stroke.k, strokeIndex: stroke.index }
+    : undefined;
   // Eski planlarda aynı karakterin kopyaları olabilir; render'da da tek kalır.
   const spec = useMemo(() => uniqueCharacters(visual.vector!, (id) => assets[id]?.kind === "character"), [visual.vector, assets]);
   const p = Math.min(1, frame / Math.max(1, visual.durationInFrames));
@@ -1716,7 +1756,7 @@ export function VectorScene({
       const layer = spec.layers[pl.index]!;
       const asset = safe[layer.asset]!;
       const focus = asset.kind === "character" ? focusOf(spec, placed, pl.index, (i) => safe[spec.layers[i]!.asset]?.kind) : {};
-      return [pl.index, motionOf(layer, asset, pl, p, t, `${visual.shotId}-${pl.index}-`, dur, focus, safe[sideAssetId(layer.asset)], viseme)] as const;
+      return [pl.index, motionOf(layer, asset, pl, p, t, `${visual.shotId}-${pl.index}-`, dur, focus, safe[sideAssetId(layer.asset)], voice)] as const;
     }),
   );
   // Kişi etiketi yazı katmanında (kamera dışında) çizilir ama kişiye aittir: yönetmenin noktasına en yakın kafaya
