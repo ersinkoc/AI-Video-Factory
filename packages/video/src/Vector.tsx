@@ -179,6 +179,8 @@ const STILL: Gait = { steps: 0, amount: 0, dir: 0 };
 interface Attention {
   /** point hedefi (iskelet tuvali, 400×800). */
   aim?: readonly [number, number];
+  /** Hedef bir katmansa onun bu kişiye bakan dikey kenarı (iskelet x): parmak ucu bunun önünde durur. */
+  edge?: number;
   /** Sahnedeki en yakın diğer karakterin yönü: −1 sol, 1 sağ. */
   lookDir?: number;
   /** give alıcısının göğsü (iskelet tuvali); yoksa undefined. */
@@ -515,8 +517,19 @@ function rigPose(
         const hand = ax >= RIG.width / 2 ? "r" : "l";
         const [sx, sy] = RIG.pivots[`arm-${hand}`];
         const toward = hand === "r" ? 1 : -1;
-        mix(`arm-${hand}`, "rotate", (Math.atan2(-(ax - sx), ay - sy) * 180) / Math.PI);
-        mix(`forearm-${hand}`, "rotate", -6 * toward);
+        // Hedef kol boyundan yakınsa dirsek bükülür, parmak ucu nesnenin yakın kenarının önünde durur: düz kol eli
+        // nesnenin üstüne bindiriyordu (konuşma mesafesiyle kişiler eşyaya yaklaşınca ekranı elle kapatıyordu, 3 Kas).
+        // Kenar omzun gerisindeyse (kişi nesnenin önünde) düz kol nesnenin üstünden gösterir.
+        const dx = ax - sx;
+        const dy = ay - sy;
+        const len = Math.hypot(dx, dy);
+        const edge = attention.edge;
+        const fingers = (attention.face ?? NO_FACE).fingers[hand];
+        const along = edge !== undefined && dx * toward > 0 ? ((edge - toward * (fingers + POINT.gap) - sx) / dx) * len : Infinity;
+        const full = ARM.upper + ARM.reach;
+        const near = along > 0 && along < full ? reach([sx, sy], [sx + (dx / len) * Math.max(along, full * POINT.min), sy + (dy / len) * Math.max(along, full * POINT.min)], ARM.upper, ARM.reach) : undefined;
+        mix(`arm-${hand}`, "rotate", near ? near.arm : (Math.atan2(-dx, dy) * 180) / Math.PI);
+        mix(`forearm-${hand}`, "rotate", near ? near.forearm : -6 * toward);
         mix(`hand-${hand}`, "rotate", 0);
         mix("head", "rotate", -4 * toward);
         mix("eyes", "tx", 5 * toward);
@@ -869,6 +882,12 @@ export function stanceAt(t: number, seed: string): number {
   return side(n - 1) * (1 - e) + side(n) * e;
 }
 
+/**
+ * İşaret: parmak ucu hedefin kenarından gap px önde durur; el omuzdan en az min × kol boyu uzakta (çok yakındaki nesneye
+ * kol katlanmaz). Hedefin kenarı çizim kutusunun yarı genişliğinin edge'i kadar ortadan (kutunun kenarında boşluk olur).
+ */
+export const POINT = { gap: 6, min: 0.6, edge: 0.4 } as const;
+
 /** Uzatma: elin omuzdan uzaklığı (kol boyunun kesri) ve öne uzanırken aşağı eğimi (yatay 1'e karşı). */
 const GIVE = { reach: 0.85, drop: 0.5 } as const;
 
@@ -922,6 +941,8 @@ const rot = ([x, y]: readonly [number, number], deg: number): [number, number] =
 /** Karakterin sahnedeki ilgi noktaları (tuval koordinatı): işaret hedefi ve bakacağı diğer karakterin x'i. */
 export interface Focus {
   aim?: readonly [number, number];
+  /** Hedef katmanın kişiye bakan dikey kenarı (tuval x); hedef yazıysa yok. */
+  aimEdge?: number;
   lookX?: number;
   /** Elinde bir şey tutuyor (nesne sağ eli izler). */
   holding?: boolean;
@@ -949,8 +970,11 @@ export function focusOf(spec: VectorShot, placed: PlacedLayer[], index: number, 
   // Bilgi kartının yeri sabit (sol üst); işaret yalnız yerinde duran kişi etiketine gider.
   const text = spec.texts.find((tx) => tx.style === "label");
   const aim = explicit ? center(explicit) : beside ? center(beside) : text ? ([text.x, text.y] as const) : undefined;
+  const at = explicit ?? beside;
   return {
     aim,
+    // Çizim kutusunun kenarında genelde boşluk var: yarı genişliğin POINT.edge'i.
+    ...(at ? { aimEdge: at.x - Math.sign(at.x - self.x || 1) * at.width * POINT.edge } : {}),
     lookX: near(people)?.x,
     holding: placed.some((pl) => pl.heldBy === index),
     ...(receiver ? { receiver: [receiver.x, receiver.y - receiver.height * 0.6] as const } : {}),
@@ -1316,6 +1340,7 @@ function motionOf(
   const face = faceFor(asset);
   const attention: Attention = {
     aim: focus.aim ? [toRigX(focus.aim[0]), (focus.aim[1] - tr.y - (placed.y - placed.height)) / k] : undefined,
+    ...(focus.aimEdge === undefined ? {} : { edge: toRigX(focus.aimEdge) }),
     lookDir: focus.lookX === undefined ? undefined : Math.sign(toRigX(focus.lookX) - RIG.width / 2),
     holding: focus.holding,
     receiver: focus.receiver ? [toRigX(focus.receiver[0]), (focus.receiver[1] - tr.y - (placed.y - placed.height)) / k] : undefined,

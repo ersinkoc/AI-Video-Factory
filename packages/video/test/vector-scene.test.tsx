@@ -35,7 +35,7 @@ vi.mock("../src/Figure3D.tsx", () => ({
 
 const { clapClosed, penDown, typingTaps } = await import("../src/gesture-timing.ts");
 const { tip } = await import("../src/ik.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -990,6 +990,37 @@ describe("vektör sahne: dikkat (işaret ve bakış)", () => {
     expect(flipped("arm-l").rotate).toBeGreaterThan(90);
   });
 
+  it("yakındaki hedefe dirsek bükülür, parmak ucu nesnenin kenarının önünde durur; çok yakında kol katlanmaz, kişi nesnenin önündeyse düz gösterir", () => {
+    // Kahraman x 960, derinlik 0: boy 680 px (k = 0,85), kutusu x 790'dan başlar, üstü y 370. Parmak payı çizimden.
+    const fingers = faceFor(ASSETS.hero).fingers.r;
+    const rigX = (x: number) => (x - 790) / 0.85;
+    const shoulder = RIG.pivots["arm-r"];
+    const full = ARM.upper + ARM.reach;
+    const handAt = (g: (p: string) => { rotate: number }) => tip(shoulder, ARM.upper, ARM.reach, g("arm-r").rotate, g("forearm-r").rotate);
+    // Kutu duvarda (y 600, boy 200): ortası y 500, kişiye bakan kenarı ortadan genişliğin POINT.edge'i kadar.
+    const box = (x: number) => [{ asset: "box", x, y: 600, height: 200 }];
+    const aim = (x: number) => [rigX(x), (500 - 370) / 0.85] as const;
+    const g = withOthers(point, box(1240));
+    const [hx, hy] = handAt(g);
+    expect(hx).toBeCloseTo(rigX(1240 - 200 * POINT.edge) - (fingers + POINT.gap), 1);
+    // El omuzdan hedefin ortasına giden çizgi üzerinde, kol boyundan yakında; dirsek bükük.
+    const [ax, ay] = aim(1240);
+    expect(Math.atan2(hy - shoulder[1], hx - shoulder[0])).toBeCloseTo(Math.atan2(ay - shoulder[1], ax - shoulder[0]), 3);
+    expect(Math.hypot(hx - shoulder[0], hy - shoulder[1])).toBeLessThan(full - 20);
+    expect(Math.abs(g("forearm-r").rotate)).toBeGreaterThan(20);
+    // Çok yakın: el omuzdan en az min × kol boyu uzakta.
+    const [cx, cy] = handAt(withOthers(point, box(1150)));
+    expect(Math.hypot(cx - shoulder[0], cy - shoulder[1])).toBeCloseTo(full * POINT.min, 1);
+    // Kenar omzun gerisinde (kişi nesnenin önünde): düz kol.
+    expect(withOthers(point, box(1080))("forearm-r").rotate).toBe(-6);
+    // Uzaktaki hedefe düz kol.
+    expect(withOthers(point, box(1700))("forearm-r").rotate).toBe(-6);
+    // Tam üstündeki hedef (verilmiş, aynı x): kenar sağda sayılır; kol yukarı kalkar, dirsek bükülmez.
+    const above = withOthers({ anims: [{ type: "point", target: 1 }] }, [{ asset: "box", x: 960, y: 300, height: 100 }]);
+    expect(above("arm-r").rotate).toBeGreaterThan(90);
+    expect(above("forearm-r").rotate).toBe(-6);
+  });
+
   it("target verilmişse en yakını değil o katmanı gösterir; gövdesinin önündeki nesne hedef sayılmaz", () => {
     const others = [
       { asset: "box", x: 1300, y: 300, height: 100 },
@@ -1117,7 +1148,7 @@ describe("vektör sahne: yan görünüş", () => {
   });
 
   it("yan görünüşte kol jesti uygulanmaz (kollar yürür), yüz jesti sürer", () => {
-    const { css } = walkerAt(25, { anims: [{ type: "walk", toX: 1500 }, { type: "wave" }, { type: "surprised" }, { type: "think" }] });
+    const { css } = walkerAt(25, { anims: [{ type: "walk", toX: 1500 }, { type: "wave" }, { type: "surprised" }, { type: "think" }, { type: "point" }] });
     expect(Math.abs(pose(css, "arm-r").rotate)).toBeLessThan(25);
     expect(pose(css, "mouth").sy).toBeCloseTo(0.3, 1);
     cleanup();
