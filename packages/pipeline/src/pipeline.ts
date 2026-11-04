@@ -129,6 +129,7 @@ import { buildTimeline, clipSeconds, resolveShotTimes, sceneOffsets, toSrt } fro
 import { assignReverseViews, reverseCandidates, varyShotSizes } from "./variety.ts";
 import { withKey } from "./key-prop.ts";
 import { nameTags } from "./name-tags.ts";
+import { addsNoDefect, withNarratedActions } from "./narrated-action.ts";
 import { looksLikeObject } from "./cast-kind.ts";
 import type { EpisodeReview } from "./state.ts";
 
@@ -1634,6 +1635,34 @@ export class EpisodePipeline {
     this.varyShots(state);
     // Düzeltilen planın yeni nesne/mekânları çizilir.
     await this.vectorPropsDraw(state);
+    await this.narratedActions(state);
+  }
+
+  /**
+   * Anlatılan eylem jest olarak (narrated-action.ts): açıklama "Babbage sketches", "Ryan types on a laptop", "Bell shakes
+   * his head" derken yönetmen kişiye genel bir anlatma jesti verdiyse ya da hiç vermediyse kod verir. Varlıklar çizildikten
+   * sonra (her plan ve yeniden plandan sonra yeniden kurulur): eklenen jest render'ın kurgusuyla denetlenir (@ys/video/lint);
+   * sahnelenemiyorsa (masa yok, ele verilecek kâğıt yok) ya da yeni bir kusur doğuruyorsa çekim olduğu gibi kalır. Denetim
+   * çalışamazsa üretim durmaz.
+   */
+  private async narratedActions(state: EpisodeState): Promise<void> {
+    try {
+      const timeline = buildTimeline(state, (key) => key, await this.vectorAssets(state, "keyframes"));
+      const lint = (v: (typeof timeline.visuals)[number]) => lintShot(v, timeline.vectorAssets, { fps: timeline.fps });
+      let n = 0;
+      for (const v of timeline.visuals.filter((x) => x.vector)) {
+        const shot = state.shots!.find((s) => s.id === v.shotId)!;
+        const next = withNarratedActions(v.vector!, shot.description, state.cast!.characters, v.durationInFrames / timeline.fps);
+        if (!next || !addsNoDefect(lint(v), lint({ ...v, vector: next }))) continue;
+        shot.vector = next;
+        n++;
+      }
+      if (!n) return;
+      this.log(msg("log.shots.actions", { n }));
+      await this.save(state);
+    } catch (e) {
+      this.log(msg("log.shots.actionsFailed", { error: errorText(e) }));
+    }
   }
 
   /**
@@ -1782,6 +1811,7 @@ export class EpisodePipeline {
   private async vectorProps(state: EpisodeState): Promise<void> {
     if (state.replans && Object.keys(state.replans).length) return this.userReplans(state);
     await this.vectorPropsDraw(state, true);
+    await this.narratedActions(state);
     await this.restageMissing(state);
     await this.lintRevise(state);
     if (state.input.qa !== false) await this.vectorRevise(state);

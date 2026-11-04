@@ -31,8 +31,6 @@ const RIG_ONLY: VectorAnimType[] = [
   "give",
   "shake_head",
 ];
-/** Kolu meşgul eden jestler; bunlardan biri sürerken (ya da yürürken) kendiliğinden el hareketi yapılmaz. */
-export const ARM_GESTURES: VectorAnimType[] = ["wave", "point", "explain", "think", "cheer", "shrug", "surprised", "typing", "writing", "reading", "show", "clap", "hands_on_hips", "arms_crossed", "give"];
 
 /** Nesneyi yerinden oynatan animasyonlar: elde tutulan nesnede hareket tutandan gelir. */
 const DISPLACING: VectorAnimType[] = ["move", "walk", "slide_in", "float", "sway", "shake"];

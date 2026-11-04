@@ -878,6 +878,54 @@ describe("animasyon denetimi", () => {
   });
 });
 
+describe("anlatılan eylem", () => {
+  const shot = (id: string, startMs: number, description: string, anims: object[]): PlannedShotState => ({
+    id,
+    sceneId: "s1",
+    kind: "still_motion",
+    startMs,
+    endMs: startMs + 1000,
+    description,
+    imagePrompt: "",
+    motionPrompt: "",
+    camera: "static",
+    vector: vshot({ background: "l1", layers: [{ asset: "c1", x: 900, depth: 0.5, anims }] }),
+  });
+  const shots = [shot("s1-sh1", 0, "Rider types at his desk.", [{ type: "explain", start: 0.2, end: 0.9 }]), shot("s1-sh2", 1000, "Rider nods.", [{ type: "talk" }]), shot("s1-sh3", 2000, "Rider waits.", [])];
+  const animsOf = (state: EpisodeState) => state.shots!.map((s) => s.vector!.layers[0]!.anims.map((a) => [a.type, a.start, a.end]));
+
+  it("açıklamadaki eylem kişiye jest olarak verilir; render'da yeni kusur doğuran eylem eklenmez", async () => {
+    const h = harness();
+    agents();
+    // Baş sallama eklenen plan yüzü kadrajdan taşırıyormuş gibi: eklenmez.
+    lint.shot.mockImplementation((v) => (JSON.stringify(v.vector).includes('"nod"') ? [{ code: "face_cut", shotId: v.shotId, detail: "x", replan: true }] : []));
+    const id = await keyframeReady(h, { qa: false }, { shots });
+    const state = await h.pipeline.run(id, { only: "keyframes" });
+    // Genel anlatma jesti aynı aralıkta yazmaya döner.
+    expect(animsOf(state)).toEqual([[["typing", 0.2, 0.9]], [["talk", 0, 1]], []]);
+    expect(h.logs).toContain("  1 çekimde açıklamada anlatılan eylem kişiye jest olarak verildi");
+    expect(state.done.keyframes).toBeDefined();
+  });
+
+  it("eklenecek jest yoksa günlük yazılmaz; denetim çalışamazsa plan olduğu gibi sürer", async () => {
+    const h = harness();
+    agents();
+    const quiet = await keyframeReady(h, { qa: false }, { shots: [shots[2]!] });
+    await h.pipeline.run(quiet, { only: "keyframes" });
+    expect(h.logs.some((l) => l.includes("anlatılan eylem"))).toBe(false);
+
+    lint.shot.mockImplementation((v) => {
+      if (JSON.stringify(v.vector).includes('"typing"')) throw new Error("ölçülemedi");
+      return [];
+    });
+    const id = await keyframeReady(h, { qa: false }, { shots: [shots[0]!] });
+    const state = await h.pipeline.run(id, { only: "keyframes" });
+    expect(animsOf(state)).toEqual([[["explain", 0.2, 0.9]]]);
+    expect(h.logs.some((l) => l.startsWith("⚠ anlatılan eylemler jestlere çevrilemedi, plan olduğu gibi sürüyor: ") && l.includes("ölçülemedi"))).toBe(true);
+    expect(state.done.keyframes).toBeDefined();
+  });
+});
+
 describe("vektör timeline", () => {
   it("seçili karakter/mekân ve çizilmiş nesneler gömülür; gerçek veri ve arka plan zemini korunur", async () => {
     const h = harness();

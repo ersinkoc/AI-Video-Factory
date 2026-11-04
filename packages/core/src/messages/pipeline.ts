@@ -183,6 +183,14 @@ export const PIPELINE_MESSAGES = {
     tr: "⚠ animasyon denetimi yapılamadı, denetimsiz sürüyor: {error}",
     en: "⚠ animation check could not run, continuing without it: {error}",
   },
+  "log.shots.actions": {
+    tr: "  {n} çekimde açıklamada anlatılan eylem kişiye jest olarak verildi",
+    en: "  {n} shots got the action their description narrates as a gesture",
+  },
+  "log.shots.actionsFailed": {
+    tr: "⚠ anlatılan eylemler jestlere çevrilemedi, plan olduğu gibi sürüyor: {error}",
+    en: "⚠ narrated actions could not be turned into gestures, the plan goes on as it is: {error}",
+  },
   "log.props.restage": {
     tr: "⚠ ana nesne çizilemedi ({names}), {n} çekimde geçiyordu: {scenes} sahnesi onsuz yeniden planlanıyor",
     en: "⚠ key prop could not be drawn ({names}), it appeared in {n} shots: replanning scene(s) {scenes} without it",

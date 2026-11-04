@@ -1,5 +1,6 @@
 import {
   applyLineStyle,
+  ARM_GESTURES,
   floorYOf,
   isWritable,
   namesMatch,
@@ -52,7 +53,7 @@ import { faceOf, type Bounds, type Face } from "./rigGeometry.ts";
 import { visemeAt, visemeCues, type Viseme } from "./visemes.ts";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
-import { ARM_GESTURES, FOREARM_LAG, gaitOf, gestureWeight, hop, paceWalks, physicalAnims, type Gait } from "./motion.ts";
+import { FOREARM_LAG, gaitOf, gestureWeight, hop, paceWalks, physicalAnims, type Gait } from "./motion.ts";
 import { stageAfter, stageBefore, type StagingProblem } from "./staging.ts";
 
 /**

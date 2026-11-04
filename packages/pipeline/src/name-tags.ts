@@ -10,7 +10,7 @@ export const NAME_TAG = { within: 3, texts: 2, y: 260 } as const;
  * Unvanlı ya da sıra numaralı ad (Sultan Mehmed II, Emperor Constantine XI, Çandarlı Halil Pasha): kadronun İngilizce adı
  * bölümün dilinde başka yazılır ("II. Mehmed"); yönetmen etiketini yazmadıysa koddan yazılmaz.
  */
-const TITLED = /\b(?:sultan|emperor|empress|king|queen|prince|princess|pope|saint|pasha|paşa|shah|tsar|czar|caliph|khan|lord|lady|sir|duke|count|general|admiral)\b/i;
+export const TITLED = /\b(?:sultan|emperor|empress|king|queen|prince|princess|pope|saint|pasha|paşa|shah|tsar|czar|caliph|khan|lord|lady|sir|duke|count|general|admiral)\b/i;
 const NUMBERED = /\b[IVXLC]+\.?$/;
 
 interface Person {

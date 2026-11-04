@@ -1,6 +1,5 @@
-import type { Timeline, VectorAnim, VectorAnimType } from "@ys/core";
+import { ARM_GESTURES, type Timeline, type VectorAnim, type VectorAnimType } from "@ys/core";
 import { revealWindow } from "./kinetic-timing.ts";
-import { ARM_GESTURES } from "./motion.ts";
 import { shotModel } from "./Vector.tsx";
 
 type Visual = Timeline["visuals"][number];

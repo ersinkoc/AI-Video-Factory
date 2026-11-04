@@ -1,5 +1,4 @@
-import { isWritable, workBoard, workSurface, workTopOf, type PlacedLayer, type VectorAnim, type VectorAsset, type VectorShot } from "@ys/core";
-import { ARM_GESTURES } from "./motion.ts";
+import { ARM_GESTURES, isWritable, workBoard, workSurface, workTopOf, type PlacedLayer, type VectorAnim, type VectorAsset, type VectorShot } from "@ys/core";
 
 /**
  * Sahneleme denetimi (3 Kas, kullanıcı: "animasyonda sıfır hata, anlamsız hata olmasın"): yönetmen planının izleyiciye

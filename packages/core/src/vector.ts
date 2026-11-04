@@ -264,6 +264,12 @@ export const VectorAnimType = z.enum([
 ]);
 export type VectorAnimType = z.infer<typeof VectorAnimType>;
 
+/**
+ * Kolu meşgul eden jestler; bunlardan biri sürerken (ya da yürürken) kendiliğinden el hareketi yapılmaz. Render ve
+ * planlama (anlatılan eylem, pipeline) aynı listeyi kullanır.
+ */
+export const ARM_GESTURES: VectorAnimType[] = ["wave", "point", "explain", "think", "cheer", "shrug", "surprised", "typing", "writing", "reading", "show", "clap", "hands_on_hips", "arms_crossed", "give"];
+
 export const VectorAnim = z.object({
   type: VectorAnimType,
   start: z.number().min(0).max(1).default(0),
