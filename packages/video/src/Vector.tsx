@@ -1,6 +1,7 @@
 import {
   applyLineStyle,
   floorYOf,
+  isWritable,
   prefixSvgIds,
   resolveLayout,
   RIG,
@@ -9,6 +10,7 @@ import {
   sanitizeSvg,
   uniqueCharacters,
   WORK,
+  workBoard,
   workSurface,
   workTopOf,
   type LineStyle,
@@ -143,6 +145,8 @@ export const DESK_WORK = {
   pen: [206, 438],
   line: 16,
   hold: [168, 444],
+  /** Panoya yazarken kalemin satır boyunca gittiği yol (iskelet px; hep soldan sağa). */
+  boardLine: 36,
 } as const;
 
 /** Katman/yazı düzeyindeki animasyonlar: hepsi zaman ve tohumdan türetilir. dur: çekim süresi (sn), height: katman boyu (px). */
@@ -248,6 +252,8 @@ interface Attention {
   face?: FaceFit;
   /** Masa başı işte ellerin değdiği masanın üst yüzeyi (iskelet y); masa yoksa undefined. */
   workY?: number;
+  /** Panoya yazarken kalemin panodaki yeri (iskelet tuvali). */
+  board?: readonly [number, number];
 }
 
 /** Masa başı işte ellerin kayması (iskelet px): gerçek masa üstüyle standart masa üstü arası, ±DESK_WORK.shift. */
@@ -869,6 +875,22 @@ function rigPose(
         const { strokeSec, pauseSec } = GESTURE_RHYTHM;
         const u = (t % (strokeSec + pauseSec)) / strokeSec;
         const along = u <= 1 ? u : 1 - (u - 1) * (strokeSec / pauseSec);
+        if (attention.board) {
+          // Panoya yazma (layout BOARD): panonun yanındaki kol omuzdan kalemin yerine uzanır (IK, tam boy), satır boyunca
+          // soldan sağa ilerler (soldaki panoda kalemin yerine doğru, sağdakinde ondan içeri: kalem panodan taşmaz),
+          // duraklamada başa döner; harf kıvrımları bilekte. Baş ve gözler panoya döner, gövde ona uzanır.
+          const [bx, by] = attention.board;
+          const hand = bx >= RIG.width / 2 ? "r" : "l";
+          const toward = hand === "r" ? 1 : -1;
+          const k = reach(RIG.pivots[`arm-${hand}`], [bx + DESK_WORK.boardLine * (along - (toward < 0 ? 1 : 0)), by + Math.sin(t * 17) * 2 * pen], ARM.upper, ARM.reach);
+          mix(`arm-${hand}`, "rotate", k.arm);
+          mix(`forearm-${hand}`, "rotate", k.forearm);
+          mix(`hand-${hand}`, "rotate", Math.sin(t * 23) * 6 * pen);
+          mix("head", "rotate", -4 * toward);
+          mix("eyes", "tx", 5 * toward);
+          mix("torso", "rotate", 3 * toward);
+          break;
+        }
         const pr = deskArm("r", [DESK_WORK.pen[0] + DESK_WORK.line * along, DESK_WORK.pen[1] + Math.sin(t * 17) * 1.5 * pen], lift, FORESHORTEN);
         mix("arm-r", "rotate", pr.arm);
         mix("arm-r", "sy", pr.scale);
@@ -1140,6 +1162,8 @@ export interface Focus {
   receiver?: readonly [number, number];
   /** Masa başı işte ellerin değdiği masanın üst yüzeyi (tuval y). */
   work?: number;
+  /** Panoya yazarken kalemin panodaki yeri (tuval; workBoard). */
+  board?: readonly [number, number];
 }
 
 /**
@@ -1153,6 +1177,8 @@ export function focusOf(
   kinds: (i: number) => string | undefined,
   /** Katmanın iş yüzeyi (masa üstünün y'si; workTopOf): masa başı işte eller ona gider. */
   tops: (pl: PlacedLayer) => number | undefined,
+  /** Katman üstüne yazılan bir pano mu (isWritable): masası olmayan yazı jesti ona yapılır. */
+  writable: (pl: PlacedLayer) => boolean,
 ): Focus {
   const self = placed.find((pl) => pl.index === index)!;
   const working = spec.layers[index]!.anims.some((a) => (WORK.gestures as readonly string[]).includes(a.type));
@@ -1165,6 +1191,8 @@ export function focusOf(
         }),
       )?.top
     : undefined;
+  const writes = spec.layers[index]!.anims.some((a) => a.type === "writing");
+  const board = writes && work === undefined ? workBoard(self, placed.filter(writable))?.at : undefined;
   const center = (pl: PlacedLayer): [number, number] => [pl.x, pl.y - pl.height / 2];
   const others = placed.filter((pl) => pl.index !== index && pl.heldBy !== index);
   const near = (list: PlacedLayer[]) =>
@@ -1188,6 +1216,7 @@ export function focusOf(
     holding: placed.some((pl) => pl.heldBy === index),
     ...(receiver ? { receiver: [receiver.x, receiver.y - receiver.height * 0.6] as const } : {}),
     ...(work === undefined ? {} : { work }),
+    ...(board ? { board } : {}),
   };
 }
 
@@ -1651,6 +1680,7 @@ function motionOf(
     holding: focus.holding,
     receiver: focus.receiver ? [toRigX(focus.receiver[0]), (focus.receiver[1] - tr.y - (placed.y - placed.height)) / k] : undefined,
     ...(focus.work === undefined ? {} : { workY: (focus.work - tr.y - (placed.y - placed.height)) / k }),
+    ...(focus.board ? { board: [toRigX(focus.board[0]), (focus.board[1] - tr.y - (placed.y - placed.height)) / k] as const } : {}),
     voice,
     face,
   };
@@ -2352,7 +2382,8 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
   const before = stageBefore(unique, safe, dur);
   const placed = resolveLayout(before.spec, safe);
   const tops = (o: PlacedLayer) => workTopOf(o, safe[before.spec.layers[o.index]!.asset]);
-  const after = stageAfter(before.spec, placed, safe, (i) => focusOf(before.spec, placed, i, (j) => safe[before.spec.layers[j]!.asset]?.kind, tops).aim !== undefined);
+  const writable = (o: PlacedLayer) => isWritable(before.spec.layers[o.index]!.asset, safe[before.spec.layers[o.index]!.asset]);
+  const after = stageAfter(before.spec, placed, safe, (i) => focusOf(before.spec, placed, i, (j) => safe[before.spec.layers[j]!.asset]?.kind, tops, writable).aim !== undefined);
   const spec = after.spec;
   const problems = [...before.problems, ...after.problems];
   const bg = spec.background ? safe[spec.background] : undefined;
@@ -2428,7 +2459,17 @@ export function shotFrame(
     placed.map((pl) => {
       const layer = spec.layers[pl.index]!;
       const asset = safe[layer.asset]!;
-      const focus = asset.kind === "character" ? focusOf(spec, placed, pl.index, (i) => safe[spec.layers[i]!.asset]?.kind, (o) => workTopOf(o, safe[spec.layers[o.index]!.asset])) : {};
+      const focus =
+        asset.kind === "character"
+          ? focusOf(
+              spec,
+              placed,
+              pl.index,
+              (i) => safe[spec.layers[i]!.asset]?.kind,
+              (o) => workTopOf(o, safe[spec.layers[o.index]!.asset]),
+              (o) => isWritable(spec.layers[o.index]!.asset, safe[spec.layers[o.index]!.asset]),
+            )
+          : {};
       return [pl.index, motionOf(layer, asset, pl, p, t, `${shotId}-${pl.index}-`, dur, focus, safe[sideAssetId(layer.asset)], voice)] as const;
     }),
   );

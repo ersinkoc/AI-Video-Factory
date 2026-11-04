@@ -206,20 +206,74 @@ export function workSurface(p: PlacedLayer, surfaces: readonly WorkSurface[]): W
 }
 
 /**
+ * Panoya yazma (4 Kas; "tahtaya yazıyor" denilen kişi tahtanın yanında boş duruyordu: yazı jesti masa istediği için
+ * düşüyor, sahne yeniden planlanıyordu). Yazılabilir pano (tahta, kara tahta, kâğıt sehpası): çizimin işareti
+ * (meta.writable), işareti olmayan eski çizimde katmanın adı (WRITABLE_NAME). Yazma bandı ayaktan boyun low–high kesri
+ * (omuzla göz arası); pano bu bandı kesmeli ve kişinin ortasından en çok reach × boy + shoulder × genişlik (omuz)
+ * uzakta olmalı. Kalem panonun yakın kenarından inset × boy içeride (çerçevede değil, yazı alanında), ayaktan at × boy
+ * yükseklikte yazar. Panosuna giden kişi kenarında, gövde ortası kenardan stand × genişlik dışarıda durur; panonun
+ * önündeki de kenarına geçer, kenar yürünemeyecek kadar uzaksa önünde kalıp gövdesinin yanına yazar.
+ */
+export const BOARD = { low: 0.62, high: 0.8, at: 0.7, reach: 0.22, shoulder: 0.15, inset: 0.1, stand: 0.3, note: "panoya yazıyordu, panonun yanına geçti" } as const;
+export const WRITABLE_NAME = /white-?board|black-?board|chalk|flip-?chart|easel|tahta/i;
+
+/** Üstüne ayakta yazılan pano mu: çizimin işareti, yoksa katmanın adı. */
+export function isWritable(id: string, asset: VectorAsset | undefined): boolean {
+  return asset?.kind === "prop" && (asset.meta.writable ?? WRITABLE_NAME.test(id));
+}
+
+export interface WorkBoard {
+  pl: PlacedLayer;
+  /** Kalemin panodaki yeri (tuval). */
+  at: [number, number];
+}
+
+/** Yazma bandını kesen, kişinin uzanabildiği panolar (z'ye bakmadan) ve panoya uzaklık. */
+function boardsInReach(p: PlacedLayer, boards: readonly PlacedLayer[], reach: number): PlacedLayer[] {
+  const t = p.y - p.height * BOARD.high;
+  const b = p.y - p.height * BOARD.low;
+  return boards.filter((o) => o.heldBy === undefined && o.y - o.height < b && o.y > t && boardGap(p, o) <= reach).sort((x, y) => boardGap(p, x) - boardGap(p, y));
+}
+const boardGap = (p: PlacedLayer, o: PlacedLayer) => Math.max(0, Math.abs(o.x - p.x) - o.width / 2);
+
+/**
+ * Kişinin yazdığı pano ve kalemin yeri: yazma bandını kesen, kişiden önce (arkasında) çizilen, kolunun yettiği en yakın
+ * pano. Pano yanındaysa kalem yakın kenarından içeride; kişi panonun önündeyse gövdesinin pano ortası yanında.
+ */
+export function workBoard(p: PlacedLayer, boards: readonly PlacedLayer[]): WorkBoard | undefined {
+  const o = boardsInReach(
+    p,
+    boards.filter((o) => o.z < p.z),
+    p.height * BOARD.reach + p.width * BOARD.shoulder,
+  )[0];
+  if (!o) return undefined;
+  const inset = p.height * BOARD.inset;
+  const side = Math.sign(o.x - p.x) || 1;
+  const l = o.x - o.width / 2;
+  const r = o.x + o.width / 2;
+  const x = boardGap(p, o) > 0 ? (side > 0 ? l + inset : r - inset) : p.x + side * (p.width * BOARD.shoulder + inset);
+  const span = (lo: number, hi: number, v: number) => clamp(v, Math.min(lo + inset, (lo + hi) / 2), Math.max(hi - inset, (lo + hi) / 2));
+  return { pl: o, at: [span(l, r, x), span(o.y - o.height, o.y, p.y - p.height * BOARD.at)] };
+}
+
+/**
  * İş jesti yapan ayaktaki kişi işinin başına, masanın arkasına geçer (3 Kas denetimi: kişi masadan 300–450 px uzakta
  * havaya yazıyordu; 4 Kas: masanın kenarında durunca eller kendi gövdesinin önünde kalıyor, masaya değmiyordu). Elleri
  * bir masaya değiyorsa o, değmiyorsa WORK.reach içindeki el hizasında en yakın masa: gövde masanın ortadaki bölümüne
  * gelir ve masa önde çizilir (bacaklar masanın ardında, eller üstünde). Oturan kişi sandalyesiyle birlikte kayar
- * (PHP s1-sh1: sandalye masanın yanındaydı); yalnız sandalye masanın arkasındaysa ve üstünde başkası yoksa. Masa yoksa
- * yerinde kalır (render jesti düşürür, sahne yeniden planlanır). Giren kişiye dokunulmaz.
+ * (PHP s1-sh1: sandalye masanın yanındaydı); yalnız sandalye masanın arkasındaysa ve üstünde başkası yoksa. Ayakta
+ * yazan, eli bir masaya değmiyorsa panosuna da gidebilir (BOARD): kolu yetiyorsa yerinde kalıp panonun önüne çizilir,
+ * yetmiyorsa en yakın masadan yakın bir panonun kenarına geçer. Masa yoksa yerinde kalır (render jesti düşürür, sahne
+ * yeniden planlanır). Giren kişiye dokunulmaz.
  */
-function toWork(spec: VectorShot, assets: Record<string, VectorAsset>, list: PlacedLayer[], moved: (p: PlacedLayer) => void): void {
+function toWork(spec: VectorShot, assets: Record<string, VectorAsset>, list: PlacedLayer[], moved: (p: PlacedLayer, note: string) => void): void {
   const layer = (p: PlacedLayer) => spec.layers[p.index]!;
   const person = (p: PlacedLayer) => assets[layer(p).asset]!.kind === "character";
   const surfaces = list.flatMap((o) => {
     const top = workTopOf(o, assets[layer(o).asset]);
     return top === undefined ? [] : [{ pl: o, top }];
   });
+  const boards = list.filter((o) => isWritable(layer(o).asset, assets[layer(o).asset]));
   for (const p of list) {
     if (!person(p) || p.heldBy !== undefined || entering(layer(p)) || !layer(p).anims.some(working)) continue;
     // Oturanın sandalyesi (oturan hep bir şeyin üstündedir); paylaşılan oturak kaymaz.
@@ -230,22 +284,37 @@ function toWork(spec: VectorShot, assets: Record<string, VectorAsset>, list: Pla
     // Yakın kenara uzaklık; masanın üstündeyse 0.
     const gap = (o: PlacedLayer) => Math.max(0, Math.abs(o.x - p.x) - o.width / 2);
     const reach = WORK.reach * STAGE.pxPerMeter * p.scale;
-    const at =
-      workSurface(p, surfaces) ??
-      surfaces.filter(({ pl, top }) => pl !== seat && top >= zone.t && top <= low && gap(pl) <= reach).sort((a, b) => gap(a.pl) - gap(b.pl))[0];
+    const touching = workSurface(p, surfaces);
+    const at = touching ?? surfaces.filter(({ pl, top }) => pl !== seat && top >= zone.t && top <= low && gap(pl) <= reach).sort((a, b) => gap(a.pl) - gap(b.pl))[0];
+    if (!seat && !touching && layer(p).anims.some((a) => a.type === "writing")) {
+      const ready = boardsInReach(p, boards, p.height * BOARD.reach + p.width * BOARD.shoulder)[0];
+      const far = boardsInReach(p, boards, reach)[0];
+      const board = ready ?? (far && (!at || gap(far) < gap(at.pl)) ? far : undefined);
+      if (board) {
+        const before = [p.x, p.z];
+        // Panonun önündeki kişi yazdığını gövdesiyle örtüyordu (C s3-sh4): yakın kenarına geçer (tam ortadaysa sahnede yeri
+        // olan yana); kenar yürünemeyecek kadar uzaksa (duvar boyu kara tahta) önünde kalır.
+        const side = Math.sign(board.x - p.x) || (board.x < STAGE.width / 2 ? -1 : 1);
+        const x = clamp(board.x - side * (board.width / 2 + p.width * BOARD.stand), p.width / 2 + 20, STAGE.width - p.width / 2 - 20);
+        if (!ready || (boardGap(p, board) === 0 && Math.abs(x - p.x) <= reach)) p.x = x;
+        p.z = Math.max(p.z, board.z + 0.1);
+        if (p.x !== before[0] || p.z !== before[1]) moved(p, BOARD.note);
+        continue;
+      }
+    }
     if (!at || (seat && seat.z >= at.pl.z)) continue;
     const span = (at.pl.width / 2) * (1 - 2 * WORK.behind);
     const x = clamp(clamp(p.x, at.pl.x - span, at.pl.x + span), p.width / 2 + 20, STAGE.width - p.width / 2 - 20);
     if (seat) {
       seat.x += x - p.x;
       p.x = x;
-      moved(p);
+      moved(p, WORK.note);
       continue;
     }
     if (Math.abs(x - p.x) < 1 && p.z < at.pl.z) continue;
     p.x = x;
     p.z = Math.min(p.z, at.pl.z - 0.1);
-    moved(p);
+    moved(p, WORK.note);
   }
 }
 
@@ -421,7 +490,7 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
     if (!moved) break;
   }
 
-  toWork(spec, assets, list, (p) => note(p, WORK.note));
+  toWork(spec, assets, list, note);
   converse(spec, assets, list, (p) => note(p, CONVERSE.note));
 
   // Öndeki karakter arkadakinin yüzünü örtmesin (3 Kas, Pascal incelemesi: masadaki komite üyelerinin yüzü öndeki

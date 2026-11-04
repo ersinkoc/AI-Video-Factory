@@ -13,6 +13,8 @@ const ASSETS = {
   engine: asset("engine", "prop", { realHeight: 0.5, surface: 0.9, grounded: true }),
   thing: asset("thing", "prop"),
   desk: asset("desk", "prop", { realHeight: 0.75, surface: 1, grounded: true }, 1000, 500),
+  // Ayaklı beyaz tahta (adından tanınır).
+  "p-whiteboard": asset("p-whiteboard", "prop", { realHeight: 1.8, grounded: true }, 600, 900),
 };
 const shot = (layers: unknown[], texts: unknown[] = []) => VectorShot.parse({ layers, texts });
 const types = (s: VectorShot, i: number) => s.layers[i]!.anims.map((a) => `${a.type}@${a.start}-${a.end}`);
@@ -135,7 +137,7 @@ describe("sahneleme: yerleşimden sonra", () => {
   it("elleri hiçbir eşyaya değmeyen klavye/yazı jesti düşer ve yeniden plan ister; masadaki kalır", () => {
     const far = after(shot([{ asset: "hero", x: 960, depth: 0.3, anims: [{ type: "typing" }, { type: "nod" }] }]));
     expect(types(far.spec, 0)).toEqual(["nod@0-1"]);
-    expect(far.problems).toEqual([{ layer: 0, code: "action_without_prop", detail: "typing with no desk, keyboard or board within reach: gesture dropped", replan: true }]);
+    expect(far.problems).toEqual([{ layer: 0, code: "action_without_prop", detail: "typing with no desk within reach: gesture dropped", replan: true }]);
     const atDesk = shot([{ asset: "desk", x: 960, depth: 0.3 }, { asset: "hero", x: 960, depth: 0.3, anims: [{ type: "writing" }] }]);
     expect(after(atDesk).problems).toEqual([]);
     // Ellerin önündeki eşyanın üstü yoksa (araba, duvardaki laptop) masa sayılmaz: kişi havaya yazıyordu (4 Kas).
@@ -143,6 +145,18 @@ describe("sahneleme: yerleşimden sonra", () => {
       const air = after(shot([{ asset: thing, x: 960, depth: 0.3 }, { asset: "hero", x: 960, depth: 0.3, anims: [{ type: "writing" }] }]));
       expect(air.problems.map((p) => p.code)).toEqual(["action_without_prop"]);
     }
+  });
+
+  it("yazı jesti kolunun yettiği panoyla da kalır, klavye kalmaz; ikisi birden varsa yalnız klavye düşer", () => {
+    const board = (anims: object[]) => after(shot([{ asset: "p-whiteboard", x: 1200, depth: 0.3 }, { asset: "hero", x: 900, depth: 0.3, anims }]));
+    const writes = board([{ type: "writing" }]);
+    expect(writes.problems).toEqual([]);
+    expect(types(writes.spec, 1)).toEqual(["writing@0-1"]);
+    const both = board([{ type: "typing", end: 0.5 }, { type: "writing", start: 0.5 }]);
+    expect(types(both.spec, 1)).toEqual(["writing@0.5-1"]);
+    expect(both.problems).toEqual([{ layer: 1, code: "action_without_prop", detail: "typing with no desk within reach: gesture dropped", replan: true }]);
+    const none = after(shot([{ asset: "hero", x: 900, depth: 0.3, anims: [{ type: "writing" }] }]));
+    expect(none.problems[0]!.detail).toBe("writing with no desk or board within reach: gesture dropped");
   });
 
   it("nesneye ve yerleşmemiş katmana dokunulmaz", () => {

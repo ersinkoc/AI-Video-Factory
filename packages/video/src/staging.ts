@@ -1,4 +1,4 @@
-import { WORK, workSurface, workTopOf, type PlacedLayer, type VectorAnim, type VectorAsset, type VectorShot } from "@ys/core";
+import { isWritable, workBoard, workSurface, workTopOf, type PlacedLayer, type VectorAnim, type VectorAsset, type VectorShot } from "@ys/core";
 import { ARM_GESTURES } from "./motion.ts";
 
 /**
@@ -125,9 +125,9 @@ export function stageBefore(spec: VectorShot, assets: Record<string, VectorAsset
 
 /**
  * Yerleşimden sonra: hedefi olmayan işaret anlatmaya döner (yanında gösterecek bir şey yok, el boşluğu gösteriyordu);
- * iş jesti (klavye, yazı) yapan kişinin elleri yerleşimden sonra da el hizasında bir masaya değmiyorsa (workSurface:
- * duvar eşyası, tahta, makine ya da oturduğu sandalye sayılmaz) jest düşer. aims: katmanın işaret edeceği bir şey var mı
- * (Vector.tsx focusOf).
+ * iş jesti yapan kişinin elleri yerleşimden sonra da el hizasında bir masaya değmiyorsa (workSurface: duvar eşyası,
+ * makine ya da oturduğu sandalye sayılmaz) jest düşer; yazı jesti kolunun yettiği bir panoyla da kalır (workBoard),
+ * klavye yalnız masada. aims: katmanın işaret edeceği bir şey var mı (Vector.tsx focusOf).
  */
 export function stageAfter(
   spec: VectorShot,
@@ -141,6 +141,7 @@ export function stageAfter(
     const top = workTopOf(o, assets[spec.layers[o.index]!.asset]);
     return top === undefined ? [] : [{ pl: o, top }];
   });
+  const boards = placed.filter((o) => isWritable(spec.layers[o.index]!.asset, assets[spec.layers[o.index]!.asset]));
   const layers = spec.layers.map((l, i) => {
     const pl = placed.find((p) => p.index === i);
     if (!pl || kind(pl) !== "character") return l;
@@ -153,10 +154,13 @@ export function stageAfter(
       });
       problems.push({ layer: i, code: "point_at_nothing", detail: "points with nothing beside it and no label to point at: explains instead", replan: false });
     }
-    const work = anims.find((a) => (WORK.gestures as readonly string[]).includes(a.type));
-    if (work && !workSurface(pl, surfaces)) {
-      anims = anims.filter((a) => !(WORK.gestures as readonly string[]).includes(a.type));
-      problems.push({ layer: i, code: "action_without_prop", detail: `${work.type} with no desk, keyboard or board within reach: gesture dropped`, replan: true });
+    const desk = workSurface(pl, surfaces) !== undefined;
+    const cannot = (a: VectorAnim) => (a.type === "typing" && !desk) || (a.type === "writing" && !desk && !workBoard(pl, boards));
+    const work = anims.find(cannot);
+    if (work) {
+      anims = anims.filter((a) => !cannot(a));
+      const where = work.type === "writing" ? "desk or board" : "desk";
+      problems.push({ layer: i, code: "action_without_prop", detail: `${work.type} with no ${where} within reach: gesture dropped`, replan: true });
     }
     return anims === l.anims ? l : { ...l, anims };
   });

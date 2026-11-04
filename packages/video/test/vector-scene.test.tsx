@@ -60,6 +60,8 @@ const ASSETS = {
   counter: asset("counter", "prop", '<svg viewBox="0 0 200 100"><rect id="counter" width="200" height="100" fill="#663300"/></svg>', 200, 100, { realHeight: 1, surface: 1, grounded: true }),
   // Alçak masa (0,55 m): masa başı işte eller aşağı uzanır.
   low: asset("low", "prop", '<svg viewBox="0 0 200 100"><rect id="low" width="200" height="100" fill="#aa7744"/></svg>', 200, 100, { realHeight: 0.55, surface: 1, grounded: true }),
+  // Ayaklı beyaz tahta (1,8 m; çizimin işaretiyle yazılabilir).
+  board: asset("board", "prop", '<svg viewBox="0 0 120 180"><rect id="board" width="120" height="180" fill="#ffffff"/></svg>', 120, 180, { realHeight: 1.8, grounded: true, writable: true }),
   // Standart çalışma masası (0,75 m, üstü düz): masa başı işlerin yüzeyi.
   desk: asset("desk", "prop", '<svg viewBox="0 0 200 100"><rect id="desk" width="200" height="100" fill="#996633"/></svg>', 200, 100, { realHeight: 0.75, surface: 1, grounded: true }),
   // Masaya konan yatık küçük nesne (çek): okunur en uzun kenarla bile alanı küçük.
@@ -463,6 +465,58 @@ describe("vektör sahne: karakter iskeleti", () => {
     cleanup();
     expect(only.indexOf("data-crowd")).toBeGreaterThan(only.indexOf('id="s1-0-'));
     expect(scene({ layers: [{ asset: "hero", x: 600, depth: 0.3 }] }).querySelector("[data-crowd]")).toBeNull();
+  });
+
+  it("panoya yazma: panonun yanındaki kol kalemi panonun içine götürür, satır boyunca ilerler; baş panoya döner; eklem sınırında", () => {
+    for (const [bx, hand] of [
+      [1300, "r"],
+      [600, "l"],
+    ] as const) {
+      const layers = [{ asset: "board", x: bx, depth: 0 }, { asset: "hero", x: 960, depth: 0, anims: [{ type: "writing" }] }];
+      const m = shotModel(VectorShot.parse({ layers }), ASSETS, "outline", 1920, 1080, false, 5);
+      const board = m.placed.find((pl) => pl.index === 0)!;
+      const hero = m.placed.find((pl) => pl.index === 1)!;
+      expect(m.problems).toEqual([]);
+      // Kişi panonun kenarına geçti, panonun önünde çizilir.
+      expect(Math.abs(hero.x - bx)).toBeGreaterThan(board.width / 2);
+      expect(hero.z).toBeGreaterThan(board.z);
+      const wrists: number[] = [];
+      for (const frame of [30, 60, 90]) {
+        const c = scene({ layers }, { frame });
+        const css = c.querySelector("style")!.textContent!;
+        cleanup();
+        const g = (part: string) => pose(css, part, "s1-1-");
+        const [wx, wy] = tip(RIG.pivots[`arm-${hand}`], ARM.upper * g(`arm-${hand}`).sy, ARM.reach * g(`forearm-${hand}`).sy, g(`arm-${hand}`).rotate, g(`forearm-${hand}`).rotate);
+        // İskeletten tuvale: kişinin kutusu (aynalama yok).
+        const k = hero.height / RIG.height;
+        const cx = hero.x - hero.width / 2 + wx * k;
+        const cy = hero.y - hero.height + wy * k;
+        expect(cx).toBeGreaterThan(board.x - board.width / 2);
+        expect(cx).toBeLessThan(board.x + board.width / 2);
+        expect(cy).toBeGreaterThan(board.y - board.height);
+        wrists.push(cx);
+        const toward = hand === "r" ? 1 : -1;
+        expect(Math.sign(g("eyes").tx)).toBe(toward);
+      }
+      // Kalem satır boyunca ilerliyor.
+      expect(new Set(wrists.map((x) => Math.round(x))).size).toBeGreaterThan(1);
+      // Önce panoyu gösterip sonra yazan: ikisi de kalır.
+      const both = shotModel(
+        VectorShot.parse({ layers: [layers[0], { ...layers[1], anims: [{ type: "point", end: 0.3 }, { type: "writing", start: 0.4 }] }] }),
+        ASSETS,
+        "outline",
+        1920,
+        1080,
+        false,
+        5,
+      );
+      expect(both.problems).toEqual([]);
+      expect(both.spec.layers[1]!.anims.map((a) => a.type)).toEqual(["point", "writing"]);
+      for (const frame of [0, 40, 80, 120]) {
+        const f = shotFrame(m, { shotId: "s1", frame, fps: 30, durationInFrames: 150, width: 1920, height: 1080, insets: false, overlay: false });
+        for (const mo of f.motions.values()) expect(mo.strains ?? []).toEqual([]);
+      }
+    }
   });
 
   it("iş jestleri: klavye, yazı, okuma, gösterme, alkış, eller belde, kollar kavuşuk", () => {

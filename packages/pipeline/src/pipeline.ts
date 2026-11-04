@@ -162,7 +162,14 @@ interface GateResult {
 
 /** Tasarımcı çıktısından yerleşim bilgisi (boy, yüzey, zemin çizgisi). */
 function metaOf(out: VectorAssetOut, kind: AssetBrief["kind"]): VectorAssetMeta {
-  return { realHeight: out.realHeight, grounded: out.grounded, surface: out.surface, floorY: kind === "background" ? out.floorY : undefined };
+  return {
+    realHeight: out.realHeight,
+    grounded: out.grounded,
+    surface: out.surface,
+    floorY: kind === "background" ? out.floorY : undefined,
+    // Üstüne yazılan pano (layout BOARD): yalnız nesnede anlamlı.
+    writable: kind === "prop" ? out.writable : undefined,
+  };
 }
 
 /** Karakterin yan görünüşünün kütüphane anahtarı: ön çiziminden türer (aynı ön çizim → aynı yan çizim). */
@@ -1005,6 +1012,7 @@ export class EpisodePipeline {
         realHeight: physics.realHeight,
         grounded: physics.grounded,
         surface: physics.surface ?? undefined,
+        writable: physics.writable,
         check,
       });
       (state.assetChecks ??= {})[key] = check;

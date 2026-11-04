@@ -19,6 +19,7 @@ export const VectorAssetOut = z.object({
     .max(1)
     .optional()
     .describe("For furniture you can put things on or sit on: height of that top surface as a fraction of the drawing height (desk ~0.95, chair seat ~0.5)"),
+  writable: z.boolean().optional().describe("Props only: true for a flat board people write or draw on while standing (whiteboard, blackboard, chalkboard, flip chart, easel pad)"),
   floorY: z
     .number()
     .optional()
@@ -218,7 +219,7 @@ Quality: a distinctive silhouette and outfit that tells who they are; 2–3 tone
 The wall meets the floor along a horizontal line at floorY (between 620 and 760, return it). Below floorY there is only plain floor (2 tones at most).
 Keep it MINIMAL and calm: 6–12 large flat shapes, 2–3 value steps, muted low-saturation colours, low contrast, no small clutter, patterns, stripes or textures. No lettering.
 Keep the stage band calm but not blank: between x 420–1500 and y 180–floorY people's heads, gestures and titles go, so use only large, low-contrast architectural surfaces there (wall panelling or a dado rail, a tall window or doorway with a soft, simple view, a soft patch of light, a large plain framed area high on the wall) — never small objects, text or busy pattern. A completely bare wall reads as an empty frame to viewers. Detailed windows, shelves, boards and wall objects go to the left and right thirds or high above y 180. Shelves with many small items (jars, books, bottles) are clutter: use at most one simple shelf with 2–3 large shapes, at the side.`
-        : `Canvas: a viewBox sized to the object (e.g. "0 0 400 400"), object centered horizontally, transparent background, its base resting exactly on the bottom edge (y = viewBox height) so code can put it on the floor or on a surface. Objects front or three-quarter view at a readable angle; animals and vehicles in side view on all their legs/wheels. Return realHeight in metres (the real size the viewBox height represents), grounded, and surface for furniture. Small story objects (notes, books, chips, tools) should be drawn filling the canvas at a readable angle, e.g. an open book tilted toward the viewer, not edge-on; code enlarges them to a readable size on screen.`;
+        : `Canvas: a viewBox sized to the object (e.g. "0 0 400 400"), object centered horizontally, transparent background, its base resting exactly on the bottom edge (y = viewBox height) so code can put it on the floor or on a surface. Objects front or three-quarter view at a readable angle; animals and vehicles in side view on all their legs/wheels. Return realHeight in metres (the real size the viewBox height represents), grounded, surface for furniture, and writable for a board people write on. Small story objects (notes, books, chips, tools) should be drawn filling the canvas at a readable angle, e.g. an open book tilted toward the viewer, not edge-on; code enlarges them to a readable size on screen.`;
   const isolated =
     brief.kind === "background"
       ? ""
@@ -394,6 +395,7 @@ export const PropPhysicsOut = z.object({
   realHeight: z.number().positive().describe("Real height of the object in metres (a desk ~0.75, a horse ~1.6, a letter ~0.28)"),
   grounded: z.boolean().describe("true if it stands on the floor/ground (furniture, animals, vehicles); false if it is held or hangs"),
   surface: z.number().min(0).max(1).nullable().describe("For furniture with a top that things stand on: that surface height as a fraction of the object height; else null"),
+  writable: z.boolean().optional().describe("Props only: true for a flat board people write or draw on while standing (whiteboard, blackboard, chalkboard, flip chart, easel pad)"),
 });
 export type PropPhysicsOut = z.infer<typeof PropPhysicsOut>;
 

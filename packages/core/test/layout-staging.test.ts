@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FURNITURE, PASS, resolveLayout, STAGE, VectorShot, WORK, workSurface, workTopOf, workZone, type VectorAsset } from "../src/index.ts";
+import { BOARD, FURNITURE, isWritable, PASS, resolveLayout, STAGE, VectorShot, WORK, workBoard, workSurface, workTopOf, workZone, type VectorAsset } from "../src/index.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({ id, kind, svg: "<svg/>", width: w, height: h, meta });
 
@@ -16,6 +16,9 @@ const assets = {
   tall: asset("tall", "prop", { realHeight: 2, surface: 1, grounded: true }, 800, 500),
   lectern: asset("lectern", "prop", { realHeight: 1.5, grounded: true }, 800, 500),
   cup: asset("cup", "prop", { realHeight: 0.3 }, 200, 300),
+  // Ayaklı beyaz tahta (çizimin işaretiyle) ve duvardaki kara tahta (adından).
+  wb: asset("wb", "prop", { realHeight: 1.8, grounded: true, writable: true }, 600, 900),
+  chalkboard: asset("chalkboard", "prop", {}, 1200, 400),
 };
 const place = (layers: unknown[]) => resolveLayout(VectorShot.parse({ layers }), assets);
 const by = (placed: ReturnType<typeof resolveLayout>, i: number) => placed.find((p) => p.index === i)!;
@@ -116,6 +119,59 @@ describe("sahne fiziği: iş başına geçme", () => {
     const seat = [{ asset: "desk", x: 700, depth: 0.3 }, { asset: "chair", x: 1250, depth: 0.45 }, { asset: "a", x: 1250, on: 1, anims: typing }];
     expect(by(place([...seat, { asset: "cup", x: 1250, on: 1 }]), 2).fixes).not.toContain(WORK.note);
     expect(by(place([...seat, { asset: "b", x: 1250, on: 1 }]), 2).fixes).not.toContain(WORK.note);
+  });
+
+  it("pano: çizimin işareti, yoksa adı; kalem yakın kenardan içeride, yazma hizasında; arkada çizilen, uzanılan, bandı kesen pano", () => {
+    expect(["p-whiteboard", "p-black-board", "chalk", "p-flipchart", "p-flip-chart", "easel", "kara-tahta"].every((id) => isWritable(id, asset(id, "prop")))).toBe(true);
+    expect(isWritable("p-desk", asset("p-desk", "prop"))).toBe(false);
+    expect(isWritable("p-whiteboard", asset("x", "prop", { writable: false }))).toBe(false);
+    expect(isWritable("p-panel", asset("x", "prop", { writable: true }))).toBe(true);
+    expect(isWritable("whiteboard", asset("x", "character"))).toBe(false);
+    expect(isWritable("whiteboard", undefined)).toBe(false);
+    const pl = (index: number, x: number, extra: object = {}) => ({ index, x, y: 1000, width: 200, height: 600, scale: 1, z: 0, sitting: false, grounded: true, fixes: [], ...extra });
+    // Kişi: 500 boy, 200 en; yazma bandı y 600–690, kolu 140 px'e yeter, kalem yakın kenardan 50 px içeride, y 650.
+    const p = pl(9, 1000, { height: 500, z: 5 });
+    expect(workBoard(p, [pl(1, 1200)])).toEqual({ pl: pl(1, 1200), at: [1150, 650] });
+    expect(workBoard(p, [pl(1, 800)])!.at).toEqual([850, 650]);
+    // En yakını; uzak, önde çizilen ya da bandı kesmeyen pano olmaz.
+    expect(workBoard(p, [pl(1, 800), pl(2, 1150)])!.pl.index).toBe(2);
+    expect(workBoard(p, [pl(1, 1300)])).toBeUndefined();
+    expect(workBoard(p, [pl(1, 1200, { z: 6 })])).toBeUndefined();
+    expect(workBoard(p, [pl(1, 1200, { height: 300, y: 590 })])).toBeUndefined();
+    expect(workBoard(p, [pl(1, 1200, { heldBy: 3 })])).toBeUndefined();
+    // Kişi panonun önündeyse gövdesinin yanına yazar; dar ya da kısa panoda kalem ortaya gelir.
+    expect(workBoard(p, [pl(1, 1000, { width: 600 })])!.at).toEqual([1000 + 200 * BOARD.shoulder + 500 * BOARD.inset, 650]);
+    expect(workBoard(p, [pl(1, 1120, { width: 60 })])!.at[0]).toBe(1120);
+    expect(workBoard(p, [pl(1, 1200, { height: 80, y: 700 })])!.at[1]).toBe(660);
+  });
+
+  it("panoya yazan kişi panonun kenarına geçer ve önüne çizilir; masa yakınsa masaya, klavye panoya gitmez; önündeki de kenara geçer", () => {
+    const writing = [{ type: "writing" }];
+    const far = place([{ asset: "wb", x: 1200, depth: 0.3 }, { asset: "a", x: 600, depth: 0.3, anims: writing }]);
+    const board = by(far, 0);
+    const p = by(far, 1);
+    expect(p.x).toBeCloseTo(board.x - board.width / 2 - p.width * BOARD.stand, 6);
+    expect(p.z).toBeGreaterThan(board.z);
+    expect(p.fixes).toContain(BOARD.note);
+    expect(workBoard(p, [board])).toBeDefined();
+    // Panonun önünde: yakın kenarına; tam ortasındaysa sahnede yeri olan yana.
+    const front = place([{ asset: "wb", x: 1200, depth: 0.3 }, { asset: "a", x: 1150, depth: 0.3, anims: writing }]);
+    expect(by(front, 1).x).toBeCloseTo(board.x - board.width / 2 - p.width * BOARD.stand, 6);
+    const left = place([{ asset: "wb", x: 600, depth: 0.3 }, { asset: "a", x: 600, depth: 0.3, anims: writing }]);
+    expect(by(left, 1).x).toBeCloseTo(by(left, 0).x + by(left, 0).width / 2 + p.width * BOARD.stand, 6);
+    // Duvar boyu kara tahtanın kenarı yürünemeyecek kadar uzak: önünde kalır, yalnız önüne çizilir (zaten önde).
+    const wall = place([{ asset: "chalkboard", x: 960, y: 700, height: 500 }, { asset: "a", x: 960, depth: 0.6, anims: writing }]);
+    expect(by(wall, 1).x).toBe(960);
+    expect(by(wall, 1).fixes).not.toContain(BOARD.note);
+    expect(workBoard(by(wall, 1), [by(wall, 0)])!.at[0]).toBeGreaterThan(960);
+    // Masa panodan yakınsa masanın arkasına; pano yakınsa panoya.
+    const desk = place([{ asset: "desk", x: 300, depth: 0.3 }, { asset: "wb", x: 1200, depth: 0.3 }, { asset: "a", x: 600, depth: 0.3, anims: writing }]);
+    expect(by(desk, 2).fixes).toEqual([WORK.note]);
+    const nearBoard = place([{ asset: "desk", x: 1650, depth: 0.3 }, { asset: "wb", x: 1200, depth: 0.3 }, { asset: "a", x: 600, depth: 0.3, anims: writing }]);
+    expect(by(nearBoard, 2).fixes).toEqual([BOARD.note]);
+    // Klavye panoya gitmez.
+    const typingAt = place([{ asset: "wb", x: 1200, depth: 0.3 }, { asset: "a", x: 600, depth: 0.3, anims: typing }]);
+    expect(by(typingAt, 1).x).toBe(600);
   });
 
   it("iş başındaki kişi konuşma mesafesi için yerinden çekilmez, öbürü yaklaşır", () => {

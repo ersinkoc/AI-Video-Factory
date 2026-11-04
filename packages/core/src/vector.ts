@@ -153,6 +153,8 @@ export const VectorAssetMeta = z.object({
   surface: z.number().min(0).max(1).optional(),
   /** Yerde durur mu (masa, sandalye, insan) yoksa duvarda/havada mı (saat, pano, lamba). */
   grounded: z.boolean().optional(),
+  /** Ayakta üstüne yazılan pano (tahta, kara tahta, kâğıt sehpası): yazı jesti ona da yapılır (layout BOARD). */
+  writable: z.boolean().optional(),
   /** Arka planda duvar ile zeminin birleştiği y (px, 1080 tuval). */
   floorY: z.number().optional(),
   /** Koddan üretilen haritada: varlık koordinatlarında etiketler ve sırayla çizilen rota sayısı. */
