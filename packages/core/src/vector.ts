@@ -353,6 +353,28 @@ export type MathSpec = z.infer<typeof MathSpec>;
 /** Manim tahtasının yeri (1920×1080 tuvalde; render dikey videoda ortalar) ve klibin piksel boyu. */
 export const MATH_BOARD = { x: 440, y: 250, width: 1040, height: 560 } as const;
 
+/**
+ * Figüranlar (4 Kas; inceleme: "ordu / seyirci / kalabalık" denilen sahnelerde beş kişi duruyordu, kadro dışı insanlar
+ * klon ya da yüzsüz hayalet çizimiydi): kadronun arkasında sıra sıra duran isimsiz insanlar, kodla çizilir (video
+ * crowd.tsx), ücretsiz. Yönetmen büyüklüğünü, ne yaptığını, kılığını ve başlığını seçer.
+ */
+export const VectorCrowd = z.object({
+  size: z.enum(["group", "crowd"]).default("crowd").describe("group: about 11 people in two rows; crowd: about 34 in three rows"),
+  action: z
+    .enum(["stand", "listen", "cheer", "applaud", "protest", "advance"])
+    .default("stand")
+    .describe("What the extras do: stand, listen (heads toward the middle), cheer (arms up), applaud, protest (fists up), advance (march toward the camera)"),
+  dress: z.enum(["casual", "formal", "uniform", "robes"]).default("casual").describe("casual clothes, formal suits, one-colour uniforms (soldiers, workers), robes (long historical garments)"),
+  headwear: z.enum(["none", "cap", "helmet", "turban", "hat"]).default("none"),
+  colour: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .optional()
+    .describe("Uniform or robe colour as #rrggbb (e.g. an army's colour); default olive uniforms, varied robes"),
+  side: z.enum(["full", "left", "right"]).default("full").describe("Fill the whole width or only one half (keep the other half free for a stage, board or screen)"),
+});
+export type VectorCrowd = z.infer<typeof VectorCrowd>;
+
 export const VectorShot = z.object({
   /** Arka plan varlığı; yoksa paletten degrade. */
   background: z.string().optional(),
@@ -381,6 +403,9 @@ export const VectorShot = z.object({
     .nonnegative()
     .optional()
     .describe("Index of a small key prop (a page, screen, coin, chip, card) to show magnified in a round inset next to the scene; use it in wide and medium shots when the narration is about that object"),
+  crowd: VectorCrowd.optional().describe(
+    "Anonymous extras drawn by code in rows at the back (an army, an audience, protesters, a market, a team, a court); the cast stands in front of them",
+  ),
 });
 export type VectorShot = z.infer<typeof VectorShot>;
 

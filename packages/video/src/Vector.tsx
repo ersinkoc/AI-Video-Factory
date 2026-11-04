@@ -1,5 +1,6 @@
 import {
   applyLineStyle,
+  floorYOf,
   prefixSvgIds,
   resolveLayout,
   RIG,
@@ -33,6 +34,7 @@ import { useMemo, type CSSProperties } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
 import { Ambience } from "./Ambience.tsx";
+import { Crowd, crowdFigures, crowdZ, type CrowdFigure } from "./crowd.tsx";
 import { armBeats, BEAT, pulseAt, speechBeats, strokeAt } from "./beats.ts";
 import { CALLOUT, calloutScale, calloutSpot, calloutTarget, overlap, type Box } from "./callout.ts";
 import { Figure3D } from "./Figure3D.tsx";
@@ -2320,6 +2322,8 @@ export interface ShotModel {
   fit: number;
   /** Yönetmen planında kodun düzelttiği ya da düşürdüğü jestler (staging.ts); denetim bunları bildirir. */
   problems: StagingProblem[];
+  /** Figüranlar (crowd.tsx): z'si bundan küçük katmanlar onların arkasında çizilir. */
+  crowd?: { figures: CrowdFigure[]; z: number; floorY: number };
 }
 
 /** Katman sahneye giriyor ya da yer değiştiriyor (yürüme, kayma, taşınma). */
@@ -2352,6 +2356,16 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
   const spec = after.spec;
   const problems = [...before.problems, ...after.problems];
   const bg = spec.background ? safe[spec.background] : undefined;
+  // Figüranlar kadronun arkasında; arkalarında kalan katmanları (duvardakiler, odanın dibindekiler) örtmezler. Tohum oda ve
+  // tarif: aynı odada art arda gelen çekimlerde aynı seyirci oturur.
+  const crowd = spec.crowd
+    ? (() => {
+        const z = crowdZ(spec.crowd);
+        const floorY = floorYOf(spec, safe);
+        const behind = placed.filter((pl) => pl.z < z).map((pl) => ({ l: pl.x - pl.width / 2, r: pl.x + pl.width / 2, t: pl.y - pl.height, b: pl.y }));
+        return { figures: crowdFigures(spec.crowd, `${spec.background ?? ""}-${JSON.stringify(spec.crowd)}`, floorY, behind), z, floorY };
+      })()
+    : undefined;
   const moving = (i: number) => movingLayer(spec, i);
   // Geniş çekimde kadrajda kalacaklar: karakterler ve sahnedeki küçük nesneler; sahneye giren (yürüyen, kayan) hariç.
   const keep = placed.filter((pl) => {
@@ -2384,7 +2398,7 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
     const xs = keep.flatMap((pl) => [0, 1].flatMap((q) => [pl.x - pl.width / 2, pl.x + pl.width / 2].map((x) => cameraPoint(cam, q, centre, [x, pl.y])[0])));
     return contentFit(width, base, xs);
   })();
-  return { spec, safe, placed, ...(bg ? { bg } : {}), keep, cam, centre, ...(subject === undefined ? {} : { subject }), fit, problems };
+  return { spec, safe, placed, ...(bg ? { bg } : {}), keep, cam, centre, ...(subject === undefined ? {} : { subject }), fit, problems, ...(crowd ? { crowd } : {}) };
 }
 
 /** Çekimin bir karesi: katmanların hareketi, ekrandaki yazılar, elde tutulanların yeri ve büyütme balonu. */
@@ -2519,6 +2533,7 @@ function ShotStage({
   accent,
   width,
   height,
+  crowd,
 }: ShotModel &
   ShotFrame & {
     visual: Visual;
@@ -2576,10 +2591,16 @@ function ShotStage({
         )}
         {BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} />}
         <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>
-          {placed.map((pl) => {
+          {placed.flatMap((pl, n) => {
             const layer = spec.layers[pl.index]!;
             const asset = safe[layer.asset]!;
-            return (
+            // Figüranlar ilk önlerindeki katmandan hemen önce (yoksa en sonda) çizilir.
+            const extras =
+              crowd && pl.z >= crowd.z && (n === 0 || placed[n - 1]!.z < crowd.z)
+                ? [<Crowd key="crowd" crowd={spec.crowd!} figures={crowd.figures} p={p} t={t} prefix={`${visual.shotId}-cr-`} lineStyle={lineStyle} floorY={crowd.floorY} />]
+                : [];
+            return [
+              ...extras,
               <Layer
                 key={pl.index}
                 layer={layer}
@@ -2590,9 +2611,12 @@ function ShotStage({
                 sketch={lineStyle === "sketch"}
                 draw={drawOf(layer.anims, p)}
                 zoom={Math.max(cam.zoomFrom, cam.zoomTo)}
-              />
-            );
+              />,
+            ];
           })}
+          {crowd && placed.every((pl) => pl.z < crowd.z) && (
+            <Crowd crowd={spec.crowd!} figures={crowd.figures} p={p} t={t} prefix={`${visual.shotId}-cr-`} lineStyle={lineStyle} floorY={crowd.floorY} />
+          )}
         </div>
       </AbsoluteFill>
       <AbsoluteFill style={MOOD_GRADE[spec.mood]} />

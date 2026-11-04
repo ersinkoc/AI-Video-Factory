@@ -196,7 +196,8 @@ export function lintShot(visual: Visual, assets: Assets, o: { fps?: number; step
   // bilerek boştur.
   const mid = at(Math.floor(visual.durationInFrames / 2));
   const content = placed.reduce((s, pl) => s + (mid.motions.get(pl.index)!.tr.opacity < 0.5 ? 0 : overlap(screenBox(model, mid, pl, person(pl)), SCREEN)), 0);
-  if (placed.length && !model.bg?.meta.exact && content / area(SCREEN) < LINT.emptyBelow) add("empty_frame", `visible content covers ${Math.round((100 * content) / area(SCREEN))}% of the frame`, true);
+  // Figüranlar (crowd.tsx) kadrajı doldurur: kalabalıklı çekim boş değildir.
+  if (placed.length && !model.bg?.meta.exact && !model.crowd?.figures.length && content / area(SCREEN) < LINT.emptyBelow) add("empty_frame", `visible content covers ${Math.round((100 * content) / area(SCREEN))}% of the frame`, true);
   return [...issues.values()];
 }
 

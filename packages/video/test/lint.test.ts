@@ -185,6 +185,8 @@ describe("denetim: çekim", () => {
     expect(codes(lintShot(visual(tiny), ASSETS))).toEqual(["empty_frame"]);
     expect(lintShot(visual({ ...tiny, background: "map" }), ASSETS)).toEqual([]);
     expect(lintShot(visual({ background: "room", layers: [] }), ASSETS)).toEqual([]);
+    // Figüranlı kalabalık kadrajı doldurur.
+    expect(lintShot(visual({ ...tiny, crowd: {} }), ASSETS)).toEqual([]);
     // Saydam (henüz belirmemiş) katman görünen içerik sayılmaz.
     const hidden = { background: "room", layers: [{ asset: "hero", x: 960, depth: 0.2, anims: [{ type: "fade_in", start: 0.9 }] }] };
     expect(codes(lintShot(visual(hidden), ASSETS))).toEqual(["empty_frame"]);

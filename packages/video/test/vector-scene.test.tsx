@@ -38,6 +38,7 @@ const { tip } = await import("../src/ik.ts");
 const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
 const { CALLOUT } = await import("../src/callout.ts");
+const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
@@ -438,6 +439,30 @@ describe("vektör sahne: karakter iskeleti", () => {
         }
       }
     }
+  });
+
+  it("figüranlar kadronun arkasında, duvardakinin önünde çizilir; arkalarındakini örtmez; tarif yoksa yok", () => {
+    const shot = { layers: [{ asset: "box", x: 960, y: 500, height: 200 }, { asset: "hero", x: 600, depth: 0.3 }], crowd: { action: "cheer" } };
+    const html = scene(shot).innerHTML;
+    cleanup();
+    const at = html.indexOf("data-crowd");
+    expect(at).toBeGreaterThan(html.indexOf('id="s1-0-'));
+    expect(at).toBeLessThan(html.indexOf('id="s1-1-'));
+    const m = shotModel(VectorShot.parse(shot), ASSETS, "outline", 1920, 1080, false, 5);
+    const box = m.placed.find((pl) => pl.index === 0)!;
+    expect(m.crowd!.figures.length).toBeGreaterThan(0);
+    for (const f of m.crowd!.figures) {
+      const a = figureAt(f, m.spec.crowd!, 0, m.crowd!.floorY);
+      const apart = a.x + a.w / 2 <= box.x - box.width / 2 - CROWD.margin || a.x - a.w / 2 >= box.x + box.width / 2 + CROWD.margin || a.y <= box.y - box.height;
+      expect(apart).toBe(true);
+    }
+    // Aynı oda ve tarif: art arda çekimlerde aynı seyirci.
+    expect(shotModel(VectorShot.parse(shot), ASSETS, "outline", 1920, 1080, false, 3).crowd!.figures).toEqual(m.crowd!.figures);
+    // Önünde katman yoksa kalabalık en sonda.
+    const only = scene({ layers: [{ asset: "box", x: 960, y: 500, height: 200 }], crowd: {} }).innerHTML;
+    cleanup();
+    expect(only.indexOf("data-crowd")).toBeGreaterThan(only.indexOf('id="s1-0-'));
+    expect(scene({ layers: [{ asset: "hero", x: 600, depth: 0.3 }] }).querySelector("[data-crowd]")).toBeNull();
   });
 
   it("iş jestleri: klavye, yazı, okuma, gösterme, alkış, eller belde, kollar kavuşuk", () => {
