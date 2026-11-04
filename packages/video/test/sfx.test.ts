@@ -2,7 +2,8 @@ import { Timeline } from "@ys/core";
 import { describe, expect, it } from "vitest";
 import { GESTURE_RHYTHM } from "../src/gesture-timing.ts";
 import { KINETIC, kineticLength, revealWindow, TEXT_PACE } from "../src/kinetic-timing.ts";
-import { mixSfx, SFX_RATE, sfxEvents, synth, wavFile, type SfxEvent } from "../src/sfx.ts";
+import { CROWD, chantTimes, crowdVoices, stepTimes } from "../src/crowd-timing.ts";
+import { CROWD_SOUND, mixSfx, SFX_RATE, sfxEvents, synth, wavFile, type SfxEvent } from "../src/sfx.ts";
 
 const tl = (visuals: object[]) => Timeline.parse({ episodeId: "e", lang: "tr", durationInFrames: 300, visuals, audio: [] });
 const vec = (vector: object, extra: object = {}) => ({ shotId: "v", assetUrl: "", kind: "motion_graphic", fromFrame: 100, durationInFrames: 100, vector, ...extra });
@@ -137,6 +138,50 @@ describe("efekt sesi sentezi", () => {
     expect(Math.max(...mix.slice(0, SFX_RATE / 2).map(Math.abs))).toBe(0);
     expect(Math.abs(mix[SFX_RATE / 2 + 100]!)).toBeGreaterThan(0);
     expect(Math.max(...mix.map(Math.abs))).toBeLessThanOrEqual(Math.round(0.9 * 32767));
+  });
+
+  it("figüranlar: alkışlayan, sevinen ve ayaktaki kalabalık çekim boyunca; protesto sloganı ve yürüyüş adımı ortak vuruşta; dinleyen sessiz", () => {
+    const crowd = (c: object) => sfxEvents(tl([vec({ crowd: c })]));
+    expect(crowd({ action: "applaud" })).toEqual([{ frame: 100, sound: "applause", frames: 100, voices: 34 }]);
+    expect(crowd({ action: "cheer", size: "group" })).toEqual([{ frame: 100, sound: "cheer", frames: 100, voices: 11 }]);
+    expect(crowd({})).toEqual([{ frame: 100, sound: "murmur", frames: 100, voices: 34 }]);
+    expect(crowd({ action: "listen" })).toEqual([]);
+    expect(crowd({ action: "protest" }).map((e) => [e.frame, e.sound])).toEqual(chantTimes(100 / 30).map((t) => [100 + Math.round(t * 30), "chant"]));
+    expect(crowd({ action: "protest" })).toHaveLength(5);
+    expect(crowd({ action: "advance" }).map((e) => e.sound)).toEqual(Array(7).fill("march"));
+    expect(crowdVoices("group")).toBe(CROWD.perRow.group * 2 + 1);
+    expect(stepTimes(1)).toEqual([0.25, 0.75]);
+  });
+
+  it("kalabalık sesleri: yatak sesi çekim boyu, açılıp söner; büyük kalabalık daha gür; slogan ve adım kısa; tohumla aynı", () => {
+    const rms = (s: Float32Array, from = 0, to = s.length) => {
+      let sum = 0;
+      for (let i = from; i < to; i++) sum += s[i]! ** 2;
+      return Math.sqrt(sum / (to - from));
+    };
+    for (const sound of ["applause", "cheer", "murmur"] as const) {
+      const big = synth({ frame: 0, sound, frames: 60, voices: 34 }, 30, 5);
+      expect(big.length).toBe(2 * SFX_RATE);
+      expect(synth({ frame: 0, sound, frames: 60, voices: 34 }, 30, 5)).toEqual(big);
+      const mid = rms(big, SFX_RATE / 2, SFX_RATE);
+      expect(mid).toBeGreaterThan(0.001);
+      // İlk 20 ms ve son 20 ms neredeyse sessiz (zarf).
+      expect(rms(big, 0, SFX_RATE / 50)).toBeLessThan(mid / 4);
+      expect(rms(big, big.length - SFX_RATE / 50)).toBeLessThan(mid / 4);
+      expect(rms(synth({ frame: 0, sound, frames: 60, voices: 11 }, 30, 5), SFX_RATE / 2, SFX_RATE)).toBeLessThan(mid);
+      // Kişi sayısı verilmezse tek kişi; süre verilmezse tek kare.
+      expect(synth({ frame: 0, sound, frames: 30 }, 30, 5).length).toBe(SFX_RATE);
+      expect(synth({ frame: 0, sound, voices: 34 }, 30, 5).length).toBe(SFX_RATE / 30);
+    }
+    // Uğultu alkıştan çok sessiz.
+    expect(rms(synth({ frame: 0, sound: "murmur", frames: 60, voices: 34 }, 30, 5))).toBeLessThan(rms(synth({ frame: 0, sound: "applause", frames: 60, voices: 34 }, 30, 5)) / 3);
+    expect(synth({ frame: 0, sound: "chant", voices: 34 }, 30, 5).length).toBe(Math.round(0.32 * SFX_RATE));
+    expect(synth({ frame: 0, sound: "march", voices: 34 }, 30, 5).length).toBe(Math.round(0.18 * SFX_RATE));
+    for (const sound of ["chant", "march"] as const) {
+      expect(rms(synth({ frame: 0, sound, voices: 34 }, 30, 5))).toBeGreaterThan(rms(synth({ frame: 0, sound, voices: 2 }, 30, 5)));
+      expect(rms(synth({ frame: 0, sound }, 30, 5))).toBeGreaterThan(0);
+    }
+    expect(CROWD_SOUND.formants).toHaveLength(4);
   });
 
   it("16 bit mono WAV başlığı", () => {

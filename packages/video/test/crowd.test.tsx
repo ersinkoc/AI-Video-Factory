@@ -3,6 +3,7 @@ import { depthToFloor, STAGE, VectorCrowd, VectorShot } from "@ys/core";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Crowd, CROWD, crowdCss, crowdFigures, crowdZ, figureAt, figureSvg, type CrowdFigure } from "../src/crowd.tsx";
+import { chantTimes, crowdBeat, crowdVoices, stepTimes } from "../src/crowd-timing.ts";
 
 afterEach(cleanup);
 
@@ -107,6 +108,17 @@ describe("figüranlar: ne yapıyor", () => {
     // Durağan: kollar yanda, bacaklar düz.
     expect(Math.abs(rot(css("stand"), "c-0-al"))).toBeLessThanOrEqual(2);
     expect(rot(css("stand"), "c-0-ll")).toBe(0);
+  });
+
+  it("protestoda yumruklar, yürüyüşte adımlar ortak vuruşta (ses de o anda); kişiye özgü kayma küçük", () => {
+    const [t] = chantTimes(2);
+    for (const f of figs) expect(rot(css("protest", t), `c-${figs.indexOf(f)}-ar`)).toBeLessThan(-175);
+    const [step] = stepTimes(2);
+    for (let i = 0; i < figs.length; i++) expect(Math.abs(rot(css("advance", step), `c-${i}-ll`))).toBeGreaterThan(11.5);
+    // Ortadaki kişi tam vuruşta; en uçtaki en çok ~0,25 rad kayar.
+    expect(crowdBeat(CROWD.chantHz, t!, Math.PI)).toBeCloseTo(-1, 9);
+    expect(Math.abs(crowdBeat(CROWD.chantHz, t!, 0) + 1)).toBeLessThan(0.04);
+    expect(crowdVoices("crowd")).toBe(crowdFigures(crowd(), "s1", FLOOR, []).length);
   });
 
   it("yürüyüşte bacaklar karşılıklı salınır; herkes kendi ritminde", () => {

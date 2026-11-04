@@ -1,6 +1,7 @@
 import { applyLineStyle, depthToFloor, STAGE, type LineStyle, type VectorCrowd } from "@ys/core";
 import { useMemo } from "react";
 import { random } from "remotion";
+import { CROWD, crowdBeat } from "./crowd-timing.ts";
 
 /**
  * Figüranlar (4 Kas; inceleme: "kalabalık / ordu / seyirci" denilen sahnelerde beş kişi duruyordu, kadro dışı insanlar
@@ -14,19 +15,7 @@ import { random } from "remotion";
 /** Birim kutu ve eklem noktaları (1,7 m yetişkin). */
 const UNIT = { w: 100, h: 260, shoulder: { l: [20, 60], r: [80, 60] }, hip: { l: [39, 150], r: [61, 150] }, neck: [50, 46], feet: [50, 255] } as const;
 
-export const CROWD = {
-  /** Sıraların derinliği (arkadan öne) ve sıra başına kişi. */
-  rows: { group: [0.93, 0.86], crowd: [0.98, 0.92, 0.86] },
-  perRow: { group: 5, crowd: 11 },
-  /** Kişi boyu aralığı (m). */
-  height: [1.55, 1.9],
-  /** İleri yürüyen kalabalık çekim boyunca bu kadar öne gelir (derinlik). */
-  advance: 0.16,
-  /** Kalabalığın arkasında kalan katmanın çevresindeki boşluk (px): figüran anlatılan şeyi örtmez. */
-  margin: 24,
-  /** Arka plan düzlemi: kadrodan biraz soluk ve koyu. */
-  filter: "saturate(0.8) brightness(0.93)",
-} as const;
+export { CROWD };
 
 const SKIN = ["#f1c7a5", "#e3b08a", "#c99068", "#a86e45", "#80502f", "#5c3a22"];
 const HAIR = ["#1d1a17", "#2f2219", "#4a3020", "#6e4526", "#b48c4f", "#8f8f8f"];
@@ -194,15 +183,19 @@ export function crowdCss(figures: readonly CrowdFigure[], crowd: VectorCrowd, t:
           ar = 24 - s(3.5) * 7;
           break;
         case "protest":
-          ar = -165 + s(1.6) * 12;
+          // Yumruklar ortak vuruşta kalkar (slogan sesi o anda, sfx.ts chantTimes).
+          ar = -165 + crowdBeat(CROWD.chantHz, t, f.phase) * 12;
           body = `rotate(${(s(0.8) * 2).toFixed(2)}deg)`;
           break;
-        case "advance":
-          legs = s(1) * 12;
-          al = -s(1) * 14;
-          ar = -s(1) * 14;
-          body = `translate(0px, ${(-Math.abs(s(1)) * 4).toFixed(2)}px)`;
+        case "advance": {
+          // Hep birlikte adım (sesi sfx.ts stepTimes).
+          const step = crowdBeat(CROWD.marchHz, t, f.phase);
+          legs = step * 12;
+          al = -step * 14;
+          ar = -step * 14;
+          body = `translate(0px, ${(-Math.abs(step) * 4).toFixed(2)}px)`;
           break;
+        }
         default:
           break;
       }
