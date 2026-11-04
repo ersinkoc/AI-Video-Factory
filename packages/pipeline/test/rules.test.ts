@@ -10,6 +10,10 @@ describe("kalite kapısı kararı", () => {
     expect(gatePasses("background", { recognizable: min.background })).toBe(true);
     expect(gatePasses("character", { recognizable: 9, fidelity: QUALITY_GATE.fidelityMin - 1 })).toBe(false);
     expect(gatePasses("character", { recognizable: 9, fidelity: QUALITY_GATE.fidelityMin })).toBe(true);
+    // Tanınan ama kolları ve elleri bozuk karakter geçmez; uzuv puanı olmayan eski kayıt geçer.
+    expect(gatePasses("character", { recognizable: 9, limbs: QUALITY_GATE.limbsMin - 1 })).toBe(false);
+    expect(gatePasses("character", { recognizable: 9, limbs: QUALITY_GATE.limbsMin })).toBe(true);
+    expect(gatePasses("character", { recognizable: 9 })).toBe(true);
   });
 
   it("geçen deneme her zaman geçmeyenden iyidir; ikisi de geçmiyorsa puan toplamı", () => {
@@ -17,5 +21,7 @@ describe("kalite kapısı kararı", () => {
     expect(betterGate("prop", { recognizable: 6, fidelity: 9 }, { recognizable: 8, fidelity: 6 })).toBe(false);
     expect(betterGate("prop", { recognizable: 5 }, { recognizable: 3 })).toBe(true);
     expect(betterGate("prop", { recognizable: 5 }, undefined)).toBe(true);
+    // Uzuvlar da toplama girer: ikisi de geçmeyen karakterlerde kolları daha iyi olan seçilir.
+    expect(betterGate("character", { recognizable: 6, limbs: 6 }, { recognizable: 6, limbs: 3 })).toBe(true);
   });
 });

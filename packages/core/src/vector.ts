@@ -115,6 +115,8 @@ export const AssetCheck = z.object({
   guess: z.string().default(""),
   recognizable: z.number(),
   fidelity: z.number().optional(),
+  /** Karakterde uzuvların puanı (QUALITY_GATE.limbsMin); eski kayıtlarda yok. */
+  limbs: z.number().optional(),
   passed: z.boolean(),
   defects: z.array(z.string()).default([]),
   attempts: z.number().int().default(1),

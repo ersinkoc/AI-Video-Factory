@@ -405,6 +405,7 @@ function QualityGate({ state, busy, act }: { state: EpisodeState; busy: boolean;
               <div className="flex flex-wrap gap-x-3 text-xs tabular-nums">
                 <span className={tone(c.recognizable, QUALITY_GATE.recognizableMin[c.kind])}>{t("gate.recognizable", { score: c.recognizable })}</span>
                 {c.fidelity !== undefined && <span className={tone(c.fidelity, QUALITY_GATE.fidelityMin)}>{t("gate.fidelity", { score: c.fidelity })}</span>}
+                {c.limbs !== undefined && <span className={tone(c.limbs, QUALITY_GATE.limbsMin)}>{t("gate.limbs", { score: c.limbs })}</span>}
                 <span className="text-muted">{t("gate.attempts", { n: c.attempts })}</span>
               </div>
               {c.guess && <div className="text-xs text-muted">{t("gate.guess", { guess: c.guess })}</div>}

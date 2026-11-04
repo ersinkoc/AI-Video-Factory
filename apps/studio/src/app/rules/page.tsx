@@ -18,7 +18,7 @@ export default async function RulesPage() {
         ["rules.gate.plan"],
         ["rules.gate.readyMade"],
         ["rules.gate.blind"],
-        ["rules.gate.thresholds", { character: g.recognizableMin.character, prop: g.recognizableMin.prop, background: g.recognizableMin.background, fidelity: g.fidelityMin }],
+        ["rules.gate.thresholds", { character: g.recognizableMin.character, prop: g.recognizableMin.prop, background: g.recognizableMin.background, fidelity: g.fidelityMin, limbs: g.limbsMin }],
         ["rules.gate.redraw", { n: g.maxDraws, hopeless: g.hopelessAtMost }],
         ["rules.gate.reject"],
         ["rules.gate.keyProp", { shots: g.keyPropShots }],

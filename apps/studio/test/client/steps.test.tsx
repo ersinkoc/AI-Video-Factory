@@ -269,7 +269,7 @@ describe("QualityGate (ConceptTab içinde)", () => {
   it("reddedilenler önce; puanlar, referanslar, plan, kaynaklar ve insan kararı", async () => {
     const act = okAct();
     const assetChecks: Record<string, AssetCheck> = {
-      "a/ok.svg": check({ name: "Sultan", fidelity: 8, guess: "taçlı adam", query: "Suleiman portrait", refs: ["r1.jpg", "r2.jpg"], sources: [{ title: "Portre", url: "https://commons.example/1", license: "CC0" }, { title: "Minyatür", url: "https://commons.example/2" }], plan: { subject: "Sultan", moved: [], pose: "", silhouette: "", parts: [], cues: ["sarık"], avoid: [], referencesMatch: null, betterQuery: "" } }),
+      "a/ok.svg": check({ name: "Sultan", fidelity: 8, limbs: 5, guess: "taçlı adam", query: "Suleiman portrait", refs: ["r1.jpg", "r2.jpg"], sources: [{ title: "Portre", url: "https://commons.example/1", license: "CC0" }, { title: "Minyatür", url: "https://commons.example/2" }], plan: { subject: "Sultan", moved: [], pose: "", silhouette: "", parts: [], cues: ["sarık"], avoid: [], referencesMatch: null, betterQuery: "" } }),
       "a/bad.svg": check({ name: "Fincan", kind: "prop", recognizable: 3, fidelity: 4, passed: false, attempts: 3, defects: ["kulp yok", "renk yanlış"], rejectedKey: "a/bad-best.svg", plan: { subject: "Fincan", moved: ["tepsi"], pose: "", silhouette: "", parts: [], cues: [], avoid: [], referencesMatch: null, betterQuery: "" } }),
       "a/human.svg": check({ name: "Kapı", kind: "background", passed: false, recognizable: 4, override: { decision: "accepted", note: "yeterli", at: "t" } }),
       "a/no.svg": check({ name: "Masa", kind: "prop", override: { decision: "rejected", at: "t" } }),
@@ -288,6 +288,8 @@ describe("QualityGate (ConceptTab içinde)", () => {
     expect(screen.getByAltText("Fincan").getAttribute("src")).toBe("/api/assets/a/bad-best.svg");
     expect(screen.getByText(tr("gate.recognizable", { score: 3 })).className).toContain("text-bad");
     expect(screen.getByText(tr("gate.fidelity", { score: 8 })).className).toContain("text-ok");
+    // Karakterin uzuv puanı eşiğin altındaysa kırmızı.
+    expect(screen.getByText(tr("gate.limbs", { score: 5 })).className).toContain("text-bad");
     expect(screen.getByText(tr("gate.guess", { guess: "taçlı adam" }))).toBeTruthy();
     expect(screen.getByText("renk yanlış")).toBeTruthy();
     expect(screen.getByText(tr("gate.planCues", { items: "sarık" }))).toBeTruthy();

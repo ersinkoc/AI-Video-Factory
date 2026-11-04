@@ -151,6 +151,13 @@ export const AssetGateOut = z.object({
     .max(10)
     .nullable()
     .describe("Faithfulness to ONE specific real subject (a named person, building, model, artifact) in the references that actually show it: shape, proportions, colours, distinctive parts. null without references, when no reference shows the subject, or when the subject is a generic kind (a desert, a horse, a desk) for which references are only inspiration"),
+  limbs: z
+    .number()
+    .int()
+    .min(0)
+    .max(10)
+    .nullable()
+    .describe("Characters only, null for props and places: will the arms, hands and legs look like natural human limbs when the puppet bends and swings them in animation? 10 = tapered, continuous limbs with rounded joints and readable hands with a thumb; ≤6 = limbs like separate tubes or stacked segments, a thick band or gap at the elbow or knee, mitten or blob hands, stumps, wrong length or thickness, or dark stains, patches or marks on the arms, hands or legs that read as wounds"),
   defects: z
     .array(z.string())
     .max(6)
@@ -178,7 +185,7 @@ export function assetGate(
   const refs = input.references ?? [];
   const what =
     input.kind === "character"
-      ? "a person (puppet character); check a believable human figure: one head, two arms, two legs, hands at the ends of arms, face features in place, nothing floating or detached"
+      ? "a person (puppet character); check a believable human figure: one head, two arms, two legs, hands at the ends of arms, face features in place, nothing floating or detached. Its arms, forearms, hands and legs are rotated at the shoulders, elbows, wrists, hips and knees in every gesture, so judge them strictly (limbs): what looks acceptable in a still pose looks broken when it moves"
       : input.kind === "background"
         ? "an intentionally EMPTY room shell or place backdrop (furniture is added separately, so emptiness is fine); check that the space reads as the intended kind of place, shapes are coherent and nothing is broken or garbled"
         : "an object, animal or vehicle; check it has the correct parts in the correct number and arrangement (legs, wheels, handles…) and a silhouette that reads at a glance";

@@ -1,6 +1,7 @@
 import {
   applyLineStyle,
   ARM_GESTURES,
+  CONVERSE,
   floorYOf,
   isWritable,
   namesMatch,
@@ -46,7 +47,7 @@ import { clapClosed, GESTURE_RHYTHM, penDown, typingTaps } from "./gesture-timin
 import { Globe3D } from "./Globe3D.tsx";
 import { anatomical, flexion, STRETCH, type Strain } from "./anatomy.ts";
 import { splitBrows, type BrowPart, type SplitBrows } from "./browShape.ts";
-import { bend, reach } from "./ik.ts";
+import { bend, reach, type Reach } from "./ik.ts";
 import { revealWindow } from "./kinetic-timing.ts";
 import { lipLine, mouthIds, withMouths, type SpeakingMouth } from "./mouthShape.ts";
 import { faceOf, type Bounds, type Face } from "./rigGeometry.ts";
@@ -258,6 +259,8 @@ interface Attention {
   board?: readonly [number, number];
   /** Konuşulana dönüş (facingOf; −1…1, iskelet yönü): önden çizimde yüz parçaları o yana kayar. 3D figürde yok (gerçekten döner). */
   facing?: number;
+  /** Yanındaki kişiyle arasındaki orta çizgi (iskelet x): işaret eden ve anlatan el onu geçmez (SPACE); uzatmada yok. */
+  space?: number;
 }
 
 /**
@@ -699,11 +702,17 @@ function rigPose(
         const dx = ax - sx;
         const dy = ay - sy;
         const len = Math.hypot(dx, dy);
-        const edge = attention.edge;
+        // Yanındaki kişiyle orta çizgi o yandaysa parmak ucu onu da geçmez (SPACE): kişiyi işaret eden el onun gövdesine
+        // uzanıyor, karşıdakinin anlatan eliyle havada buluşuyordu.
+        const stops = [attention.edge, attention.space].filter((x): x is number => x !== undefined && (x - sx) * toward > 0);
+        const edge = stops.length ? (toward > 0 ? Math.min(...stops) : Math.max(...stops)) : attention.edge;
         const fingers = (attention.face ?? NO_FACE).fingers[hand];
         const along = edge !== undefined && dx * toward > 0 ? ((edge - toward * (fingers + POINT.gap) - sx) / dx) * len : Infinity;
         const full = ARM.upper + ARM.reach;
-        const near = along > 0 && along < full ? reach([sx, sy], [sx + (dx / len) * Math.max(along, full * POINT.min), sy + (dy / len) * Math.max(along, full * POINT.min)], ARM.upper, ARM.reach) : undefined;
+        // Yanındaki kişi durma sınırıysa kol biraz daha bükülebilir (en kısa erişim SPACE.min): yakındaki kişiyi gösteren el
+        // POINT.min yüzünden yine onun alanına giriyordu.
+        const shortest = full * (edge !== undefined && edge === attention.space ? SPACE.min : POINT.min);
+        const near = along > 0 && along < full ? reach([sx, sy], [sx + (dx / len) * Math.max(along, shortest), sy + (dy / len) * Math.max(along, shortest)], ARM.upper, ARM.reach) : undefined;
         mix(`arm-${hand}`, "rotate", near ? near.arm : (Math.atan2(-dx, dy) * 180) / Math.PI);
         mix(`forearm-${hand}`, "rotate", near ? near.forearm : -6 * toward);
         mix(`hand-${hand}`, "rotate", 0);
@@ -722,8 +731,9 @@ function rigPose(
         const out = dom === "r" ? -1 : 1;
         // Konuşurken el vurgulu kelimede aşağı vurur (jest vurgusu), arada kalkık durur; yoksa sabit ritim.
         const beat = voice ? 0.5 - 1.5 * voice.nod : Math.sin(t * 3.4);
-        mix(`arm-${dom}`, "rotate", out * (20 + (voice ? beat * 3 : Math.sin(t * 3) * 5)));
-        mix(`forearm-${dom}`, "rotate", out * (60 + beat * 12));
+        const open = keepInSpace(dom, out * (20 + (voice ? beat * 3 : Math.sin(t * 3) * 5)), out * (60 + beat * 12), attention);
+        mix(`arm-${dom}`, "rotate", open.arm);
+        mix(`forearm-${dom}`, "rotate", open.forearm);
         // Avuç yukarı-dışa döner, vurguyla bilek kıvrılır (bilek ön kolu geriden izler).
         mix(`hand-${dom}`, "rotate", out * (26 + (voice ? beat : Math.sin(t * 3.4 - 0.7)) * 12));
         mix(`arm-${other}`, "rotate", -out * (8 + Math.sin(t * 2.6 + 1) * 3));
@@ -845,8 +855,9 @@ function rigPose(
         mix("forearm-r", "rotate", 134);
         mix("forearm-r", "sy", FORESHORTEN);
         mix("hand-r", "rotate", 10);
-        mix("arm-l", "rotate", 22);
-        mix("forearm-l", "rotate", 38);
+        const low = keepInSpace("l", 22, 38, attention);
+        mix("arm-l", "rotate", low.arm);
+        mix("forearm-l", "rotate", low.forearm);
         // Açık avuç dışa.
         mix("hand-l", "rotate", 24);
         mix("head", "ty", -3);
@@ -859,13 +870,14 @@ function rigPose(
         mix("torso", "sy", 1.02);
         break;
       case "shrug":
-        // Omuzlar kalkar, ön kollar dışa yatay açılır (avuç yukarı), baş yana eğilir.
-        mix("arm-l", "rotate", 16);
-        mix("arm-r", "rotate", -16);
-        mix("arm-l", "ty", -7);
-        mix("arm-r", "ty", -7);
-        mix("forearm-l", "rotate", 62);
-        mix("forearm-r", "rotate", -62);
+        // Omuzlar kalkar, ön kollar dışa yatay açılır (avuç yukarı), baş yana eğilir. Yanındakinin tarafındaki el onun
+        // alanına girmez (keepInSpace).
+        for (const [side, out] of [["l", 1], ["r", -1]] as const) {
+          const open = keepInSpace(side, out * 16, out * 62, attention);
+          mix(`arm-${side}`, "rotate", open.arm);
+          mix(`forearm-${side}`, "rotate", open.forearm);
+          mix(`arm-${side}`, "ty", -7);
+        }
         mix("hand-l", "rotate", 18);
         mix("hand-r", "rotate", -18);
         mix("head", "rotate", -6);
@@ -1071,6 +1083,37 @@ function rigPose(
 }
 
 /**
+ * Kişisel alan: yanındakine uzanan elin parmak uçları iki kişinin orta çizgisine en çok gap (iskelet px) yaklaşır; onu
+ * işaret eden el omuzdan en az min × kol boyu uzakta (dirsek ~127°, insan sınırı 150°).
+ */
+export const SPACE = { gap: 12, min: 0.45 } as const;
+
+/**
+ * Anlatan kol yanındakinin alanına girmez (4 Kas, Uçak s8-sh6: Wilbur Charlie'yi işaret ederken Charlie de anlatırken
+ * elini ona açıyordu; iki el aralarında havada buluştu, iki kişilik 328 çekimin 22'sinde). El orta çizgiyi (SPACE) geçecekse
+ * kolun ve ön kolun dışa açısı birlikte, parmak uçları sınırda kalacak kadar küçülür (sürekli bir ölçek, poz sıçramaz;
+ * karede kırpan IK, dirsek düzken eklemi bir karede onlarca derece döndürüyordu).
+ */
+export function keepInSpace(side: "l" | "r", arm: number, forearm: number, attention: Attention): { arm: number; forearm: number } {
+  const bound = attention.space;
+  if (bound === undefined) return { arm, forearm };
+  const [sx] = RIG.pivots[`arm-${side}`];
+  const dir = bound >= sx ? 1 : -1;
+  const limit = bound - dir * SPACE.gap;
+  const tip = (k: number) => sx + rot([0, ARM.upper], arm * k)[0] + rot([0, ARM.reach + (attention.face ?? NO_FACE).fingers[side]], (arm + forearm) * k)[0];
+  // İç içe duranlarda (omuz sınırın ötesinde) jest söndürülmez: sorun yerleşimde.
+  if ((tip(1) - limit) * dir <= 0 || (sx - limit) * dir >= 0) return { arm, forearm };
+  let lo = 0;
+  let hi = 1;
+  for (let n = 0; n < 16; n++) {
+    const mid = (lo + hi) / 2;
+    if ((tip(mid) - limit) * dir <= 0) lo = mid;
+    else hi = mid;
+  }
+  return { arm: arm * lo, forearm: forearm * lo };
+}
+
+/**
  * Animasyon penceresine yakınlık (0–1): pencerenin içinde 1; öncesinde lead sn, sonrasında tail sn boyunca yumuşakça
  * 0'a iner. Çekim başında başlayan ve sonuna kadar süren pencere kesmeyle sürüyordur: o yanda rampa yok.
  */
@@ -1196,6 +1239,8 @@ export interface Focus {
   work?: number;
   /** Panoya yazarken kalemin panodaki yeri (tuval; workBoard). */
   board?: readonly [number, number];
+  /** Aynı derinlikte en yakın kişiyle arasındaki orta çizgi (tuval x): eller onu geçmez (SPACE). */
+  space?: number;
 }
 
 /**
@@ -1240,7 +1285,10 @@ export function focusOf(
   const text = spec.texts.find((tx) => tx.style === "label");
   const aim = explicit ? center(explicit) : beside ? center(beside) : text ? ([text.x, text.y] as const) : undefined;
   const at = explicit ?? beside;
+  // Yanında aynı derinlikte duran kişi (arkadaki ya da öndeki değil): ikisinin elleri aradaki orta çizgide buluşmasın.
+  const mate = near(people.filter((pl) => Math.abs(pl.z - self.z) <= CONVERSE.depth));
   return {
+    ...(mate ? { space: (self.x + mate.x) / 2 } : {}),
     aim,
     // Çizim kutusunun kenarında genelde boşluk var: yarı genişliğin POINT.edge'i.
     ...(at ? { aimEdge: at.x - Math.sign(at.x - self.x || 1) * at.width * POINT.edge } : {}),
@@ -1834,6 +1882,8 @@ function motionOf(
     receiver: focus.receiver ? [toRigX(focus.receiver[0]), (focus.receiver[1] - tr.y - (placed.y - placed.height)) / k] : undefined,
     ...(focus.work === undefined ? {} : { workY: (focus.work - tr.y - (placed.y - placed.height)) / k }),
     ...(focus.board ? { board: [toRigX(focus.board[0]), (focus.board[1] - tr.y - (placed.y - placed.height)) / k] as const } : {}),
+    // Uzatma bilerek karşıdakine uzanır: orta çizgi sınırı yok.
+    ...(focus.space === undefined || anims.some((a) => a.type === "give") ? {} : { space: toRigX(focus.space) }),
     voice,
     face,
   };

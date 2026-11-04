@@ -56,6 +56,8 @@ interface Calls {
   figureBroken?: boolean;
   /** Benzerlik ajanına gelen istek sayısı. */
   likeness?: number;
+  /** Kapının uzuv puanı (her çağrıda; yoksa null: puanlanmadı). */
+  limbs?: (system: string) => number | null;
   /** Görselli isteklerin metni, ajan türüyle (şemanın ilk alanı). */
   seen?: { agent: string; text: string }[];
 }
@@ -122,7 +124,7 @@ function fakeClaude(score: () => number, calls: Calls): QueryFn {
       out = { guess: "a person", confidence: 8 };
     } else if (props.includes("recognizable")) {
       calls.gate++;
-      out = { recognizable: score(), fidelity: null, defects: ["arms too short"] };
+      out = { recognizable: score(), fidelity: null, limbs: calls.limbs?.(params.options?.systemPrompt ?? "") ?? null, defects: ["arms too short"] };
     } else if (props.includes("shoes")) {
       out = calls.figureBroken ? { ...FIGURE, skin: "ten rengi" } : FIGURE;
       return (async function* () {
@@ -293,6 +295,21 @@ describe("konsept akışı (sahte Claude)", () => {
     const again = await pipeline.run(id, { until: "concept" });
     expect(again.concept!.selected.c1).toBeUndefined();
     expect(calls.designer.filter((p) => p.startsWith("Character"))).toHaveLength(0);
+  });
+
+  it("tanınan ama kolları ve elleri bozuk karakter geçmez: uzuvlar düzelene kadar yeniden çizilir; mekânda uzuv puanı sayılmaz", async () => {
+    const { calls, pipeline, id } = await setup(() => 9);
+    // Karakterde ilk çizimin uzuvları 5 (ayrı borular, eldiven eller), ikincisi 8; mekânda denetçi 3 verse de sayılmaz.
+    const limbs = [5, 8];
+    calls.limbs = (system) => (system.includes("puppet character") ? limbs.shift()! : 3);
+    const state = await pipeline.run(id, { until: "concept" });
+    const check = Object.values(state.assetChecks!).find((c) => c.entityId === "c1")!;
+    expect(check).toMatchObject({ passed: true, attempts: 2, recognizable: 9, limbs: 8 });
+    expect(calls.designer.filter((p) => p.startsWith("Character")).at(-1)).toContain("arms too short");
+    const room = Object.values(state.assetChecks!).find((c) => c.entityId === "l1")!;
+    expect(room).toMatchObject({ passed: true, attempts: 1 });
+    expect(room.limbs).toBeUndefined();
+    expect(state.concept!.selected.c1).toBeDefined();
   });
 
   it("ilk iki çizim de tanınmazsa (≤4/10) üçüncüsü çizilmez", async () => {

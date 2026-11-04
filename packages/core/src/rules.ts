@@ -14,6 +14,12 @@ export const QUALITY_GATE = {
   recognizableMin: { character: 7, prop: 7, background: 5 } satisfies Record<GatedKind, number>,
   /** Gerçek bir özne (referans görselli) için referansa sadakat alt sınırı (0–10). */
   fidelityMin: 6,
+  /**
+   * İskeletli karakterde uzuvların alt sınırı (0–10): kollar, eller ve bacaklar bükülüp sallanırken doğal görünecek mi
+   * (4 Kas, Uçak bölümü: Charlie Taylor'ın ön kolları ayrı borular, elleri eldiven gibi, yağ lekeleri koyu yamalar;
+   * kapı kusuru yazdı ama tanınırlık 7 ve sadakat 6 ile geçirdi, her jestte göze battı).
+   */
+  limbsMin: 7,
   /** Bir varlık en çok kaç kez çizilir (ilk çizim + kusur listesiyle yeniden çizimler). */
   maxDraws: 3,
   /**
@@ -71,11 +77,14 @@ export interface GateScores {
   recognizable: number;
   /** Referans yoksa undefined. */
   fidelity?: number;
+  /** Yalnız karakterde: uzuvlar (eski kayıtlarda yok). */
+  limbs?: number;
 }
 
-/** Kapı kararı: tanınırlık eşiği ve (referans varsa) sadakat eşiği birlikte sağlanmalı. */
+/** Kapı kararı: tanınırlık eşiği, (referans varsa) sadakat eşiği ve (karakterde) uzuv eşiği birlikte sağlanmalı. */
 export function gatePasses(kind: GatedKind, s: GateScores): boolean {
   if (s.recognizable < QUALITY_GATE.recognizableMin[kind]) return false;
+  if (s.limbs !== undefined && s.limbs < QUALITY_GATE.limbsMin) return false;
   return s.fidelity === undefined || s.fidelity >= QUALITY_GATE.fidelityMin;
 }
 
@@ -85,5 +94,5 @@ export function betterGate(kind: GatedKind, a: GateScores, b: GateScores | undef
   const pa = gatePasses(kind, a);
   const pb = gatePasses(kind, b);
   if (pa !== pb) return pa;
-  return a.recognizable + (a.fidelity ?? 0) > b.recognizable + (b.fidelity ?? 0);
+  return a.recognizable + (a.fidelity ?? 0) + (a.limbs ?? 0) > b.recognizable + (b.fidelity ?? 0) + (b.limbs ?? 0);
 }

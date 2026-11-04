@@ -707,6 +707,8 @@ export class EpisodePipeline {
       scores: {
         recognizable: gate.recognizable,
         fidelity: references && gate.fidelity !== null && state.input.realism !== false ? gate.fidelity : undefined,
+        // Uzuvlar yalnız karakterde puanlanır (iskelette her jestte döner).
+        ...(brief.kind === "character" && gate.limbs !== null ? { limbs: gate.limbs } : {}),
       },
       guess: guess.guess,
       defects: gate.defects,
@@ -812,6 +814,7 @@ export class EpisodePipeline {
       guess: r.guess,
       recognizable: r.scores.recognizable,
       fidelity: r.scores.fidelity,
+      limbs: r.scores.limbs,
       passed: gatePasses(brief.kind, r.scores),
       defects: r.defects,
       attempts,
@@ -852,7 +855,7 @@ export class EpisodePipeline {
     // harcamadan kullanılır.
     const previous = state.assetChecks?.[key];
     if (previous?.rejectedKey) {
-      const scores = { recognizable: previous.recognizable, fidelity: state.input.realism === false ? undefined : previous.fidelity };
+      const scores = { recognizable: previous.recognizable, fidelity: state.input.realism === false ? undefined : previous.fidelity, limbs: previous.limbs };
       const svg = await this.deps.store.get(previous.rejectedKey);
       const rejectedMeta = await getJson<VectorAssetMeta>(this.deps.store, `${previous.rejectedKey}.json`);
       if (svg && rejectedMeta && gatePasses(brief.kind, scores)) {
@@ -2079,6 +2082,7 @@ export class EpisodePipeline {
       guess: best.res.guess,
       recognizable: best.res.scores.recognizable,
       fidelity: best.res.scores.fidelity,
+      limbs: best.res.scores.limbs,
       passed: gatePasses(kind, best.res.scores),
       defects: best.res.defects,
       attempts: draws,

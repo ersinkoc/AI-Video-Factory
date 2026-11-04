@@ -39,7 +39,7 @@ const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
 const { CALLOUT } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -1254,6 +1254,59 @@ describe("vektör sahne: dikkat (işaret ve bakış)", () => {
     const above = withOthers({ anims: [{ type: "point", target: 1 }] }, [{ asset: "box", x: 960, y: 300, height: 100 }]);
     expect(above("arm-r").rotate).toBeGreaterThan(90);
     expect(above("forearm-r").rotate).toBe(-6);
+  });
+
+  it("kişisel alan: yanındakini işaret eden, anlatan, omuz silken ve irkilen el iki kişinin orta çizgisini geçmez", () => {
+    const handX = (g: (p: string) => { rotate: number }, side: "l" | "r") => tip(RIG.pivots[`arm-${side}`], ARM.upper, ARM.reach, g(`arm-${side}`).rotate, g(`forearm-${side}`).rotate)[0];
+    // Orta çizginin kahramanın iskelet tuvalindeki yeri (yerleşimden).
+    const midline = (x: number) => {
+      const m = shotModel(VectorShot.parse({ layers: [{ asset: "hero", x: 960, depth: 0 }, { asset: "walker", x, depth: 0 }] }), ASSETS, "outline", 1920, 1080, false, 5);
+      const [a, b] = [0, 1].map((i) => m.placed.find((p) => p.index === i)!);
+      return ((a!.x + b!.x) / 2 - (a!.x - a!.width / 2)) / (a!.height / RIG.height);
+    };
+    const near = [{ asset: "walker", x: 1260, depth: 0 }];
+    const far = [{ asset: "walker", x: 1750, depth: 0 }];
+    const explain = { anims: [{ type: "explain" }] };
+    const limit = midline(1260) - SPACE.gap;
+    // Anlatan el yanındakine açılır ama orta çizgide durur; uzaktaki ya da arkadaki kişi sınır koymaz.
+    expect(handX(withOthers(explain, near), "r")).toBeLessThan(limit);
+    expect(handX(withOthers(explain, near), "r")).toBeLessThan(handX(withOthers(explain, far), "r") - 10);
+    // Orta çizgi yalnız aynı derinlikteki en yakın kişiyle: arkadaki ya da öndeki sınır koymaz.
+    const spec = VectorShot.parse({ layers: [{ asset: "hero", x: 960, depth: 0 }, { asset: "walker", x: 1260, depth: 0 }, { asset: "walker", x: 1100, depth: 0.6 }] });
+    const people = [
+      { ...PL, index: 0, x: 960, z: 0, width: 300, height: 600 },
+      { ...PL, index: 1, x: 1260, z: 0, width: 300, height: 600 },
+      { ...PL, index: 2, x: 1100, z: 60, width: 200, height: 400 },
+    ];
+    const focus = (list: typeof people) => focusOf(spec, list, 0, () => "character", () => undefined, () => false).space;
+    expect(focus(people)).toBe(1110);
+    expect(focus([people[0]!, people[2]!])).toBeUndefined();
+    // Kişiyi işaret eden el onun gövdesine uzanmaz.
+    expect(handX(withOthers({ anims: [{ type: "point", target: 1 }] }, near), "r")).toBeLessThan(limit);
+    // Omuz silkme yanındakinin tarafında kısalır, öbür yanda değişmez.
+    const shrug = { anims: [{ type: "shrug" }] };
+    expect(handX(withOthers(shrug, near), "r")).toBeLessThan(handX(withOthers(shrug, far), "r") - 10);
+    expect(handX(withOthers(shrug, near), "l")).toBeCloseTo(handX(withOthers(shrug, far), "l"), 5);
+    // İrkilmede aşağıda açılan sol el, soldaki kişinin alanına girmez.
+    const surprised = { anims: [{ type: "surprised" }] };
+    // İrkilme 2,5 sn'ye kısalır: jest sürerken (1,5. sn) bakılır.
+    expect(handX(withOthers(surprised, [{ asset: "walker", x: 660, depth: 0 }], 45), "l")).toBeGreaterThan(handX(withOthers(surprised, [{ asset: "walker", x: 160, depth: 0 }], 45), "l") + 10);
+  });
+
+  it("kişisel alan sınırı: dışa açılmayan, sınıra uzanmayan ya da iç içe duran kişide kol değişmez; geçen kol sürekli küçülür", () => {
+    // Sağ kol (omuz 260) anlatma açısında sağa uzanır.
+    expect(keepInSpace("r", -20, -60, {})).toEqual({ arm: -20, forearm: -60 });
+    expect(keepInSpace("r", -20, -60, { space: 900 })).toEqual({ arm: -20, forearm: -60 });
+    // Sınır öbür yanda: el ondan uzaklaşıyor.
+    expect(keepInSpace("r", -20, -60, { space: 100 })).toEqual({ arm: -20, forearm: -60 });
+    // Omuz sınırın ötesinde (iç içe duranlar): jest söndürülmez.
+    expect(keepInSpace("r", -20, -60, { space: 265 })).toEqual({ arm: -20, forearm: -60 });
+    const close = keepInSpace("r", -20, -60, { space: 340 });
+    const closer = keepInSpace("r", -20, -60, { space: 320 });
+    expect(close.arm / -20).toBeCloseTo(close.forearm / -60, 6);
+    expect(close.arm / -20).toBeLessThan(1);
+    expect(closer.arm / -20).toBeLessThan(close.arm / -20);
+    expect(keepInSpace("r", -20, -60, { space: 340.5 }).arm).toBeCloseTo(close.arm, 0);
   });
 
   it("target verilmişse en yakını değil o katmanı gösterir; gövdesinin önündeki nesne hedef sayılmaz", () => {
