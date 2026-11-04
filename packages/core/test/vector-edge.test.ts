@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyLineStyle, bumpVersion, compareVersions, formatUsd, keepShotLayers, sanitizeSvg, Shot, stripBackdrop, toDollars, uniqueCharacters, usd, VectorShot } from "../src/index.ts";
+import { applyLineStyle, bumpVersion, compareVersions, formatUsd, keepShotLayers, namesMatch, sanitizeSvg, Shot, stripBackdrop, toDollars, uniqueCharacters, usd, VectorShot } from "../src/index.ts";
 
 describe("SVG temizleyici: kenar durumlar", () => {
   it("iç başvuru olmayan href atılır, #id kalır", () => {
@@ -147,6 +147,13 @@ describe("uniqueCharacters", () => {
     expect(keepShotLayers(spec, [true, true, false])).not.toHaveProperty("callout");
     expect(keepShotLayers({ ...spec, callout: undefined }, [true, false, true])).not.toHaveProperty("callout");
     expect(uniqueCharacters(VectorShot.parse({ layers: [{ asset: "c1", x: 0 }, { asset: "c1", x: 1 }, { asset: "p", x: 2 }], callout: 2 }), isChar).callout).toBe(1);
+  });
+
+  it("namesMatch: biri ötekini içerir, çok kısa adlar eşleşmez", () => {
+    expect(namesMatch("Charles Babbage", "babbage")).toBe(true);
+    expect(namesMatch("Jobs", "Steve Jobs")).toBe(true);
+    expect(namesMatch("Ada Lovelace", "Babbage")).toBe(false);
+    expect(namesMatch("Al", "Al")).toBe(false);
   });
 
   it("anlatılan nesne (key) da balon gibi yeniden eşlenir; atılan katmanı gösteren key kalkar", () => {

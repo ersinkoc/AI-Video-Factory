@@ -244,6 +244,21 @@ describe("vektör çekim planı", () => {
     expect(h.logs).toContain("  1 çekimin boyu değişti (aynı odada aynı kişilere art arda aynı boyda kesme)");
   });
 
+  it("gerçek kişi bölümde ilk göründüğü çekimde adlandırılır; anlatılan nesne açıklamadan çıkarılır", async () => {
+    const h = harness({ concurrency: 1 });
+    onAgent("vectorDirector", () => ({
+      shots: [{ startWord: 0, description: "Cody reads the letter", ambience: "none", spec: vshot({ layers: [{ asset: "c1", x: 500, depth: 0.5 }, { asset: "p-letter", x: 600, heldBy: 0 }] }) }],
+      newProps: [{ id: "p-letter", description: "a letter" }],
+      newBackgrounds: [],
+    }));
+    const cast = { ...CAST, characters: [{ ...CAST.characters[0]!, name: "William Cody", reference: "Buffalo Bill Cody" }] };
+    const id = await h.seed(voiced({}, { cast }));
+    const state = await h.pipeline.run(id, { only: "shots" });
+    expect(state.shots!.map((s) => s.vector!.texts.map((t) => t.text))).toEqual([["William Cody"], []]);
+    expect(state.shots!.every((s) => s.vector!.key === 1)).toBe(true);
+    expect(h.logs).toContain("  1 kişiye bölümdeki ilk görünüşünde ad etiketi kondu");
+  });
+
   it("sahnesiz senaryoda plan boş kalır", async () => {
     const h = harness();
     const id = await h.seed(voiced({}, { script: { scenes: [] } as never }));

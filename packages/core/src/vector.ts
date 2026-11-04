@@ -322,6 +322,13 @@ export const VectorText = z.object({
 });
 export type VectorText = z.infer<typeof VectorText>;
 
+/** Etiket bir kişinin adı mı: biri ötekini içeriyorsa (büyük/küçük harf duyarsız; "Babbage" ↔ "Charles Babbage"). */
+export function namesMatch(name: string, label: string): boolean {
+  const a = name.trim().toLocaleLowerCase("tr");
+  const b = label.trim().toLocaleLowerCase("tr");
+  return a.length > 2 && b.length > 2 && (a.includes(b) || b.includes(a));
+}
+
 /** Bölümün çizgi stili: tasarımcıya verilir ve render'da tüm varlıklarda kontur eşitlenir. */
 export const LineStyle = z.enum(["outline", "flat", "sketch", "ink"]);
 export type LineStyle = z.infer<typeof LineStyle>;

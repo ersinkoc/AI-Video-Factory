@@ -2,6 +2,7 @@ import {
   applyLineStyle,
   floorYOf,
   isWritable,
+  namesMatch,
   prefixSvgIds,
   resolveLayout,
   RIG,
@@ -2075,13 +2076,6 @@ const TAG_SNAP = 360;
 export function faceOnScreen([x, top]: readonly [number, number], [, foot]: readonly [number, number]): boolean {
   const face = top + (foot - top) / 7;
   return x >= 0 && x <= W && face >= 0 && top <= H;
-}
-
-/** Etiket bir kişinin adı mı: biri ötekini içeriyorsa (büyük/küçük harf duyarsız; "Babbage" ↔ "Charles Babbage"). */
-export function namesMatch(name: string, label: string): boolean {
-  const a = name.trim().toLocaleLowerCase("tr");
-  const b = label.trim().toLocaleLowerCase("tr");
-  return a.length > 2 && b.length > 2 && (a.includes(b) || b.includes(a));
 }
 
 interface PlacedText {

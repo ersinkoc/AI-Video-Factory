@@ -39,7 +39,7 @@ const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
 const { CALLOUT } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -1927,13 +1927,6 @@ describe("vektör sahne: yazılar", () => {
       expect(tagOf(c, "Ada Lovelace")).toBeDefined();
       expect(c.querySelector('[data-text="card"]')!.textContent).toContain("1843");
       cleanup();
-    });
-
-    it("namesMatch: biri ötekini içerir, çok kısa adlar eşleşmez", () => {
-      expect(namesMatch("Charles Babbage", "babbage")).toBe(true);
-      expect(namesMatch("Jobs", "Steve Jobs")).toBe(true);
-      expect(namesMatch("Ada Lovelace", "Babbage")).toBe(false);
-      expect(namesMatch("Al", "Al")).toBe(false);
     });
 
     it("cameraPoint cameraTransform ile aynı dönüşümü uygular", () => {

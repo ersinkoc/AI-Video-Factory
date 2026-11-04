@@ -145,6 +145,7 @@ export const PIPELINE_MESSAGES = {
   "log.shots.vector": { tr: "  {shots} vektör çekim, {props} nesne/mekân", en: "  {shots} vector shots, {props} props/locations" },
   "log.shots.reversed": { tr: "  {n} çekim odanın ters açısından (aynı odada art arda kesmede karşı duvar)", en: "  {n} shots use the room's reverse angle (the opposite wall when cutting within one room)" },
   "log.shots.varied": { tr: "  {n} çekimin boyu değişti (aynı odada aynı kişilere art arda aynı boyda kesme)", en: "  {n} shot sizes changed (same room, same people, same size in a row)" },
+  "log.shots.nameTags": { tr: "  {n} kişiye bölümdeki ilk görünüşünde ad etiketi kondu", en: "  {n} people got a name tag where they first appear in the episode" },
   "log.review.batchSkipped": { tr: "  inceleme grubu atlandı: {error}", en: "  review batch skipped: {error}" },
   "log.stills.wait": {
     tr: "  başka bir render sürüyor (süreç {pid}); kareler için sıra bekleniyor",

@@ -127,6 +127,7 @@ import { shortRange, shortTimeline } from "./short.ts";
 import { buildTimeline, clipSeconds, resolveShotTimes, sceneOffsets, toSrt } from "./timing.ts";
 import { assignReverseViews, reverseCandidates, varyShotSizes } from "./variety.ts";
 import { withKey } from "./key-prop.ts";
+import { nameTags } from "./name-tags.ts";
 import { looksLikeObject } from "./cast-kind.ts";
 import type { EpisodeReview } from "./state.ts";
 
@@ -1325,11 +1326,16 @@ export class EpisodePipeline {
     return shots;
   }
 
-  /** Sahne sınırında aynı odada aynı kişilere aynı boyda art arda kesilmesin (variety.ts). */
+  /**
+   * Bölüm çapındaki plan geçişleri (sahneler paralel planlanır, hiçbiri öbürlerini görmez): sahne sınırında aynı odada aynı
+   * kişilere aynı boyda art arda kesilmesin (variety.ts); gerçek kişi bölümde ilk göründüğü yerde adlandırılsın (name-tags.ts).
+   */
   private varyShots(state: EpisodeState): void {
     const people = new Set(state.cast!.characters.map((c) => c.id));
     const n = varyShotSizes(state.shots!, (id) => people.has(id));
     if (n) this.log(msg("log.shots.varied", { n }));
+    const tags = nameTags(state.shots!, state.cast!.characters);
+    if (tags) this.log(msg("log.shots.nameTags", { n: tags }));
   }
 
   /** Çekim planı: sahne başına bir yönetmen çağrısı; çıktı kısa JSON, çizim, fizik ve hareket kodda. */
