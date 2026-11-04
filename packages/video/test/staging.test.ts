@@ -138,6 +138,11 @@ describe("sahneleme: yerleşimden sonra", () => {
     expect(far.problems).toEqual([{ layer: 0, code: "action_without_prop", detail: "typing with no desk, keyboard or board within reach: gesture dropped", replan: true }]);
     const atDesk = shot([{ asset: "desk", x: 960, depth: 0.3 }, { asset: "hero", x: 960, depth: 0.3, anims: [{ type: "writing" }] }]);
     expect(after(atDesk).problems).toEqual([]);
+    // Ellerin önündeki eşyanın üstü yoksa (araba, duvardaki laptop) masa sayılmaz: kişi havaya yazıyordu (4 Kas).
+    for (const thing of ["car", "thing"]) {
+      const air = after(shot([{ asset: thing, x: 960, depth: 0.3 }, { asset: "hero", x: 960, depth: 0.3, anims: [{ type: "writing" }] }]));
+      expect(air.problems.map((p) => p.code)).toEqual(["action_without_prop"]);
+    }
   });
 
   it("nesneye ve yerleşmemiş katmana dokunulmaz", () => {

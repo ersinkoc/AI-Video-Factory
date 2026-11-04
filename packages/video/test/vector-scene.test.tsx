@@ -55,6 +55,12 @@ const asset = (id: string, kind: "character" | "prop" | "background", svg: strin
 
 const ASSETS = {
   box: asset("box", "prop", '<svg viewBox="0 0 100 100"><rect id="box" width="100" height="100" fill="#ff0000"/></svg>', 100, 100),
+  // Yüksek tezgâh (1 m): masa başı işte eller yukarı kalkar.
+  counter: asset("counter", "prop", '<svg viewBox="0 0 200 100"><rect id="counter" width="200" height="100" fill="#663300"/></svg>', 200, 100, { realHeight: 1, surface: 1, grounded: true }),
+  // Alçak masa (0,55 m): masa başı işte eller aşağı uzanır.
+  low: asset("low", "prop", '<svg viewBox="0 0 200 100"><rect id="low" width="200" height="100" fill="#aa7744"/></svg>', 200, 100, { realHeight: 0.55, surface: 1, grounded: true }),
+  // Standart çalışma masası (0,75 m, üstü düz): masa başı işlerin yüzeyi.
+  desk: asset("desk", "prop", '<svg viewBox="0 0 200 100"><rect id="desk" width="200" height="100" fill="#996633"/></svg>', 200, 100, { realHeight: 0.75, surface: 1, grounded: true }),
   // Masaya konan yatık küçük nesne (çek): okunur en uzun kenarla bile alanı küçük.
   check: asset("check", "prop", '<svg viewBox="0 0 400 100"><rect id="check" width="400" height="100" fill="#00ffff"/></svg>', 400, 100, { realHeight: 0.04 }),
   cup: asset("cup", "prop", '<svg viewBox="0 0 100 100"><rect id="cup" width="100" height="100" fill="#00ff00"/></svg>', 100, 100, { realHeight: 0.3 }),
@@ -396,11 +402,49 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(g("leg-l").rotate).toBeCloseTo(0, 5);
   });
 
+  it("masa başı işte eller gerçek masanın üstüne gider: tezgâhta yukarı (en çok shift), oturanda masanın üstünde; anatomi sınırında", () => {
+    const wristY = (layers: object[], index: number) => {
+      const c = scene({ layers }, { frame: 150 });
+      const css = c.querySelector("style")!.textContent!;
+      cleanup();
+      const g = (part: string) => pose(css, part, `s1-${index}-`);
+      // Yüksek masada üst kol kameraya uzanıp kısalır (sy); ön kolun CSS'i bunu geri alır, görünen boyu kendi sy'si.
+      return tip(RIG.pivots["arm-l"], ARM.upper * g("arm-l").sy, ARM.reach * g("forearm-l").sy, g("arm-l").rotate, g("forearm-l").rotate)[1];
+    };
+    const tap = DESK_WORK.dip * typingTaps(5)[0]!;
+    const hero = { asset: "hero", x: 960, depth: 0, anims: [{ type: "typing" }] };
+    // Standart masa: kayma yok.
+    expect(wristY([hero, { asset: "desk", x: 960, depth: 0 }], 0)).toBeCloseTo(DESK_WORK.key[1] + tap, 0);
+    // 1 m tezgâhın üstü standart masadan ~118 px yukarıda: eller en çok shift kadar kalkar.
+    expect(wristY([hero, { asset: "counter", x: 960, depth: 0 }], 0)).toBeCloseTo(DESK_WORK.key[1] - DESK_WORK.shift + tap, 0);
+    // Oturan: gövde indiği için masa üstü iskelette yukarıda kalır; eller masanın arkasına düşmez, üstüne kalkar.
+    const seatedLayers = [{ asset: "chair", x: 960, depth: 0.2 }, { asset: "desk", x: 960, depth: 0 }, { asset: "hero", x: 960, on: 0, anims: [{ type: "typing" }] }];
+    expect(wristY(seatedLayers, 2)).toBeLessThan(DESK_WORK.key[1] + tap - 20);
+    // 0,55 m alçak masa: eller en çok shift kadar iner, ön kol uzayıp yetişir.
+    expect(wristY([hero, { asset: "low", x: 960, depth: 0 }], 0)).toBeCloseTo(DESK_WORK.key[1] + DESK_WORK.shift + tap, 0);
+    // Hiçbirinde, klavyede de yazıda da eklem sınırı aşılmaz.
+    for (const type of ["typing", "writing"]) {
+      const worker = { ...hero, anims: [{ type }] };
+      const sets = [
+        [worker, { asset: "counter", x: 960, depth: 0 }],
+        [worker, { asset: "low", x: 960, depth: 0 }],
+        [seatedLayers[0], seatedLayers[1], { ...seatedLayers[2], anims: [{ type }] }],
+      ];
+      for (const layers of sets) {
+        const m = shotModel(VectorShot.parse({ layers }), ASSETS, "outline", 1920, 1080, false, 5);
+        for (const frame of [0, 40, 80, 120]) {
+          const f = shotFrame(m, { shotId: "s1", frame, fps: 30, durationInFrames: 150, width: 1920, height: 1080, insets: false, overlay: false });
+          for (const mo of f.motions.values()) expect(mo.strains ?? []).toEqual([]);
+        }
+      }
+    }
+  });
+
   it("iş jestleri: klavye, yazı, okuma, gösterme, alkış, eller belde, kollar kavuşuk", () => {
-    // Klavye ve yazı önünde bir eşya ister (el hizasında kutu); okuma ve gösterme elde bir şey (yanındaki bardak ele alınır).
+    // Klavye ve yazı önünde masa ister; okuma ve gösterme elde bir şey (yanındaki bardak ele alınır).
     const props: Record<string, object[]> = {
-      typing: [{ asset: "box", x: 960, depth: 0 }],
-      writing: [{ asset: "box", x: 960, depth: 0 }],
+      typing: [{ asset: "desk", x: 960, depth: 0 }],
+      writing: [{ asset: "desk", x: 960, depth: 0 }],
       reading: [{ asset: "cup", x: 1100 }],
       show: [{ asset: "cup", x: 1100 }],
     };
@@ -438,7 +482,7 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect([g("forearm-l").sy, g("head").ty]).toEqual([0.55, 5]);
     // Satırda ilerler, duraklamada satır başına döner.
     const pens = [150, 160, 170, 180, 190].map((f) => {
-      const c = scene({ layers: [{ asset: "hero", x: 960, depth: 0, anims: [{ type: "writing" }] }, { asset: "box", x: 960, depth: 0 }] }, { frame: f });
+      const c = scene({ layers: [{ asset: "hero", x: 960, depth: 0, anims: [{ type: "writing" }] }, { asset: "desk", x: 960, depth: 0 }] }, { frame: f });
       const css = c.querySelector("style")!.textContent!;
       cleanup();
       return wrist((part: string) => pose(css, part, "s1-0-"), "r")[0];
@@ -2330,7 +2374,8 @@ describe("vektör sahne: anatomi", () => {
   // Kişi, konuşulan ikinci kişi, gösterilecek/alınacak nesne ve iş yüzeyi (klavye, kâğıt).
   const stage = (person: object, extra: object[] = []) => ({
     background: "room",
-    layers: [{ asset: "thinker", x: 900, depth: 0, ...person }, { asset: "hero", x: 1250, depth: 0 }, { asset: "cup", x: 1450, y: 700, height: 80 }, { asset: "box", x: 900, depth: 0 }, ...extra],
+    // Masa: klavye ve yazı jestleri ancak gerçek bir masada kalır (staging), tarama onları da denesin.
+    layers: [{ asset: "thinker", x: 900, depth: 0, ...person }, { asset: "hero", x: 1250, depth: 0 }, { asset: "cup", x: 1450, y: 700, height: 80 }, { asset: "desk", x: 900, depth: 0 }, ...extra],
   });
 
   it("her jest, her tohumda (düşünme duruşları), nesne tutarken, otururken ve aynalanmışken insan eklem sınırında kalır", () => {
@@ -2342,9 +2387,20 @@ describe("vektör sahne: anatomi", () => {
         out.push(...strained(stage({ anims, flip: true, expression: "surprised" }), seed));
         out.push(...strained(stage({ anims }, [{ asset: "cup", x: 0, heldBy: 0 }]), seed));
         // Sandalyede oturan (katman 1, sandalyenin üstünde).
-        out.push(...strained({ background: "room", layers: [{ asset: "chair", x: 900, depth: 0 }, { asset: "thinker", x: 900, on: 0, anims }, { asset: "hero", x: 1250, depth: 0 }, { asset: "cup", x: 1450, y: 700, height: 80 }] }, seed));
+        out.push(
+          ...strained(
+            { background: "room", layers: [{ asset: "chair", x: 900, depth: 0.2 }, { asset: "thinker", x: 900, on: 0, anims }, { asset: "hero", x: 1250, depth: 0 }, { asset: "cup", x: 1450, y: 700, height: 80 }, { asset: "desk", x: 900, depth: 0 }] },
+            seed,
+          ),
+        );
       }
     expect(out).toEqual([]);
+    // İş jestleri taramada gerçekten pozlandı: masada kaldılar, düşmediler.
+    for (const type of ["typing", "writing"]) {
+      const seated = { background: "room", layers: [{ asset: "chair", x: 900, depth: 0.2 }, { asset: "thinker", x: 900, on: 0, anims: [{ type }] }, { asset: "desk", x: 900, depth: 0 }] };
+      for (const shot of [stage({ anims: [{ type }] }), seated, { background: "room", layers: [{ asset: "walker", x: 300, depth: 0, anims: [{ type: "walk", toX: 1500 }, { type }] }, { asset: "desk", x: 300, depth: 0 }] }])
+        expect(shotModel(VectorShot.parse(shot), ASSETS, "outline", 1920, 1080, false, 5).problems.filter((pr) => pr.code === "action_without_prop")).toEqual([]);
+    }
   });
 
   it("iki jestin karışımı (geçişler dahil) ve yürürken yapılan jest (önden, yan çizimde, 3D figürde) sınırda kalır", () => {
@@ -2352,7 +2408,8 @@ describe("vektör sahne: anatomi", () => {
     for (const a of GESTURES)
       for (const b of GESTURES) if (a < b) out.push(...strained(stage({ anims: [{ type: a, start: 0, end: 0.6 }, { type: b, start: 0.4, end: 1 }] }), "s1", 10));
     for (const type of GESTURES)
-      for (const asset of ["walker", "toy"]) out.push(...strained({ background: "room", layers: [{ asset, x: 300, depth: 0, anims: [{ type: "walk", toX: 1500 }, { type }] }] }, "s2", 10));
+      for (const asset of ["walker", "toy"])
+        out.push(...strained({ background: "room", layers: [{ asset, x: 300, depth: 0, anims: [{ type: "walk", toX: 1500 }, { type }] }, { asset: "desk", x: 300, depth: 0 }] }, "s2", 10));
     expect(out).toEqual([]);
     // Yan çizim ve 3D figür yürürken gerçekten profile döndü: profil sınırlarına da bakıldı.
     expect(profiles).toBeGreaterThan(GESTURES.length * 10);

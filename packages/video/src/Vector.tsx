@@ -7,6 +7,9 @@ import {
   sideAssetId,
   sanitizeSvg,
   uniqueCharacters,
+  WORK,
+  workSurface,
+  workTopOf,
   type LineStyle,
   type PlacedLayer,
   type RigPart,
@@ -35,7 +38,7 @@ import { CALLOUT, calloutScale, calloutSpot, calloutTarget, overlap, type Box } 
 import { Figure3D } from "./Figure3D.tsx";
 import { clapClosed, GESTURE_RHYTHM, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
-import { anatomical, flexion, type Strain } from "./anatomy.ts";
+import { anatomical, flexion, STRETCH, type Strain } from "./anatomy.ts";
 import { splitBrows, type BrowPart, type SplitBrows } from "./browShape.ts";
 import { bend, reach } from "./ik.ts";
 import { revealWindow } from "./kinetic-timing.ts";
@@ -122,9 +125,14 @@ export const CLAP = { meet: [192, 368], open: 36, lift: 23, fore: 0.6 } as const
  * öbür yana geçip kolları çaprazlıyordu. Bilekler hedefe IK ile, ön kollar kameraya uzanıp kısalmış (fore) gider.
  * Klavye: sol bilek key (sağ ayna, aradaki ~22 cm), tuşta dip px iner, drift px tuşlar arasında kayar; parmaklar aşağı,
  * içe tilt derece (mutlak açı), bilek yana dönmez. Yazı: kalemli el (sağ) pen'den başlayıp satır boyunca line px
- * ilerler, duraklamada satır başına döner; öbür el hold'da kâğıdı tutar.
+ * ilerler, duraklamada satır başına döner; öbür el hold'da kâğıdı tutar. Bu yükseklikler top'taki standart masa üstüne
+ * (1,7 m kişi, 0,75 m masa) göre: kişinin elleri gerçek bir masadaysa (workSurface) eller o masanın üstüne kayar, en
+ * çok shift px (4 Kas: oturan kişinin elleri masanın arkasında kalıyordu, alçak tezgâhta havada duruyordu). Yüksek
+ * masada dirsek de kalkar, üst kol kameraya uzanıp kısalır (deskArm).
  */
 export const DESK_WORK = {
+  top: 447,
+  shift: 80,
   key: [167, 428],
   dip: 3,
   drift: 4,
@@ -236,6 +244,31 @@ interface Attention {
   voice?: Voice;
   /** Çizimin ölçülmüş yüzü (rigGeometry, fitFace): el çeneye, ağız şekli ağzın yerine. */
   face?: FaceFit;
+  /** Masa başı işte ellerin değdiği masanın üst yüzeyi (iskelet y); masa yoksa undefined. */
+  workY?: number;
+}
+
+/** Masa başı işte ellerin kayması (iskelet px): gerçek masa üstüyle standart masa üstü arası, ±DESK_WORK.shift. */
+const deskShift = (a: Attention) => (a.workY === undefined ? 0 : Math.max(-DESK_WORK.shift, Math.min(DESK_WORK.shift, a.workY - DESK_WORK.top)));
+
+/**
+ * Masa başı işte kolun masaya uzanması. target: standart masadaki el (DESK_WORK), lift: deskShift, fore: ön kolun
+ * standart masadaki görünen boyu. Masa yüksekse (lift < 0) ön kol standart masadaki duruşunu koruyup bütünüyle kalkar;
+ * dirsek de kalkar, üst kol oraya kameraya uzanarak kısalır (bend; en kısa anatomi sınırı STRETCH.min, oraya
+ * varamayan dirsekten ön kol biraz uzayıp hedefe yetişir). Yalnız el hedefi kalkınca dirsek aşağıda kalıyor, ön kol
+ * yukarı dikiliyor, parmakları aşağı bakan el bilekte ~150° katlanıyordu (anatomi sınırı 80°). Masa alçaksa ön kol
+ * daha az öne uzanır (görünen boyu 1'e doğru): el masaya yetişir.
+ */
+function deskArm(side: "l" | "r", target: readonly [number, number], lift: number, fore: number): { arm: number; forearm: number; scale: number; fore: number } {
+  const shoulder = RIG.pivots[`arm-${side}`];
+  const at: [number, number] = [target[0], target[1] + lift];
+  if (lift >= 0) {
+    const f = fore + ((1 - fore) * lift) / DESK_WORK.shift;
+    return { ...reach(shoulder, at, ARM.upper, ARM.reach * f), scale: 1, fore: f };
+  }
+  const rest = reach(shoulder, target, ARM.upper, ARM.reach * fore);
+  const b = bend(shoulder, [rest.elbow[0], rest.elbow[1] + lift], at, ARM.upper, ARM.reach * fore, STRETCH.min);
+  return { ...b, fore: Math.hypot(at[0] - b.elbow[0], at[1] - b.elbow[1]) / ARM.reach };
 }
 
 /**
@@ -809,13 +842,15 @@ function rigPose(
         // Bilekler dirsek hizasının biraz altında klavyenin iki yarısında (masanın üstünde görünür); tuşa basan el biraz
         // iner, eller tuşlar arasında kayar; parmaklar klavyeye iner, bilek yana dönmez. Baş ve gözler klavyeye eğik.
         const taps = typingTaps(t);
+        const lift = deskShift(attention);
         (["l", "r"] as const).forEach((s, i) => {
           const out = s === "l" ? -1 : 1;
           const x = DESK_WORK.key[0] + Math.sin(t * (1.3 + 0.4 * i) + i * 2) * DESK_WORK.drift;
-          const k = reach(RIG.pivots[`arm-${s}`], [s === "l" ? x : RIG.width - x, DESK_WORK.key[1] + DESK_WORK.dip * taps[i]!], ARM.upper, ARM.reach * DESK_WORK.fore);
+          const k = deskArm(s, [s === "l" ? x : RIG.width - x, DESK_WORK.key[1] + DESK_WORK.dip * taps[i]!], lift, DESK_WORK.fore);
           mix(`arm-${s}`, "rotate", k.arm);
+          mix(`arm-${s}`, "sy", k.scale);
           mix(`forearm-${s}`, "rotate", k.forearm);
-          mix(`forearm-${s}`, "sy", DESK_WORK.fore);
+          mix(`forearm-${s}`, "sy", k.fore);
           // Mutlak açı: parmaklar aşağı, biraz içe (sol el sağa, sağ el sola).
           mix(`hand-${s}`, "rotate", out * DESK_WORK.tilt - k.arm - k.forearm);
         });
@@ -827,25 +862,23 @@ function rigPose(
       case "writing": {
         // Kalemli el gövdenin önünde masada, satır boyunca küçük hızlı kıvrımlar; öbür el kâğıdı tutar; baş eğik.
         const pen = penDown(t);
+        const lift = deskShift(attention);
         // Satırda ilerleme: yazarken soldan sağa, duraklamada (satır başı) geri.
         const { strokeSec, pauseSec } = GESTURE_RHYTHM;
         const u = (t % (strokeSec + pauseSec)) / strokeSec;
         const along = u <= 1 ? u : 1 - (u - 1) * (strokeSec / pauseSec);
-        const pr = reach(
-          RIG.pivots["arm-r"],
-          [DESK_WORK.pen[0] + DESK_WORK.line * along, DESK_WORK.pen[1] + Math.sin(t * 17) * 1.5 * pen],
-          ARM.upper,
-          ARM.reach * FORESHORTEN,
-        );
+        const pr = deskArm("r", [DESK_WORK.pen[0] + DESK_WORK.line * along, DESK_WORK.pen[1] + Math.sin(t * 17) * 1.5 * pen], lift, FORESHORTEN);
         mix("arm-r", "rotate", pr.arm);
+        mix("arm-r", "sy", pr.scale);
         mix("forearm-r", "rotate", pr.forearm);
-        mix("forearm-r", "sy", FORESHORTEN);
+        mix("forearm-r", "sy", pr.fore);
         // Kalem ucu kâğıda: parmaklar aşağı-içe; harf kıvrımları bilekte.
         mix("hand-r", "rotate", 15 + Math.sin(t * 23) * 6 * pen - pr.arm - pr.forearm);
-        const hl = reach(RIG.pivots["arm-l"], [DESK_WORK.hold[0], DESK_WORK.hold[1]], ARM.upper, ARM.reach * FORESHORTEN);
+        const hl = deskArm("l", DESK_WORK.hold, lift, FORESHORTEN);
         mix("arm-l", "rotate", hl.arm);
+        mix("arm-l", "sy", hl.scale);
         mix("forearm-l", "rotate", hl.forearm);
-        mix("forearm-l", "sy", FORESHORTEN);
+        mix("forearm-l", "sy", hl.fore);
         mix("hand-l", "rotate", -20 - hl.arm - hl.forearm);
         mix("head", "ty", 5);
         mix("head", "rotate", 4);
@@ -1103,14 +1136,33 @@ export interface Focus {
   holding?: boolean;
   /** give alıcısının göğsü (tuval). */
   receiver?: readonly [number, number];
+  /** Masa başı işte ellerin değdiği masanın üst yüzeyi (tuval y). */
+  work?: number;
 }
 
 /**
  * point hedefi: animasyonda "target" verilmişse o katman; yoksa yanında (gövdesinin dışında) duran en yakın nesne ya da
  * karakter; o da yoksa ekrandaki yazı. Kendi tuttuğu nesne ve arka plan hedef olmaz.
  */
-export function focusOf(spec: VectorShot, placed: PlacedLayer[], index: number, kinds: (i: number) => string | undefined): Focus {
+export function focusOf(
+  spec: VectorShot,
+  placed: PlacedLayer[],
+  index: number,
+  kinds: (i: number) => string | undefined,
+  /** Katmanın iş yüzeyi (masa üstünün y'si; workTopOf): masa başı işte eller ona gider. */
+  tops: (pl: PlacedLayer) => number | undefined,
+): Focus {
   const self = placed.find((pl) => pl.index === index)!;
+  const working = spec.layers[index]!.anims.some((a) => (WORK.gestures as readonly string[]).includes(a.type));
+  const work = working
+    ? workSurface(
+        self,
+        placed.flatMap((pl) => {
+          const top = tops(pl);
+          return top === undefined ? [] : [{ pl, top }];
+        }),
+      )?.top
+    : undefined;
   const center = (pl: PlacedLayer): [number, number] => [pl.x, pl.y - pl.height / 2];
   const others = placed.filter((pl) => pl.index !== index && pl.heldBy !== index);
   const near = (list: PlacedLayer[]) =>
@@ -1133,6 +1185,7 @@ export function focusOf(spec: VectorShot, placed: PlacedLayer[], index: number, 
     lookX: near(people)?.x,
     holding: placed.some((pl) => pl.heldBy === index),
     ...(receiver ? { receiver: [receiver.x, receiver.y - receiver.height * 0.6] as const } : {}),
+    ...(work === undefined ? {} : { work }),
   };
 }
 
@@ -1595,6 +1648,7 @@ function motionOf(
     lookDir: focus.lookX === undefined ? undefined : Math.sign(toRigX(focus.lookX) - RIG.width / 2),
     holding: focus.holding,
     receiver: focus.receiver ? [toRigX(focus.receiver[0]), (focus.receiver[1] - tr.y - (placed.y - placed.height)) / k] : undefined,
+    ...(focus.work === undefined ? {} : { workY: (focus.work - tr.y - (placed.y - placed.height)) / k }),
     voice,
     face,
   };
@@ -2293,7 +2347,8 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
   // Yönetmen planının saçma jestleri: elde tutma yerleşimi değiştirdiği için önce; işaret ve iş jesti yerleşimden sonra.
   const before = stageBefore(unique, safe, dur);
   const placed = resolveLayout(before.spec, safe);
-  const after = stageAfter(before.spec, placed, safe, (i) => focusOf(before.spec, placed, i, (j) => safe[before.spec.layers[j]!.asset]?.kind).aim !== undefined);
+  const tops = (o: PlacedLayer) => workTopOf(o, safe[before.spec.layers[o.index]!.asset]);
+  const after = stageAfter(before.spec, placed, safe, (i) => focusOf(before.spec, placed, i, (j) => safe[before.spec.layers[j]!.asset]?.kind, tops).aim !== undefined);
   const spec = after.spec;
   const problems = [...before.problems, ...after.problems];
   const bg = spec.background ? safe[spec.background] : undefined;
@@ -2359,7 +2414,7 @@ export function shotFrame(
     placed.map((pl) => {
       const layer = spec.layers[pl.index]!;
       const asset = safe[layer.asset]!;
-      const focus = asset.kind === "character" ? focusOf(spec, placed, pl.index, (i) => safe[spec.layers[i]!.asset]?.kind) : {};
+      const focus = asset.kind === "character" ? focusOf(spec, placed, pl.index, (i) => safe[spec.layers[i]!.asset]?.kind, (o) => workTopOf(o, safe[spec.layers[o.index]!.asset])) : {};
       return [pl.index, motionOf(layer, asset, pl, p, t, `${shotId}-${pl.index}-`, dur, focus, safe[sideAssetId(layer.asset)], voice)] as const;
     }),
   );

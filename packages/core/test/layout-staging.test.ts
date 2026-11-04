@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { atWork, FURNITURE, PASS, resolveLayout, STAGE, VectorShot, WORK, workZone, type VectorAsset } from "../src/index.ts";
+import { FURNITURE, PASS, resolveLayout, STAGE, VectorShot, WORK, workSurface, workTopOf, workZone, type VectorAsset } from "../src/index.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({ id, kind, svg: "<svg/>", width: w, height: h, meta });
 
@@ -23,45 +23,69 @@ const typing = [{ type: "typing" }];
 
 describe("sahne fiziği: iş başına geçme", () => {
   // Derinlik 0,3: ölçek 0,85, ayak y 951; kişi 578 px boy, 289 px genişlik. Masa 255 px boy, 510 px genişlik.
-  it("ellerin bölgesi gövdenin ortasında, ayaktan boyun %38–%62'si; masaya değince iş başında", () => {
+  it("ellerin bölgesi gövdenin ortasında, ayaktan boyun %38–%62'si; iş yüzeyi üstü el hizasında bir masa", () => {
     const z = workZone({ x: 1000, y: 1000, width: 200, height: 500 });
     expect(z).toEqual({ l: 1000 - 200 * WORK.half, r: 1000 + 200 * WORK.half, t: 1000 - 500 * WORK.high, b: 1000 - 500 * WORK.low });
-    const p = { x: 1000, y: 1000, width: 200, height: 500 };
-    expect(atWork(p, [{ x: 1100, y: 1000, width: 200, height: 300 }])).toBe(true);
-    // Yanda, baş hizasında ya da yerde (el hizasının altında) kalan eşya değmez.
-    expect(atWork(p, [{ x: 1300, y: 1000, width: 200, height: 300 }])).toBe(false);
-    expect(atWork(p, [{ x: 1000, y: 600, width: 200, height: 100 }])).toBe(false);
-    expect(atWork(p, [{ x: 1000, y: 1000, width: 200, height: 100 }])).toBe(false);
+    const pl = (index: number, x: number, extra: object = {}) => ({ index, x, y: 1000, width: 200, height: 300, scale: 1, z: 0, sitting: false, grounded: true, fixes: [], ...extra });
+    const p = pl(9, 1000, { height: 500 });
+    const surface = (index: number, x: number, top: number) => ({ pl: pl(index, x), top });
+    // Masa üstü bölgenin içinde ya da en çok below × boy altında; birden çoksa ellere en yakını.
+    expect(workSurface(p, [surface(1, 1100, 700), surface(2, 1000, 805)])!.pl.index).toBe(2);
+    expect(workSurface(p, [surface(1, 1100, z.b + 500 * WORK.below + 1)])).toBeUndefined();
+    // Yanda, baş hizasında kalan masa değmez.
+    expect(workSurface(p, [surface(1, 1300, 760)])).toBeUndefined();
+    expect(workSurface(p, [surface(1, 1000, 600)])).toBeUndefined();
+    // Oturan: gövde indiği için pay daha geniş; oturduğu sandalye sayılmaz.
+    const seated = pl(9, 1000, { height: 500, sitting: true, on: 3 });
+    expect(workSurface(seated, [surface(1, 1000, 700 + 500 * WORK.seated)])!.pl.index).toBe(1);
+    expect(workSurface(seated, [surface(3, 1000, 760)])).toBeUndefined();
+    // İş yüzeyi: üstü olan mobilya; kişi, tutulan ve üstsüz eşya değil.
+    expect(workTopOf(pl(1, 0, { y: 900, height: 200 }), assets.chair)).toBe(800);
+    expect(workTopOf(pl(1, 0), assets.board)).toBeUndefined();
+    expect(workTopOf(pl(1, 0), assets.a)).toBeUndefined();
+    expect(workTopOf(pl(1, 0, { heldBy: 2 }), assets.desk)).toBeUndefined();
+    expect(workTopOf(pl(1, 0), undefined)).toBeUndefined();
   });
 
-  it("masadan uzakta klavye/yazı jesti yapan kişi masanın yakın kenarına geçer", () => {
+  it("masadan uzakta klavye/yazı jesti yapan kişi masanın arkasına geçer: gövde masanın ortasında, masa önde", () => {
     const placed = place([
       { asset: "desk", x: 600, depth: 0.3 },
       { asset: "a", x: 1300, depth: 0.3, anims: [{ type: "writing" }] },
     ]);
     const desk = by(placed, 0);
-    expect(by(placed, 1).x).toBeCloseTo(desk.x + desk.width / 2, 6);
+    const span = (desk.width / 2) * (1 - 2 * WORK.behind);
+    expect(by(placed, 1).x).toBeCloseTo(desk.x + span, 6);
+    expect(by(placed, 1).z).toBeLessThan(desk.z);
     expect(by(placed, 1).fixes).toContain(WORK.note);
-    expect(atWork(by(placed, 1), [desk])).toBe(true);
+    expect(workSurface(by(placed, 1), [{ pl: desk, top: workTopOf(desk, assets.desk)! }])).toBeDefined();
   });
 
-  it("en yakın, el hizasına uzanan eşyayı seçer; duvardaki tahta da olur", () => {
+  it("duvardaki tahta ve el hizasında olmayan eşya iş yüzeyi değil: en yakın masaya geçer", () => {
     const placed = place([
       { asset: "desk", x: 600, depth: 0.3 },
       { asset: "board", x: 1500, y: 800, height: 300 },
       { asset: "a", x: 1150, depth: 0.3, anims: typing },
     ]);
-    const board = by(placed, 1);
-    expect(by(placed, 2).x).toBeCloseTo(board.x - board.width / 2, 6);
+    const desk = by(placed, 0);
+    expect(by(placed, 2).x).toBeCloseTo(desk.x + (desk.width / 2) * (1 - 2 * WORK.behind), 6);
+    const board = place([{ asset: "board", x: 1500, y: 800, height: 300 }, { asset: "a", x: 1150, depth: 0.3, anims: typing }]);
+    expect(by(board, 1).x).toBe(1150);
+    // İki masa da erimde: kenarı yakın olanın arkasına geçer.
+    const two = place([{ asset: "desk", x: 500, depth: 0.3 }, { asset: "desk", x: 1700, depth: 0.3 }, { asset: "a", x: 1150, depth: 0.3, anims: typing }]);
+    const near = by(two, 1);
+    expect(by(two, 2).x).toBeCloseTo(near.x - (near.width / 2) * (1 - 2 * WORK.behind), 6);
   });
 
-  it("iş başındaysa, eşya uzaksa ya da yalnız baş hizasındaysa yerinde kalır; oturan ve giren kişiye dokunulmaz", () => {
-    const at = place([{ asset: "desk", x: 600, depth: 0.3 }, { asset: "a", x: 700, depth: 0.3, anims: typing }]);
-    expect(by(at, 1).x).toBe(700);
-    expect(by(at, 1).fixes).not.toContain(WORK.note);
+  it("masanın ortasındaysa yerinde kalıp masanın arkasına geçer; masa uzaksa ya da yalnız baş hizasındaysa kalır; oturan ve giren kişiye dokunulmaz", () => {
+    const at = place([{ asset: "desk", x: 600, depth: 0.3 }, { asset: "a", x: 650, depth: 0.3, anims: typing }]);
+    expect(by(at, 1).x).toBe(650);
+    expect(by(at, 1).z).toBeLessThan(by(at, 0).z);
+    // Zaten arkasında: hiçbir şey değişmez.
+    const behind = place([{ asset: "desk", x: 600, depth: 0.3 }, { asset: "a", x: 650, depth: 0.4, anims: typing }]);
+    expect(by(behind, 1).fixes).not.toContain(WORK.note);
     const far = place([{ asset: "desk", x: 300, depth: 0.3 }, { asset: "a", x: 1700, depth: 0.3, anims: typing }]);
     expect(by(far, 1).x).toBe(1700);
-    const high = place([{ asset: "board", x: 900, y: 300, height: 150 }, { asset: "a", x: 1300, depth: 0.3, anims: typing }]);
+    const high = place([{ asset: "tall", x: 900, depth: 0.3 }, { asset: "a", x: 1300, depth: 0.3, anims: typing }]);
     expect(by(high, 1).x).toBe(1300);
     const walking = place([{ asset: "desk", x: 600, depth: 0.3 }, { asset: "a", x: 1300, depth: 0.3, anims: [...typing, { type: "walk", toX: 1400 }] }]);
     expect(by(walking, 1).fixes).not.toContain(WORK.note);
@@ -72,14 +96,38 @@ describe("sahne fiziği: iş başına geçme", () => {
     expect(by(idle, 1).x).toBe(1300);
   });
 
+  it("masanın yanındaki sandalyede oturan iş jestli kişi sandalyesiyle masanın arkasına kayar; masa önde olmalı, oturak paylaşılmamalı", () => {
+    // PHP s1-sh1: sandalye masanın yanında, masanın arkasında (derinlik 0,45 > 0,3).
+    const beside = place([{ asset: "desk", x: 700, depth: 0.3 }, { asset: "chair", x: 1250, depth: 0.45 }, { asset: "a", x: 1250, on: 1, anims: typing }]);
+    const desk = by(beside, 0);
+    const at = desk.x + (desk.width / 2) * (1 - 2 * WORK.behind);
+    expect(by(beside, 2).x).toBeCloseTo(at, 6);
+    expect(by(beside, 1).x).toBeCloseTo(at, 6);
+    expect(by(beside, 2).fixes).toContain(WORK.note);
+    expect(workSurface(by(beside, 2), [{ pl: desk, top: workTopOf(desk, assets.desk)! }])).toBeDefined();
+    // Zaten masa başında: kıpırdamaz.
+    const atDesk = place([{ asset: "desk", x: 700, depth: 0.3 }, { asset: "chair", x: 700, depth: 0.45 }, { asset: "a", x: 700, on: 1, anims: typing }]);
+    expect(by(atDesk, 2).x).toBe(700);
+    expect(by(atDesk, 2).fixes).not.toContain(WORK.note);
+    // Sandalye masanın önünde: kayarsa masayı örter; kalır.
+    const front = place([{ asset: "desk", x: 700, depth: 0.45 }, { asset: "chair", x: 1250, depth: 0.3 }, { asset: "a", x: 1250, on: 1, anims: typing }]);
+    expect(by(front, 2).x).toBe(1250);
+    // Oturağı başkasıyla paylaşıyor: kaymaz.
+    const seat = [{ asset: "desk", x: 700, depth: 0.3 }, { asset: "chair", x: 1250, depth: 0.45 }, { asset: "a", x: 1250, on: 1, anims: typing }];
+    expect(by(place([...seat, { asset: "cup", x: 1250, on: 1 }]), 2).fixes).not.toContain(WORK.note);
+    expect(by(place([...seat, { asset: "b", x: 1250, on: 1 }]), 2).fixes).not.toContain(WORK.note);
+  });
+
   it("iş başındaki kişi konuşma mesafesi için yerinden çekilmez, öbürü yaklaşır", () => {
     const placed = place([
       { asset: "desk", x: 600, depth: 0.3 },
       { asset: "a", x: 855, depth: 0.3, anims: typing },
       { asset: "b", x: 1700, depth: 0.3 },
     ]);
-    expect(by(placed, 1).x).toBe(855);
-    expect(by(placed, 2).x).toBeCloseTo(855 + 1.5 * STAGE.pxPerMeter * 0.85, 6);
+    // Masanın arkasına geçti (kenardan içeri), sonra yerinde kaldı; öbürü ona yaklaştı.
+    const at = 600 + 255 * (1 - 2 * WORK.behind);
+    expect(by(placed, 1).x).toBeCloseTo(at, 6);
+    expect(by(placed, 2).x).toBeCloseTo(at + 1.5 * STAGE.pxPerMeter * 0.85, 6);
   });
 });
 

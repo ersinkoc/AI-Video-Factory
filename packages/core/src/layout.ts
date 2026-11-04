@@ -157,9 +157,21 @@ function converse(spec: VectorShot, assets: Record<string, VectorAsset>, list: P
 
 /**
  * Önünde iş isteyen jestler (klavye, yazı) ve ellerin bölgesi: kutunun ortadaki 2 × half genişliği, ayaktan boyun
- * low–high kesri yükseklik. reach: kişinin işine yürüyebileceği en uzak mesafe (m).
+ * low–high kesri yükseklik. reach: kişinin işine yürüyebileceği en uzak mesafe (m). İş yüzeyinin üstü bölgenin içinde
+ * ya da en çok below × boy altında olmalı; oturanda seated: uyluk kısalınca gövde boyun ~%9'u iner (Vector.tsx
+ * SIT_DROP), eller de onunla. behind: işinin başına geçen kişi yüzeyin kenarlarından bu kesir kadar içeride durur.
  */
-export const WORK = { gestures: ["typing", "writing"], half: 0.3, low: 0.38, high: 0.62, reach: 2.5, note: "iş jestinin nesnesinden uzaktı, yanına geçti" } as const;
+export const WORK = {
+  gestures: ["typing", "writing"],
+  half: 0.3,
+  low: 0.38,
+  high: 0.62,
+  reach: 2.5,
+  below: 0.08,
+  seated: 0.17,
+  behind: 0.3,
+  note: "iş jestinin masasından uzaktı, masanın arkasına geçti",
+} as const;
 const working = (a: VectorLayer["anims"][number]) => (WORK.gestures as readonly string[]).includes(a.type);
 
 /** İş jestinde ellerin tuvaldeki bölgesi. */
@@ -167,32 +179,72 @@ export function workZone(p: Pick<PlacedLayer, "x" | "y" | "width" | "height">): 
   return { l: p.x - p.width * WORK.half, r: p.x + p.width * WORK.half, t: p.y - p.height * WORK.high, b: p.y - p.height * WORK.low };
 }
 
-/** Ellerin bölgesine değen eşya var mı (things: kişi olmayan, elde tutulmayan katmanlar). */
-export function atWork(p: Pick<PlacedLayer, "x" | "y" | "width" | "height">, things: readonly Pick<PlacedLayer, "x" | "y" | "width" | "height">[]): boolean {
-  const z = workZone(p);
-  return things.some((o) => o.x - o.width / 2 < z.r && o.x + o.width / 2 > z.l && o.y - o.height < z.b && o.y > z.t);
+/** Eşyanın iş yüzeyi (masa, tezgâh): üstü olan mobilyanın (meta.surface) üst yüzeyinin y'si; kişi ve elde tutulan değil. */
+export function workTopOf(o: PlacedLayer, asset: VectorAsset | undefined): number | undefined {
+  if (!asset || asset.kind === "character" || asset.meta.surface === undefined || o.heldBy !== undefined) return undefined;
+  return o.y - o.height * asset.meta.surface;
+}
+
+export interface WorkSurface {
+  pl: PlacedLayer;
+  /** Üst yüzeyin y'si (tuval). */
+  top: number;
 }
 
 /**
- * İş jesti yapan ayaktaki kişi işinin başına geçer (3 Kas denetimi: kişi masadan/tahtadan 300–450 px uzakta havaya
- * yazıyordu, 923 çekimin 15'inde). Elleri bir eşyaya değmiyorsa WORK.reach içindeki, el hizasına uzanan en yakın eşyanın
- * yakın kenarına gelir; yoksa yerinde kalır (render jesti düşürür, sahne yeniden planlanır). Oturan, giren kişiye dokunulmaz.
+ * Kişinin ellerinin değdiği iş yüzeyi: yatayda ellerin bölgesine giren, üstü el hizasında olan masa/tezgâh; oturanın
+ * oturduğu sandalye sayılmaz. Birden çoksa üstü ellere en yakını. 4 Kas: eskiden ellerin bölgesine değen her eşya
+ * sayılıyordu; kişi arkasındaki arabaya, duvardaki laptopa, top arabasına "yazıyor", oturan kişi yalnız sandalyesinin
+ * oturağıyla "masa başında" sayılıyordu (26 iş jestinin 9'u; incelemede "yazmıyor, elleri kavuşuk duruyor").
+ */
+export function workSurface(p: PlacedLayer, surfaces: readonly WorkSurface[]): WorkSurface | undefined {
+  const z = workZone(p);
+  const low = z.b + p.height * (p.sitting ? WORK.seated : WORK.below);
+  return surfaces
+    .filter(({ pl, top }) => pl.index !== p.on && pl.x - pl.width / 2 < z.r && pl.x + pl.width / 2 > z.l && top >= z.t && top <= low)
+    .sort((a, b) => Math.abs(a.top - z.b) - Math.abs(b.top - z.b))[0];
+}
+
+/**
+ * İş jesti yapan ayaktaki kişi işinin başına, masanın arkasına geçer (3 Kas denetimi: kişi masadan 300–450 px uzakta
+ * havaya yazıyordu; 4 Kas: masanın kenarında durunca eller kendi gövdesinin önünde kalıyor, masaya değmiyordu). Elleri
+ * bir masaya değiyorsa o, değmiyorsa WORK.reach içindeki el hizasında en yakın masa: gövde masanın ortadaki bölümüne
+ * gelir ve masa önde çizilir (bacaklar masanın ardında, eller üstünde). Oturan kişi sandalyesiyle birlikte kayar
+ * (PHP s1-sh1: sandalye masanın yanındaydı); yalnız sandalye masanın arkasındaysa ve üstünde başkası yoksa. Masa yoksa
+ * yerinde kalır (render jesti düşürür, sahne yeniden planlanır). Giren kişiye dokunulmaz.
  */
 function toWork(spec: VectorShot, assets: Record<string, VectorAsset>, list: PlacedLayer[], moved: (p: PlacedLayer) => void): void {
   const layer = (p: PlacedLayer) => spec.layers[p.index]!;
   const person = (p: PlacedLayer) => assets[layer(p).asset]!.kind === "character";
-  const things = list.filter((o) => !person(o) && o.heldBy === undefined);
+  const surfaces = list.flatMap((o) => {
+    const top = workTopOf(o, assets[layer(o).asset]);
+    return top === undefined ? [] : [{ pl: o, top }];
+  });
   for (const p of list) {
-    if (!person(p) || p.sitting || p.heldBy !== undefined || entering(layer(p)) || !layer(p).anims.some(working) || atWork(p, things)) continue;
+    if (!person(p) || p.heldBy !== undefined || entering(layer(p)) || !layer(p).anims.some(working)) continue;
+    // Oturanın sandalyesi (oturan hep bir şeyin üstündedir); paylaşılan oturak kaymaz.
+    const seat = p.sitting ? list.find((o) => o.index === p.on)! : undefined;
+    if (seat && (workSurface(p, surfaces) || list.some((o) => o !== p && o.on === seat.index))) continue;
     const zone = workZone(p);
-    // Aday eşya el hizasında ama ellere değmiyor: kişiyle aynı x'te olamaz, yakın kenarı bellidir.
-    const edge = (o: PlacedLayer) => o.x - Math.sign(o.x - p.x) * (o.width / 2);
+    const low = zone.b + p.height * (seat ? WORK.seated : WORK.below);
+    // Yakın kenara uzaklık; masanın üstündeyse 0.
+    const gap = (o: PlacedLayer) => Math.max(0, Math.abs(o.x - p.x) - o.width / 2);
     const reach = WORK.reach * STAGE.pxPerMeter * p.scale;
-    const o = things
-      .filter((o) => o.y - o.height < zone.b && o.y > zone.t && Math.abs(edge(o) - p.x) <= reach)
-      .sort((a, b) => Math.abs(edge(a) - p.x) - Math.abs(edge(b) - p.x))[0];
-    if (!o) continue;
-    p.x = clamp(edge(o), p.width / 2 + 20, STAGE.width - p.width / 2 - 20);
+    const at =
+      workSurface(p, surfaces) ??
+      surfaces.filter(({ pl, top }) => pl !== seat && top >= zone.t && top <= low && gap(pl) <= reach).sort((a, b) => gap(a.pl) - gap(b.pl))[0];
+    if (!at || (seat && seat.z >= at.pl.z)) continue;
+    const span = (at.pl.width / 2) * (1 - 2 * WORK.behind);
+    const x = clamp(clamp(p.x, at.pl.x - span, at.pl.x + span), p.width / 2 + 20, STAGE.width - p.width / 2 - 20);
+    if (seat) {
+      seat.x += x - p.x;
+      p.x = x;
+      moved(p);
+      continue;
+    }
+    if (Math.abs(x - p.x) < 1 && p.z < at.pl.z) continue;
+    p.x = x;
+    p.z = Math.min(p.z, at.pl.z - 0.1);
     moved(p);
   }
 }
