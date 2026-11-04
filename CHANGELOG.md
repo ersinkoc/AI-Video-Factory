@@ -2,6 +2,16 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.3.2 (2026-11-04)
+
+- Say acronyms that are words as words: COBOL is 'kobol'
+- Read abbreviations out in full with the suffix rebuilt
+- Read Turkish numbers by rule; write digits in the script
+- Approve the preview before the render; no body slivers at the frame edge
+- Re-create in bulk from the review's findings
+- Historical maps from real borders; re-create scenes from a producer's note
+- Quality bench: re-render a fixed shot set and score it with the scene critic
+
 ## v0.3.1 (2026-11-03)
 
 - README: sponsor section (WrongStack)
