@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOARD, FURNITURE, isWritable, PASS, resolveLayout, STAGE, VectorShot, WORK, workBoard, workSurface, workTopOf, workZone, type VectorAsset } from "../src/index.ts";
+import { BOARD, CONVERSE, FURNITURE, isWritable, PASS, resolveLayout, STAGE, VectorShot, WORK, workBoard, workSurface, workTopOf, workZone, type VectorAsset } from "../src/index.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({ id, kind, svg: "<svg/>", width: w, height: h, meta });
 
@@ -183,7 +183,7 @@ describe("sahne fiziği: iş başına geçme", () => {
     // Masanın arkasına geçti (kenardan içeri), sonra yerinde kaldı; öbürü ona yaklaştı.
     const at = 600 + 255 * (1 - 2 * WORK.behind);
     expect(by(placed, 1).x).toBeCloseTo(at, 6);
-    expect(by(placed, 2).x).toBeCloseTo(at + 1.5 * STAGE.pxPerMeter * 0.85, 6);
+    expect(by(placed, 2).x).toBeCloseTo(at + CONVERSE.max * STAGE.pxPerMeter * 0.85, 6);
   });
 });
 

@@ -100,7 +100,7 @@ export const FURNITURE = { lower: 0.35, aside: "önündeki eşya yüzünü ört�
  * uygulandığı en büyük yönetmen zoom'u (altı geniş çekim), kişinin gövde yarı genişliği (çizim genişliğinin kesri; kollar
  * hariç).
  */
-export const CONVERSE = { max: 1.5, depth: 25, zoom: 1.5, body: 0.22, note: "konuşma mesafesinden uzaktı, yaklaştırıldı" } as const;
+export const CONVERSE = { max: 1.1, depth: 25, zoom: 1.5, body: 0.22, note: "konuşma mesafesinden uzaktı, yaklaştırıldı" } as const;
 
 /**
  * Ayaktaki iki kişi konuşma mesafesine gelir (3 Kas, inceleme notları: "stand far apart, not interacting" bölüm başına
@@ -117,6 +117,11 @@ function converse(spec: VectorShot, assets: Record<string, VectorAsset>, list: P
   const person = (p: PlacedLayer) => assets[layer(p).asset]!.kind === "character";
   const talkers = list.filter((p) => person(p) && !p.sitting && p.heldBy === undefined && !entering(layer(p))).sort((a, b) => a.x - b.x);
   const things = list.filter((o) => !person(o) && o.heldBy === undefined);
+  // Yürüyerek giren kişinin vardığı yer (son walk/move hedefi; kayarak giren yerinde durur): iki kişi onun aralarına
+  // geleceği yeri kapatmaz (PHP s4-sh5: öğrenciler yaklaşınca aralarına yürüyen Lerdorf ikisinin içinden geçiyordu).
+  const arrivals = list
+    .filter((p) => person(p) && entering(layer(p)))
+    .map((p) => ({ z: p.z, x: layer(p).anims.reduce((x, a) => (a.toX !== undefined && (a.type === "walk" || a.type === "move") ? a.toX : x), p.x) }));
   // Kişi kendi dışında (öbürüne göre arkasında kalan yanda) bir nesneyi gösteriyor mu; iş başındaki (klavye, yazı) da
   // yerinde kalır, yoksa yanına geçtiği masadan/tahtadan uzaklaşırdı.
   const anchored = (p: PlacedLayer, outward: number) =>
@@ -134,6 +139,7 @@ function converse(spec: VectorShot, assets: Record<string, VectorAsset>, list: P
   }
   function pull(a: PlacedLayer, b: PlacedLayer): boolean {
     if (Math.abs(a.z - b.z) > CONVERSE.depth) return false;
+    if (arrivals.some((w) => w.x > a.x && w.x < b.x && Math.abs(w.z - a.z) <= CONVERSE.depth)) return false;
     const excess = b.x - a.x - CONVERSE.max * STAGE.pxPerMeter * ((a.scale + b.scale) / 2);
     if (excess < 1) return false;
     // Aradaki, gövde yüksekliğinde duran eşya: kişiler kenarlarına kadar gelir.

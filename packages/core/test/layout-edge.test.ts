@@ -255,7 +255,7 @@ describe("sahne fiziği: konuşma mesafesi", () => {
   };
   const place = (layers: unknown[], extra: object = {}) => resolveLayout(VectorShot.parse({ layers, ...extra }), assets);
   const by = (placed: ReturnType<typeof resolveLayout>, i: number) => placed.find((p) => p.index === i)!;
-  // Derinlik 0,3: ölçek 0,85; 1,5 m = 510 px. Kişi boyu 578 px, genişliği 289 px.
+  // Derinlik 0,3: ölçek 0,85; 1,1 m = 374 px. Kişi boyu 578 px, genişliği 289 px.
   const max = CONVERSE.max * STAGE.pxPerMeter * 0.85;
 
   it("uzaktaki iki kişi ortada buluşur, aralarında konuşma mesafesi kalır; yakındakiler kıpırdamaz", () => {
@@ -269,10 +269,23 @@ describe("sahne fiziği: konuşma mesafesi", () => {
     expect(by(placed, 1).fixes).toContain(CONVERSE.note);
     const near = place([
       { asset: "a", x: 800, depth: 0.3 },
-      { asset: "b", x: 1200, depth: 0.3 },
+      { asset: "b", x: 1150, depth: 0.3 },
     ]);
-    expect([by(near, 0).x, by(near, 1).x]).toEqual([800, 1200]);
+    expect([by(near, 0).x, by(near, 1).x]).toEqual([800, 1150]);
     expect(by(near, 0).fixes).not.toContain(CONVERSE.note);
+  });
+
+  it("aralarına yürüyerek gelecek biri varsa iki kişi yaklaşmaz; hedefi dışarıdaysa yaklaşırlar (PHP s4-sh5)", () => {
+    const walker = (toX: number) => ({ asset: "c", x: 100, depth: 0.3, anims: [{ type: "walk", toX }] });
+    const between = place([{ asset: "a", x: 400, depth: 0.3 }, { asset: "b", x: 1500, depth: 0.3 }, walker(950)]);
+    expect([by(between, 0).x, by(between, 1).x]).toEqual([400, 1500]);
+    const outside = place([{ asset: "a", x: 400, depth: 0.3 }, { asset: "b", x: 1500, depth: 0.3 }, walker(1800)]);
+    expect(by(outside, 1).x - by(outside, 0).x).toBeCloseTo(max, 6);
+    // Hedefsiz yürüyen ve kayarak giren yerinde sayılır; başka derinlikte varan engel değil.
+    const still = place([{ asset: "a", x: 400, depth: 0.3 }, { asset: "b", x: 1500, depth: 0.3 }, { asset: "c", x: 950, depth: 0.3, anims: [{ type: "slide_in" }] }]);
+    expect([by(still, 0).x, by(still, 1).x]).toEqual([400, 1500]);
+    const far = place([{ asset: "a", x: 400, depth: 0.3 }, { asset: "b", x: 1500, depth: 0.3 }, { ...walker(950), depth: 0.9 }]);
+    expect(by(far, 1).x - by(far, 0).x).toBeCloseTo(max, 6);
   });
 
   it("üç kişi birbirine yaklaşır: ortadaki birine yaklaşırken öbüründen uzaklaşmaz", () => {
