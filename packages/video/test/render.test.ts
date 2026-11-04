@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Timeline } from "@ys/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -42,22 +42,55 @@ const DIR = mkdtempSync(join(tmpdir(), "ys-render-"));
 const LOCK = join(DIR, "render.lock");
 process.env.YS_RENDER_LOCK = LOCK;
 const mod = await import("../src/render.ts");
-const { renderEpisode, renderStills, renderThumbnail, renderFigurePreviews, withRenderLock, ifRenderFree, isTransientRenderFailure, isGpuFailure, isMemoryFailure, renderGl, normalizeLoudness, ENTRY } = mod;
+const { renderEpisode, renderStills, renderThumbnail, renderFigurePreviews, withRenderLock, ifRenderFree, isTransientRenderFailure, isGpuFailure, isMemoryFailure, renderGl, assemble, cacheDirOf, keyframesAt, runsOf, split, ENTRY } = mod;
 
-const timeline = { episodeId: "e1" } as Timeline;
+/** Sahne öneki olan çekimlerden zaman çizelgesi (30 fps); her sahne ayrı render parçası. */
+const make = (scenes: number, frames: number) =>
+  ({
+    episodeId: "e1",
+    fps: 30,
+    width: 1920,
+    height: 1080,
+    durationInFrames: scenes * frames,
+    palette: [],
+    visuals: Array.from({ length: scenes }, (_, i) => ({ shotId: `s${i + 1}-sh1`, fromFrame: i * frames, durationInFrames: frames, assetUrl: "", kind: "title_card" })),
+    vectorAssets: {},
+    captions: [],
+    audio: [],
+  }) as unknown as Timeline;
+const timeline = make(1, 60);
+const two = make(2, 90);
+const three = make(3, 30);
+const four = make(4, 30);
 const browser = { close: vi.fn() };
+type Media = { onProgress: (p: { progress: number }) => void; outputLocation: string; frameRange?: [number, number] };
+/** Sahte render: ilerleme bildirir ve çıktıya kare sayısını yazar (sahte ffmpeg bölerken, ffprobe sayarken okur). */
+const media = async (o: Media) => {
+  o.onProgress({ progress: 0.5 });
+  o.onProgress({ progress: 1 });
+  writeFileSync(o.outputLocation, String(o.frameRange ? o.frameRange[1] - o.frameRange[0] + 1 : 0));
+};
+/** Sahte ffmpeg/ffprobe: bölme (segment) girdideki kareleri parçalara dağıtır; ffprobe dosyadaki sayıyı (ya da "wrong") verir. */
+const tools =
+  (wrong?: string) =>
+  (cmd: string, a: string[], cb: (e: Error | null, r?: object) => void) => {
+    if (cmd === "ffprobe") return cb(null, { stdout: `${wrong ?? readFileSync(a.at(-1)!, "utf8")}\n`, stderr: "" });
+    const at = a.indexOf("-segment_frames");
+    if (at >= 0) {
+      const edges = [0, ...a[at + 1]!.split(",").map(Number), Number(readFileSync(a[a.indexOf("-i") + 1]!, "utf8"))];
+      edges.slice(1).forEach((e, i) => writeFileSync(a.at(-1)!.replace("%03d", String(i).padStart(3, "0")), String(e - edges[i]!)));
+    }
+    cb(null, { stdout: "", stderr: "" });
+  };
 
 beforeEach(() => {
   remotion.bundle.mockResolvedValue("http://bundle");
-  remotion.selectComposition.mockResolvedValue({ id: "Episode" });
-  remotion.renderMedia.mockImplementation(async (o: { onProgress: (p: { progress: number }) => void }) => {
-    o.onProgress({ progress: 0.5 });
-    o.onProgress({ progress: 1 });
-  });
+  remotion.selectComposition.mockImplementation(async (o: { id: string }) => ({ id: o.id }));
+  remotion.renderMedia.mockImplementation(media);
   remotion.renderStill.mockResolvedValue({});
   remotion.openBrowser.mockResolvedValue(browser);
   browser.close.mockResolvedValue(undefined);
-  remotion.execFile.mockImplementation((_f: string, _a: string[], cb: (e: Error | null, r?: object) => void) => cb(null, { stdout: "", stderr: "" }));
+  remotion.execFile.mockImplementation(tools());
 });
 
 afterEach(() => {
@@ -70,10 +103,9 @@ afterEach(() => {
 const out = (name: string) => join(mkdtempSync(join(DIR, "out-")), name);
 
 describe("renderEpisode", () => {
-  it("paketler, render eder, sesi -14 LUFS'a getirir ve ham dosyayı siler", async () => {
+  it("önbellekte olmayan sahneleri tek render'da, sınırlarında anahtar kareyle render edip böler; ses ayrı ve hafif; birleştirip -14 LUFS'a getirir", async () => {
     const output = out("bolum.MP4");
     const progress: number[] = [];
-    writeFileSync(output.replace(/\.mp4$/i, ".raw.mp4"), "ham");
     const savedTemp = process.env.TEMP;
     let tempDuring: string | undefined;
     remotion.bundle.mockImplementation(async () => {
@@ -81,30 +113,44 @@ describe("renderEpisode", () => {
       return "http://bundle";
     });
 
-    expect(await renderEpisode({ timeline, publicDir: "pub", outputPath: output, onProgress: (p) => progress.push(p) })).toBe(output);
+    expect(await renderEpisode({ timeline: two, publicDir: "pub", outputPath: output, onProgress: (p) => progress.push(p) })).toBe(output);
 
     expect(remotion.bundle).toHaveBeenCalledWith({ entryPoint: ENTRY, publicDir: join(process.cwd(), "pub") });
-    // Varsayılan çizim arka ucu ekran kartı (ANGLE).
-    expect(remotion.selectComposition).toHaveBeenCalledWith({ serveUrl: "http://bundle", id: "Episode", inputProps: { timeline }, chromiumOptions: { gl: "angle" } });
-    const media = remotion.renderMedia.mock.calls[0]![0];
-    const rawPath = output.replace(/\.mp4$/i, "") + ".raw.mp4";
-    expect(media).toMatchObject({
-      serveUrl: "http://bundle",
-      composition: { id: "Episode" },
-      inputProps: { timeline },
-      codec: "h264",
-      outputLocation: rawPath,
-      chromiumOptions: { gl: "angle" },
-      timeoutInMilliseconds: 120_000,
-      offthreadVideoCacheSizeInBytes: 2 * 1024 ** 3,
-    });
-    expect(media.concurrency).toBeGreaterThanOrEqual(1);
-    expect(media.concurrency).toBeLessThanOrEqual(8);
-    expect(progress).toEqual([0.5, 1]);
-    const [cmd, args] = remotion.execFile.mock.calls[0]!;
-    expect(cmd).toBe("ffmpeg");
-    expect(args).toEqual(expect.arrayContaining(["-i", rawPath, "loudnorm=I=-14:TP=-1.5:LRA=11", "-c:v", "copy", output]));
-    expect(existsSync(rawPath)).toBe(false);
+    // Varsayılan çizim arka ucu ekran kartı (ANGLE); ses yalnız ses dizileri olan kompozisyondan.
+    expect(remotion.selectComposition).toHaveBeenCalledWith({ serveUrl: "http://bundle", id: "Episode", inputProps: { timeline: two }, chromiumOptions: { gl: "angle" } });
+    expect(remotion.selectComposition).toHaveBeenCalledWith({ serveUrl: "http://bundle", id: "EpisodeAudio", inputProps: { timeline: two }, chromiumOptions: { gl: "angle" }, puppeteerInstance: browser });
+    expect(remotion.openBrowser).toHaveBeenCalledTimes(1);
+    expect(remotion.openBrowser).toHaveBeenCalledWith("chrome", { chromiumOptions: { gl: "angle" } });
+    const cache = cacheDirOf(output);
+    expect(cache).toBe(join(output, "..", ".render-cache", "bolum"));
+    const calls = remotion.renderMedia.mock.calls.map((c) => c[0]);
+    expect(calls.map((c) => [c.composition.id, c.codec, c.frameRange ?? null, c.muted ?? false])).toEqual([
+      ["Episode", "h264", [0, 179], true],
+      ["EpisodeAudio", "wav", null, false],
+    ]);
+    for (const c of calls) {
+      expect(c).toMatchObject({ serveUrl: "http://bundle", inputProps: { timeline: two }, chromiumOptions: { gl: "angle" }, puppeteerInstance: browser, timeoutInMilliseconds: 120_000, offthreadVideoCacheSizeInBytes: 2 * 1024 ** 3 });
+      expect(c.concurrency).toBeGreaterThanOrEqual(1);
+      expect(c.concurrency).toBeLessThanOrEqual(8);
+      // Yarım kalan dosya önbellekte görünmesin: geçici adla yazılır.
+      expect(c.outputLocation).toMatch(/\.part\.(mp4|wav)$/);
+      expect(dirname(c.outputLocation)).toBe(cache);
+    }
+    expect(calls[1]!.enforceAudioTrack).toBe(true);
+    // İkinci sahnenin başına (göreli 90. kare) anahtar kare zorlanır.
+    expect(calls[0]!.ffmpegOverride({ type: "pre-stitcher", args: ["-c:v", "libx264", "-y", "o.mp4"] })).toEqual(["-c:v", "libx264", "-force_key_frames", "expr:eq(n,90)", "-y", "o.mp4"]);
+    // Önbellekte iki parça (90'ar kare) ve ses izi; geçici dosya ve birleştirme listesi silinmiş.
+    const files = readdirSync(cache).sort();
+    expect(files.filter((f) => f.endsWith(".mp4")).map((f) => readFileSync(join(cache, f), "utf8"))).toEqual(["90", "90"]);
+    expect(files.filter((f) => f.endsWith(".wav"))).toHaveLength(1);
+    expect(files).toHaveLength(3);
+    // İlerleme: artan, sonu 1.
+    expect(progress.at(-1)).toBe(1);
+    expect(progress.every((p, i) => i === 0 || p >= progress[i - 1]!)).toBe(true);
+    const ffmpeg = remotion.execFile.mock.calls.filter((c) => c[0] === "ffmpeg").map((c) => c[1] as string[]);
+    expect(ffmpeg[0]).toEqual(expect.arrayContaining(["segment", "-segment_frames", "90", "-c", "copy"]));
+    expect(ffmpeg.at(-1)).toEqual(expect.arrayContaining(["concat", "-c:v", "copy", "loudnorm=I=-14:TP=-1.5:LRA=11", output]));
+    expect(browser.close).toHaveBeenCalledTimes(1);
     // Render sırasında Temp çıktının yanındaki klasöre yönlendirilir, sonra geri alınır ve klasör silinir.
     expect(tempDuring).toBe(join(output, "..", ".render-tmp"));
     expect(process.env.TEMP).toBe(savedTemp);
@@ -112,7 +158,62 @@ describe("renderEpisode", () => {
     expect(existsSync(LOCK)).toBe(false);
   });
 
-  it("verilen paralellik ve önbellek kullanılır; ilerleme dinleyicisi olmadan da çalışır", async () => {
+  it("aynı bölüm yeniden: değişmeyen parça ve ses önbellekten; değişen sahne ve geçişle bindiği sonraki render edilir, eskisi silinir", async () => {
+    const output = out("a.mp4");
+    await renderEpisode({ timeline: three, publicDir: DIR, outputPath: output });
+    const before = new Set(readdirSync(cacheDirOf(output)));
+    remotion.renderMedia.mockClear();
+    remotion.openBrowser.mockClear();
+    const progress: number[] = [];
+    await renderEpisode({ timeline: three, publicDir: DIR, outputPath: output, onProgress: (p) => progress.push(p) });
+    // Her şey önbellekte: tarayıcı açılmaz, yalnız birleştirilir.
+    expect(remotion.renderMedia).not.toHaveBeenCalled();
+    expect(remotion.openBrowser).not.toHaveBeenCalled();
+    expect(progress).toEqual([1]);
+    // İlk sahnenin çekimi değişti: s1 ve onun son karelerinin bindiği s2 birlikte yeniden, s3 ve ses önbellekten.
+    const changed = { ...three, visuals: three.visuals.map((v, i) => (i === 0 ? { ...v, motion: { type: "none" as const, zoomFrom: 1, zoomTo: 1, panX: 0 } } : v)) };
+    await renderEpisode({ timeline: changed, publicDir: DIR, outputPath: output });
+    expect(remotion.renderMedia.mock.calls.map((c) => c[0].frameRange)).toEqual([[0, 59]]);
+    const after = readdirSync(cacheDirOf(output));
+    expect(after).toHaveLength(4);
+    expect(after.filter((f) => before.has(f))).toHaveLength(2);
+  });
+
+  it("çöken render kaldığı yerden sürer: biten parçalar önbellekte kalır, yarım kalan alınmaz", async () => {
+    const output = out("a.mp4");
+    await renderEpisode({ timeline: four, publicDir: DIR, outputPath: output });
+    remotion.renderMedia.mockClear();
+    // İlk ve son sahne değişti: iki ayrı render ([s1, s2] ve [s4]); ikincisi yarıda düşer.
+    const motion = { type: "none" as const, zoomFrom: 1, zoomTo: 1, panX: 0 };
+    const changed = { ...four, visuals: four.visuals.map((v, i) => (i === 0 || i === 3 ? { ...v, motion } : v)) };
+    remotion.renderMedia.mockImplementationOnce(media).mockImplementationOnce(async (o: Media) => {
+      writeFileSync(o.outputLocation, "yarım");
+      throw new Error("ENOENT: no such file or directory");
+    });
+    const reasons: string[] = [];
+    await renderEpisode({ timeline: changed, publicDir: DIR, outputPath: output, onRetry: (r) => reasons.push(r) });
+    expect(reasons).toEqual(["ENOENT: no such file or directory"]);
+    expect(remotion.renderMedia.mock.calls.map((c) => c[0].frameRange)).toEqual([
+      [0, 59],
+      [90, 119],
+      [90, 119],
+    ]);
+    expect(readdirSync(cacheDirOf(output)).some((f) => f.includes(".part."))).toBe(false);
+    expect(readdirSync(cacheDirOf(output))).toHaveLength(5);
+  });
+
+  it("bölünen parçaların kare sayısı tutmazsa parçalar tek tek render edilir", async () => {
+    remotion.execFile.mockImplementation(tools("7"));
+    const output = out("a.mp4");
+    await renderEpisode({ timeline: two, publicDir: DIR, outputPath: output });
+    expect(remotion.renderMedia.mock.calls.map((c) => c[0].frameRange ?? "ses")).toEqual([[0, 179], [0, 89], [90, 179], "ses"]);
+    // Tek parça render'ında anahtar kare zorlanmaz; önbellekte iki parça ve ses, artık dosya yok.
+    expect(remotion.renderMedia.mock.calls[1]![0].ffmpegOverride).toBeUndefined();
+    expect(readdirSync(cacheDirOf(output))).toHaveLength(3);
+  });
+
+  it("verilen paralellik ve önbellek kullanılır; ilerleme dinleyicisi olmadan da çalışır; tarayıcı kapanmazsa da sürer", async () => {
+    browser.close.mockRejectedValueOnce(new Error("kapanmadı"));
     await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), concurrency: 3, videoCacheBytes: 1024 });
     expect(remotion.renderMedia.mock.calls[0]![0]).toMatchObject({ concurrency: 3, offthreadVideoCacheSizeInBytes: 1024 });
   });
@@ -122,7 +223,7 @@ describe("renderEpisode", () => {
     const reasons: string[] = [];
     await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), onRetry: (r) => reasons.push(r) });
     expect(reasons).toEqual(["ENOENT: no such file or directory, open 'x.wav'"]);
-    expect(remotion.renderMedia).toHaveBeenCalledTimes(2);
+    expect(remotion.renderMedia).toHaveBeenCalledTimes(3);
   });
 
   it("dinleyici yoksa da yeniden dener; ikinci geçici hatada vazgeçer", async () => {
@@ -138,7 +239,7 @@ describe("renderEpisode", () => {
     const reasons: string[] = [];
     await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), onRetry: (r) => reasons.push(r) });
     expect(reasons).toEqual(["Error: Page crashed!"]);
-    expect(remotion.renderMedia.mock.calls.map((c) => c[0].chromiumOptions)).toEqual([{ gl: "angle" }, { gl: "swangle" }]);
+    expect(remotion.renderMedia.mock.calls.map((c) => c[0].chromiumOptions)).toEqual([{ gl: "angle" }, { gl: "swangle" }, { gl: "swangle" }]);
   });
 
   it("ilerlemesi duran render iptal edilir ve aynı arka uçla bir kez baştan alınır; ikinci kez takılırsa hata", async () => {
@@ -148,7 +249,7 @@ describe("renderEpisode", () => {
     const reasons: string[] = [];
     await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), stallMs: 40, onRetry: (r) => reasons.push(r) });
     expect(reasons).toEqual(["render stalled: no progress for 0 s"]);
-    expect(remotion.renderMedia.mock.calls.map((c) => c[0].chromiumOptions)).toEqual([{ gl: "angle" }, { gl: "angle" }]);
+    expect(remotion.renderMedia.mock.calls.map((c) => c[0].chromiumOptions)).toEqual([{ gl: "angle" }, { gl: "angle" }, { gl: "angle" }]);
     // İptal dışı hatada bekçi sessiz kalır; ikinci takılma iletilir ve kilit bırakılır.
     remotion.renderMedia.mockImplementation(hang);
     await expect(renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), stallMs: 40 })).rejects.toThrow("render stalled");
@@ -156,16 +257,17 @@ describe("renderEpisode", () => {
   });
 
   it("ilerleme sürdükçe bekçi beklemeye devam eder (yük altında da: ilerleme bekçi aralığından sık gelir)", async () => {
-    remotion.renderMedia.mockImplementationOnce(async (o: { onProgress: (p: { progress: number }) => void }) => {
+    remotion.renderMedia.mockImplementationOnce(async (o: { onProgress: (p: { progress: number }) => void; outputLocation: string }) => {
       for (let i = 1; i <= 35; i++) {
         await new Promise((r) => setTimeout(r, 10));
         o.onProgress({ progress: i / 35 });
       }
+      writeFileSync(o.outputLocation, "parça");
     });
     const reasons: string[] = [];
     await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), stallMs: 200, onRetry: (r) => reasons.push(r) });
     expect(reasons).toEqual([]);
-    expect(remotion.renderMedia).toHaveBeenCalledTimes(1);
+    expect(remotion.renderMedia).toHaveBeenCalledTimes(2);
   });
 
   it("Chrome kare alamayınca (bellek) aynı arka uçla yarı paralellikle bir kez baştan alır", async () => {
@@ -174,6 +276,7 @@ describe("renderEpisode", () => {
     await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4"), concurrency: 6 });
     expect(remotion.renderMedia.mock.calls.map((c) => [c[0].concurrency, c[0].chromiumOptions.gl])).toEqual([
       [6, "angle"],
+      [3, "angle"],
       [3, "angle"],
     ]);
     // Paralellik verilmemişse varsayılanın yarısı (en az 1).
@@ -242,13 +345,57 @@ describe("renderEpisode", () => {
   });
 });
 
-describe("normalizeLoudness", () => {
-  it("görüntüyü yeniden kodlamadan sesi YouTube düzeyine getirir", async () => {
-    await normalizeLoudness("in.mp4", "out.mp4");
+describe("parçalama yardımcıları", () => {
+  it("ardışık sıra numaraları gruplanır", () => {
+    expect(runsOf([0, 1, 2, 5, 6, 9])).toEqual([[0, 1, 2], [5, 6], [9]]);
+    expect(runsOf([])).toEqual([]);
+  });
+
+  it("anahtar kare yalnız libx264 ile kodlayan komuta, çıktıdan önce eklenir", () => {
+    const force = keyframesAt([30, 75]);
+    expect(force({ type: "pre-stitcher", args: ["-c:v", "libx264", "-y", "o.mp4"] })).toEqual(["-c:v", "libx264", "-force_key_frames", "expr:eq(n,30)+eq(n,75)", "-y", "o.mp4"]);
+    expect(force({ type: "stitcher", args: ["-c:v", "copy", "-y", "o.mp4"] })).toEqual(["-c:v", "copy", "-y", "o.mp4"]);
+    expect(force({ type: "pre-stitcher", args: ["-c:v", "libx264", "o.mp4"] })).toEqual(["-c:v", "libx264", "o.mp4"]);
+  });
+
+  it("bölme: parça eksik ya da fazlaysa false; tek parça yalnız adlandırılır", async () => {
+    const dir = mkdtempSync(join(DIR, "split-"));
+    const run = join(dir, "run.mp4");
+    // Bölme hiçbir parça yazmadı.
+    writeFileSync(run, "60");
+    remotion.execFile.mockImplementation((_c: string, _a: string[], cb: (e: Error | null, r?: object) => void) => cb(null, { stdout: "", stderr: "" }));
+    expect(await split(run, [30, 30], [join(dir, "a.mp4"), join(dir, "b.mp4")])).toBe(false);
+    // Bir parça fazla (anahtar kare beklenenden önce): üçüncü dosya var.
+    remotion.execFile.mockImplementation(tools());
+    writeFileSync(run, "60");
+    writeFileSync(`${run}-002.mp4`, "0");
+    expect(await split(run, [30, 30], [join(dir, "a.mp4"), join(dir, "b.mp4")])).toBe(false);
+    expect(existsSync(join(dir, "a.mp4"))).toBe(false);
+    writeFileSync(run, "60");
+    expect(await split(run, [60], [join(dir, "tek.mp4")])).toBe(true);
+    expect(readFileSync(join(dir, "tek.mp4"), "utf8")).toBe("60");
+  });
+});
+
+describe("assemble", () => {
+  it("parçaları yeniden kodlamadan birleştirir, sesi ekler ve YouTube düzeyine getirir; liste dosyası silinir", async () => {
+    const dir = mkdtempSync(join(DIR, "asm-"));
+    const parts = [join(dir, "a.mp4"), join(dir, "o'b.mp4")];
+    let list = "";
+    remotion.execFile.mockImplementation((_f: string, a: string[], cb: (e: Error | null, r?: object) => void) => {
+      list = readFileSync(a[a.indexOf("-i") + 1]!, "utf8");
+      cb(null, { stdout: "", stderr: "" });
+    });
+    await assemble(parts, join(dir, "ses.wav"), join(dir, "out.mp4"));
+    const listPath = join(dir, "parts.txt");
     expect(remotion.execFile.mock.calls[0]!.slice(0, 2)).toEqual([
       "ffmpeg",
-      ["-y", "-v", "error", "-i", "in.mp4", "-c:v", "copy", "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-ar", "48000", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "out.mp4"],
+      ["-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", listPath, "-i", join(dir, "ses.wav"), "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-ar", "48000", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", join(dir, "out.mp4")],
     ]);
+    // Yollar ileri eğik çizgiyle, tek tırnak kaçırılmış.
+    const fwd = dir.replace(/\\/g, "/");
+    expect(list).toBe(`file '${fwd}/a.mp4'\nfile '${fwd}/o'\\''b.mp4'`);
+    expect(existsSync(listPath)).toBe(false);
   });
 });
 

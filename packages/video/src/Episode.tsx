@@ -1,4 +1,3 @@
-import { createTikTokStyleCaptions, type Caption } from "@remotion/captions";
 import { MATH_BOARD, VERTICAL_SAFE, type Timeline } from "@ys/core";
 import { useMemo, type ReactNode } from "react";
 import {
@@ -14,6 +13,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { Ambience } from "./Ambience.tsx";
+import { captionPages, CROSSFADE } from "./cut.ts";
 import { stageFit, VectorScene } from "./Vector.tsx";
 
 export type EpisodeProps = { timeline: Timeline };
@@ -22,9 +22,6 @@ type Visual = Timeline["visuals"][number];
 
 /** http(s) ise olduğu gibi, değilse render klasörünün public/ dizininden. */
 const src = (url: string) => (/^https?:\/\//.test(url) ? url : staticFile(url));
-
-/** Geçişte ardışık çekimler bu kadar kare üst üste biner (crossfade). */
-const CROSSFADE = 8;
 
 function StillMotion({ visual }: { visual: Visual }) {
   const frame = useCurrentFrame();
@@ -116,16 +113,7 @@ function Captions({ captions }: { captions: Timeline["captions"] }) {
   const { fps, width, height } = useVideoConfig();
   const nowMs = (frame / fps) * 1000;
 
-  const pages = useMemo(() => {
-    const tokens: Caption[] = captions.map((w, i) => ({
-      text: i === 0 ? w.text : ` ${w.text}`,
-      startMs: w.startMs,
-      endMs: w.endMs,
-      timestampMs: w.startMs,
-      confidence: null,
-    }));
-    return createTikTokStyleCaptions({ captions: tokens, combineTokensWithinMilliseconds: 1400 }).pages;
-  }, [captions]);
+  const pages = useMemo(() => captionPages(captions), [captions]);
 
   const page = pages.find((p) => nowMs >= p.startMs && nowMs < p.startMs + p.durationMs);
   if (!page) return null;
@@ -157,6 +145,22 @@ function Captions({ captions }: { captions: Timeline["captions"] }) {
         })}
       </div>
     </AbsoluteFill>
+  );
+}
+
+/**
+ * Bölümün ses izi (seslendirme, müzik, efekt). Render önbelleği sesi ayrıca bundan render eder ("EpisodeAudio"
+ * kompozisyonu): görüntüsüz kare değerlendirmesi çok hafif, miks bölümünkiyle aynı.
+ */
+export function EpisodeAudio({ timeline }: EpisodeProps) {
+  return (
+    <>
+      {timeline.audio.map((a, i) => (
+        <Sequence key={`${a.role}-${i}`} from={a.fromFrame} durationInFrames={a.durationInFrames} name={a.role}>
+          <Audio src={src(a.assetUrl)} volume={a.volume} />
+        </Sequence>
+      ))}
+    </>
   );
 }
 
@@ -194,11 +198,7 @@ export function Episode({ timeline }: EpisodeProps) {
         );
       })}
 
-      {timeline.audio.map((a, i) => (
-        <Sequence key={`${a.role}-${i}`} from={a.fromFrame} durationInFrames={a.durationInFrames} name={a.role}>
-          <Audio src={src(a.assetUrl)} volume={a.volume} />
-        </Sequence>
-      ))}
+      <EpisodeAudio timeline={timeline} />
 
       {timeline.captions.length > 0 && <Captions captions={timeline.captions} />}
     </AbsoluteFill>

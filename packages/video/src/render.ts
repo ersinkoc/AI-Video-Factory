@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { availableParallelism, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
-import { makeCancelSignal, openBrowser, renderMedia, renderStill, selectComposition, type OpenGlRenderer } from "@remotion/renderer";
+import { makeCancelSignal, openBrowser, renderMedia, renderStill, selectComposition, type CancelSignal, type OpenGlRenderer } from "@remotion/renderer";
 import type { FigureSpec, Timeline } from "@ys/core";
+import { audioKey, chunkKeys, chunkRanges, renderCode } from "./chunks.ts";
 import { runMediaTool } from "./tools.ts";
 
 export { THUMB, thumbnailShot, thumbnailTitle } from "./thumbnail.ts";
@@ -49,6 +51,12 @@ const DEFAULT_VIDEO_CACHE_BYTES = 2 * 1024 ** 3;
  */
 const BROWSER_TIMEOUT_MS = 120_000;
 const MAX_DEFAULT_CONCURRENCY = 8;
+
+/**
+ * Yalnız ses render'ı kare görüntüsü almaz, kareleri yalnız ses dizileri için değerlendirir: ilerlemede kare sayısının
+ * bu kesri kadar sayılır (4 Kas ölçümü, LLM bölümü 3,2 dk: görüntü 386 sn, hafif ses kompozisyonu 15 sn).
+ */
+const AUDIO_SHARE = 0.05;
 
 const GL_BACKENDS: readonly OpenGlRenderer[] = ["angle", "swangle", "egl", "swiftshader", "vulkan", "angle-egl"];
 /** Ekran kartı yoksa ya da sürücü sorun çıkarırsa: her makinede çalışan yazılım GL (SwiftShader, ANGLE üzerinden). */
@@ -200,63 +208,194 @@ export async function renderEpisode(opts: RenderOptions): Promise<string> {
 
 async function renderOnce(opts: RenderOptions, gl: OpenGlRenderer): Promise<string> {
   // Göreli publicDir ile bundle sunucusu görselleri çözemiyor ("source image cannot be decoded").
-  const serveUrl = await bundle({ entryPoint: ENTRY, publicDir: resolve(opts.publicDir) });
+  const publicDir = resolve(opts.publicDir);
+  const serveUrl = await bundle({ entryPoint: ENTRY, publicDir });
   const inputProps = { timeline: opts.timeline };
   const chromiumOptions = { gl };
   const composition = await selectComposition({ serveUrl, id: "Episode", inputProps, chromiumOptions });
 
-  // Uzantı ne olursa olsun ham dosya ayrı: aynı yol olursa ffmpeg kendi girdisinin üstüne yazar, rm sonucu siler.
-  const rawPath = `${opts.outputPath.replace(/\.mp4$/i, "")}.raw.mp4`;
-  // Bekçi: ilerleme durursa render iptal edilir; hata "render stalled" olarak geçici sayılır ve baştan alınır.
-  const { cancelSignal, cancel } = makeCancelSignal();
-  const stallMs = opts.stallMs ?? STALL_MS;
-  let last = Date.now();
-  let stalled = false;
-  const watch = setInterval(() => {
-    if (Date.now() - last < stallMs) return;
-    stalled = true;
-    cancel();
-  }, Math.min(15_000, stallMs / 2));
-  try {
-    await renderMedia({
+  // Parçalar ve ses izi içerik anahtarıyla önbellekte: anahtarı değişmeyen yeniden render edilmez (chunks.ts).
+  const cache = cacheDirOf(opts.outputPath);
+  await mkdir(cache, { recursive: true });
+  const code = await renderCode();
+  const ranges = chunkRanges(opts.timeline);
+  const parts = (await chunkKeys(opts.timeline, ranges, publicDir, code)).map((k) => join(cache, `${k}.mp4`));
+  const audio = join(cache, `${await audioKey(opts.timeline, publicDir, code)}.wav`);
+  const todo = ranges.flatMap((r, i) => (existsSync(parts[i]!) ? [] : [i]));
+  const audioTodo = !existsSync(audio);
+
+  // İlerleme kare sayısıyla: önbellekten gelen parçalar baştan sayılır; ses geçişi kare çizmez, payı küçük.
+  const total = opts.timeline.durationInFrames * (1 + AUDIO_SHARE);
+  let done = ranges.reduce((n, r, i) => (todo.includes(i) ? n : n + r.to - r.from), 0) + (audioTodo ? 0 : opts.timeline.durationInFrames * AUDIO_SHARE);
+  const report = (extra: number) => opts.onProgress?.(Math.min(1, (done + extra) / total));
+  report(0);
+
+  if (todo.length || audioTodo) {
+    const browser = await openBrowser("chrome", { chromiumOptions });
+    const common = {
       serveUrl,
-      composition,
       inputProps,
-      codec: "h264",
-      outputLocation: rawPath,
       chromiumOptions,
+      puppeteerInstance: browser,
       concurrency: opts.concurrency ?? defaultConcurrency(),
       timeoutInMilliseconds: BROWSER_TIMEOUT_MS,
       offthreadVideoCacheSizeInBytes: opts.videoCacheBytes ?? DEFAULT_VIDEO_CACHE_BYTES,
-      cancelSignal,
-      onProgress: ({ progress }) => {
-        last = Date.now();
-        opts.onProgress?.(progress);
-      },
-    });
+    };
+    // Sessiz görüntü [from, to); cuts: göreli karelerde zorlanacak anahtar kareler (bölmek için).
+    const video = (from: number, to: number, outputLocation: string, cuts: number[] = []) =>
+      watched(opts.stallMs, (cancelSignal, tick) =>
+        renderMedia({
+          ...common,
+          composition,
+          codec: "h264",
+          muted: true,
+          frameRange: [from, to - 1],
+          outputLocation,
+          cancelSignal,
+          ...(cuts.length ? { ffmpegOverride: keyframesAt(cuts) } : {}),
+          onProgress: ({ progress }) => (tick(), report(progress * (to - from))),
+        }),
+      );
+    try {
+      // Önbellekte olmayan ardışık parçalar tek render'da (parça başına sekme açma ve paket yükleme ~20 sn sürüyordu:
+      // 9 ayrı parça tek render'ın 1,8 katıydı), sınırlarında anahtar kareyle; sonra yeniden kodlanmadan bölünür.
+      for (const run of runsOf(todo)) {
+        const from = ranges[run[0]!]!.from;
+        const to = ranges[run.at(-1)!]!.to;
+        // Yarım kalan dosya önbelleğe girmez: önce geçici adla yazılır.
+        const tmp = join(cache, `run-${from}.part.mp4`);
+        await video(from, to, tmp, run.slice(1).map((i) => ranges[i]!.from - from));
+        const counts = run.map((i) => ranges[i]!.to - ranges[i]!.from);
+        if (!(await split(tmp, counts, run.map((i) => parts[i]!)))) {
+          // Anahtar kare tutmadı (kodlayıcı farklı): bu parçalar tek tek render edilir.
+          for (const i of run) {
+            const one = `${parts[i]}.part.mp4`;
+            await video(ranges[i]!.from, ranges[i]!.to, one);
+            await rename(one, parts[i]!);
+          }
+        }
+        done += to - from;
+      }
+      if (audioTodo) {
+        // Ses yalnız ses dizileri olan kompozisyondan: aynı miks, kare değerlendirmesi çok hafif (64 → 15 sn).
+        const tmp = `${audio}.part.wav`;
+        const frames = opts.timeline.durationInFrames * AUDIO_SHARE;
+        const sound = await selectComposition({ serveUrl, id: "EpisodeAudio", inputProps, chromiumOptions, puppeteerInstance: browser });
+        await watched(opts.stallMs, (cancelSignal, tick) =>
+          renderMedia({ ...common, composition: sound, codec: "wav", enforceAudioTrack: true, outputLocation: tmp, cancelSignal, onProgress: ({ progress }) => (tick(), report(progress * frames)) }),
+        );
+        await rename(tmp, audio);
+        done += frames;
+      }
+    } finally {
+      await browser.close({ silent: true }).catch(() => {});
+    }
+  }
+
+  await assemble(parts, audio, opts.outputPath);
+  // Bu bölümün artık kullanılmayan parçaları ve yarım dosyalar silinir (önbellek bir video boyunu geçmez).
+  const keep = new Set([...parts, audio].map((p) => basename(p)));
+  for (const f of await readdir(cache)) if (!keep.has(f)) await rm(join(cache, f), { force: true });
+  return opts.outputPath;
+}
+
+/** Art arda gelen sıra numaraları gruplanır: [0,1,2,5,6] → [[0,1,2],[5,6]]. */
+export function runsOf(indices: number[]): number[][] {
+  const runs: number[][] = [];
+  for (const i of indices) {
+    const last = runs.at(-1);
+    if (last && last.at(-1) === i - 1) last.push(i);
+    else runs.push([i]);
+  }
+  return runs;
+}
+
+/**
+ * Remotion'un kodlayıcı komutuna, verilen göreli karelerde anahtar kare zorlar (parçalar yeniden kodlanmadan bölünsün
+ * diye). Yalnız libx264 ile kodlayan komut değişir; ötekiler (kopyalayan birleştirici) olduğu gibi.
+ */
+export const keyframesAt =
+  (cuts: number[]) =>
+  ({ args }: { type: string; args: string[] }): string[] => {
+    const y = args.lastIndexOf("-y");
+    if (!args.includes("libx264") || y < 0) return args;
+    return [...args.slice(0, y), "-force_key_frames", `expr:${cuts.map((c) => `eq(n,${c})`).join("+")}`, ...args.slice(y)];
+  };
+
+/**
+ * Tek render'ı parça dosyalarına yeniden kodlamadan böler. Her parçanın kare sayısı (paket sayımı, kod çözmeden)
+ * doğrulanır; tutmazsa false döner ve hiçbir parça önbelleğe girmez. Tek parçalık render yalnız adlandırılır.
+ */
+export async function split(file: string, counts: number[], outs: string[]): Promise<boolean> {
+  if (outs.length === 1) {
+    await rename(file, outs[0]!);
+    return true;
+  }
+  const cuts = counts.slice(0, -1).map((_, i) => counts.slice(0, i + 1).reduce((a, b) => a + b, 0));
+  const seg = (i: number) => `${file}-${String(i).padStart(3, "0")}.mp4`;
+  await runMediaTool("ffmpeg", ["-y", "-v", "error", "-i", file, "-map", "0:v", "-c", "copy", "-f", "segment", "-segment_frames", cuts.join(","), "-reset_timestamps", "1", "-segment_format", "mp4", `${file}-%03d.mp4`]);
+  await rm(file, { force: true });
+  for (const [i, n] of counts.entries()) {
+    if (!existsSync(seg(i))) return false;
+    const { stdout } = await runMediaTool("ffprobe", ["-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries", "stream=nb_read_packets", "-of", "default=nw=1:nk=1", seg(i)]);
+    if (Number(stdout.trim()) !== n) return false;
+  }
+  if (existsSync(seg(counts.length))) return false;
+  for (const [i, out] of outs.entries()) await rename(seg(i), out);
+  return true;
+}
+
+/**
+ * Render ilerlemesini bekler: ilerleme stallMs boyunca durursa render iptal edilir, hata "render stalled" olarak geçici
+ * sayılır ve baştan alınır (önbellekteki parçalar korunur).
+ */
+async function watched<R>(stallMs: number | undefined, run: (cancelSignal: CancelSignal, tick: () => void) => Promise<R>): Promise<R> {
+  const limit = stallMs ?? STALL_MS;
+  const { cancelSignal, cancel } = makeCancelSignal();
+  let last = Date.now();
+  let stalled = false;
+  const watch = setInterval(() => {
+    if (Date.now() - last < limit) return;
+    stalled = true;
+    cancel();
+  }, Math.min(15_000, limit / 2));
+  try {
+    return await run(cancelSignal, () => (last = Date.now()));
   } catch (e) {
-    if (stalled) throw new Error(`render stalled: no progress for ${Math.round(stallMs / 1000)} s`);
+    if (stalled) throw new Error(`render stalled: no progress for ${Math.round(limit / 1000)} s`);
     throw e;
   } finally {
     clearInterval(watch);
   }
-
-  await normalizeLoudness(rawPath, opts.outputPath);
-  await rm(rawPath, { force: true });
-  return opts.outputPath;
 }
 
+/** Bölümün parça önbelleği: çıktının yanında `.render-cache/<ad>` (Short'un ayrı klasörü olur). */
+export const cacheDirOf = (outputPath: string) => join(dirname(resolve(outputPath)), ".render-cache", basename(outputPath).replace(/\.mp4$/i, ""));
+
 /**
- * YouTube oynatımı -14 LUFS'a göre ayarlar; daha sessiz video rakiplerinden kısık duyulur
- * (29 Eki ilk bölüm -18,7 LUFS çıktı). Görüntü yeniden kodlanmaz.
+ * Parçalar art arda yeniden kodlanmadan birleştirilir, ses izi eklenir ve YouTube oynatımına göre -14 LUFS'a getirilir
+ * (daha sessiz video rakiplerinden kısık duyulur; 29 Eki ilk bölüm -18,7 LUFS çıktı). Görüntü yeniden kodlanmaz.
  */
-export async function normalizeLoudness(input: string, output: string): Promise<void> {
+export async function assemble(parts: string[], audio: string, output: string): Promise<void> {
+  const list = join(dirname(audio), "parts.txt");
+  // concat listesinde tek tırnak kaçırılır; yollar tam (-safe 0).
+  await writeFile(list, parts.map((p) => `file '${p.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`).join("\n"));
   await runMediaTool("ffmpeg", [
     "-y",
     "-v",
     "error",
+    "-f",
+    "concat",
+    "-safe",
+    "0",
     "-i",
-    input,
+    list,
+    "-i",
+    audio,
+    "-map",
+    "0:v",
+    "-map",
+    "1:a",
     "-c:v",
     "copy",
     "-af",
@@ -271,6 +410,7 @@ export async function normalizeLoudness(input: string, output: string): Promise<
     "+faststart",
     output,
   ]);
+  await rm(list, { force: true });
 }
 
 export interface StillsOptions {

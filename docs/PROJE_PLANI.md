@@ -293,7 +293,7 @@ interface ProviderAdapter {
 - **Sahne tipi bileşenleri:** `StillMotion` (derinlik haritasıyla parallax, Ken Burns), `Clip` (OffthreadVideo, crossfade), `TalkingCharacter`, `MotionGraphic/*` (harita, sayaç, zaman çizelgesi, liste, karşılaştırma, alıntı kartı), `Captions` (kelime vurgulu, `@remotion/captions`), `LowerThird`, `ChapterCard`, `Transitions` (`@remotion/transitions`).
 - **Efekt kütüphanesi kanal markasına bağlı:** Fontlar, renkler ve geçiş dili StyleBible'dan gelir.
 - **Render:** Varsayılan yerel render (`@remotion/renderer`, `concurrency` ayarlı). Paralel çok bölüm üretilecekse Remotion Lambda.
-- **Uzun video ipuçları:** Sahne bazında `<Series>`. Ağır klipler için `OffthreadVideo` + önceden transcode (sabit fps, keyframe aralığı). 12–20 dk için gerekirse bölüm bazında render edilip FFmpeg ile concat.
+- **Uzun video ipuçları:** Sahne bazında `<Series>`. Ağır klipler için `OffthreadVideo` + önceden transcode (sabit fps, keyframe aralığı). 12–20 dk için gerekirse bölüm bazında render edilip FFmpeg ile concat. ✅ (4 Kas) Sahne bazında parça önbelleği (`packages/video/src/chunks.ts`): görüntü sahne sınırlarında sessiz parçalara bölünür, her parçanın anahtarı onu çizen her şeyin özetidir (çekimler, çizimler, dosyalar, konuşma, altyazı, render kodu); yalnız eksik parçalar render edilir (ardışık olanlar tek render'da, sınırlarında anahtar kareyle, yeniden kodlanmadan bölünür), ses hafif ayrı bir kompozisyondan, FFmpeg concat ile birleşir. Yeniden oluşturulan sahneler ve yarıda kalan render baştan alınmaz.
 - Remotion'un resmi agent skill'leri `.claude/skills/` altına eklenir. Hem geliştirme hem de Editor ajanı bunları kullanır.
 
 ### 9.1 Vektör sahne fiziği (30 Eki)

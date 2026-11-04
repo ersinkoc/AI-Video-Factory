@@ -1,6 +1,6 @@
 import { FigureSpec, type Timeline } from "@ys/core";
 import { Composition } from "remotion";
-import { Episode, type EpisodeProps } from "./Episode.tsx";
+import { Episode, EpisodeAudio, type EpisodeProps } from "./Episode.tsx";
 import { FIGURE_PREVIEW, FigurePreview, type FigurePreviewProps } from "./FigurePreview.tsx";
 import { Thumbnail, type ThumbnailProps } from "./Thumbnail.tsx";
 import { THUMB } from "./thumbnail.ts";
@@ -38,6 +38,22 @@ export function Root() {
         component={Episode}
         defaultProps={{ timeline: PLACEHOLDER } satisfies EpisodeProps}
         // Süre ve çözünürlük timeline'dan gelir.
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.timeline.durationInFrames,
+          fps: props.timeline.fps,
+          width: props.timeline.width,
+          height: props.timeline.height,
+        })}
+        durationInFrames={PLACEHOLDER.durationInFrames}
+        fps={PLACEHOLDER.fps}
+        width={PLACEHOLDER.width}
+        height={PLACEHOLDER.height}
+      />
+      <Composition
+        id="EpisodeAudio"
+        component={EpisodeAudio}
+        defaultProps={{ timeline: PLACEHOLDER } satisfies EpisodeProps}
+        // Bölümle aynı süre ve kare hızı: ses izi görüntü parçalarıyla hizalı.
         calculateMetadata={({ props }) => ({
           durationInFrames: props.timeline.durationInFrames,
           fps: props.timeline.fps,

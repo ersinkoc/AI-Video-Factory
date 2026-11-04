@@ -65,6 +65,7 @@ vi.mock("pixi.js", () => {
 });
 
 const { Episode } = await import("../src/index.ts");
+const { EpisodeAudio } = await import("../src/Episode.tsx");
 const { Ambience } = await import("../src/Ambience.tsx");
 const { Thumbnail } = await import("../src/Thumbnail.tsx");
 type ThumbnailProps = import("../src/Thumbnail.tsx").ThumbnailProps;
@@ -381,6 +382,10 @@ describe("Remotion kökü", () => {
       props: { timeline: timeline({ fps: 24, width: 1080, height: 1920, durationInFrames: 1234 }) },
     });
     expect(meta).toEqual({ durationInFrames: 1234, fps: 24, width: 1080, height: 1920 });
+    // Yalnız ses izi (render önbelleği sesi bundan render eder): bölümle aynı süre ve kare hızı.
+    const sound = registered.compositions.EpisodeAudio!;
+    expect(sound.component).toBe(EpisodeAudio);
+    expect((sound.calculateMetadata as (a: { props: { timeline: Timeline } }) => object)({ props: { timeline: timeline({ fps: 24, width: 1080, height: 1920, durationInFrames: 1234 }) } })).toEqual(meta);
     // Küçük resim kompozisyonu: 1280×720, süre seçilen çekimin süresi (bilinmeyen çekimde 1 kare).
     const thumb = registered.compositions.Thumbnail!;
     expect([thumb.width, thumb.height, thumb.durationInFrames]).toEqual([1280, 720, 1]);
