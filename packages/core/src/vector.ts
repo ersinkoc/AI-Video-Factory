@@ -70,6 +70,11 @@ export const RIG_SIDE = {
 /** Timeline'da karakterin yan görünüşünün varlık kimliği: `<karakter>~side`. */
 export const sideAssetId = (id: string) => `${id}~side`;
 
+/** Arka planın ters açısı (aynı yerin karşı tarafı): `<arka plan>~rev`. */
+export const reverseAssetId = (id: string) => `${id}~rev`;
+/** Ters açı kimliğinden asıl arka plan: `l1~rev` → `l1` (başka kimlik olduğu gibi). */
+export const baseBackgroundId = (id: string) => id.replace(/~rev$/, "");
+
 export const VectorAssetKind = z.enum(["character", "background", "prop"]);
 export type VectorAssetKind = z.infer<typeof VectorAssetKind>;
 

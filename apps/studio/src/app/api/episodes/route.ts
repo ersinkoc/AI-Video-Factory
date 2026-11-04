@@ -33,6 +33,7 @@ interface CreateBody {
   qa?: boolean;
   realism?: boolean;
   sideViews?: boolean;
+  reverseViews?: boolean;
   captions?: boolean;
   sfx?: boolean;
   music?: boolean;
@@ -69,6 +70,8 @@ export async function POST(req: Request) {
     qa: body.qa !== false,
     realism: body.realism !== false,
     sideViews: body.sideViews === true,
+    // Ters açı (vektör modunda çok kullanılan odalar); gönderilmezse açık.
+    reverseViews: body.reverseViews !== false,
     // Gönderilmezse eski davranış: gömülü.
     captions: body.captions !== false,
     // Efekt sesleri yalnız vektör modunda; gönderilmezse açık.

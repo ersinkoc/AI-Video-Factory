@@ -12,6 +12,7 @@ interface Body {
   vertical?: boolean;
   qa?: boolean;
   sideViews?: boolean;
+  reverseViews?: boolean;
 }
 
 /** Yeni bölüm formu için canlı tahmin: henüz oluşturulmamış bir bölümün üç hareket modundaki maliyet ve süresi. */
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
     voiceId: b.voiceId || undefined,
     qa: b.qa !== false,
     sideViews: b.sideViews === true,
+    reverseViews: b.reverseViews !== false,
     width: b.vertical ? 1080 : 1920,
     height: b.vertical ? 1920 : 1080,
     fps: 30,

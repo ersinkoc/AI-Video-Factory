@@ -56,6 +56,7 @@ import {
   msg,
   QUALITY_GATE,
   resolveLayout,
+  reverseAssetId,
   RIG,
   sanitizeSvg,
   sideAssetId,
@@ -124,7 +125,7 @@ import {
 import { existingSamples, loadStyleSamples, SAMPLE_BRIEF, STYLE_SAMPLES_ID, STYLE_SAMPLES_KEY, type StyleSample, type StyleSamples } from "./samples.ts";
 import { shortRange, shortTimeline } from "./short.ts";
 import { buildTimeline, clipSeconds, resolveShotTimes, sceneOffsets, toSrt } from "./timing.ts";
-import { varyShotSizes } from "./variety.ts";
+import { assignReverseViews, reverseCandidates, varyShotSizes } from "./variety.ts";
 import { looksLikeObject } from "./cast-kind.ts";
 import type { EpisodeReview } from "./state.ts";
 
@@ -166,6 +167,29 @@ function metaOf(out: VectorAssetOut, kind: AssetBrief["kind"]): VectorAssetMeta 
 
 /** Karakterin yan görünüşünün kütüphane anahtarı: ön çiziminden türer (aynı ön çizim → aynı yan çizim). */
 const sideKeyOf = (frontKey: string) => frontKey.replace(/\.svg$/, ".side.svg");
+/** Arka planın ters açısının kütüphane anahtarı: asıl çiziminden türer (aynı oda → aynı ters açı). */
+const reverseKeyOf = (key: string) => key.replace(/\.svg$/, ".reverse.svg");
+
+/** Onaylı bir çizimden türeyen görünüş (designDerivedView): karakterin yan görünüşü, arka planın ters açısı. */
+interface DerivedView {
+  /** Asıl varlığın kimliği (kapı denetimi). */
+  id: string;
+  kind: "character" | "background";
+  /** Türeyen çizimin kütüphane anahtarı ve kaynağı (onaylı çizim). */
+  key: string;
+  sourceKey: string;
+  /** Stüdyo kaydının sahibi: `<kimlik>~side` / `<kimlik>~rev`. */
+  entityId: string;
+  name: Msg;
+  /** Kapıdan geçemeyince günlüğe yazılan (varlık asıl görünüşüyle kalır). */
+  fallback: Msg;
+  /** Tasarımcıya giden tarif (onaylı çizimin meta bilgisiyle). */
+  designer: (source: VectorAssetMeta) => Omit<VectorAssetBrief, "lineStyle" | "front" | "references" | "fix" | "previous">;
+  /** Kapıya giden tarif: neye göre karşılaştırılacağı. */
+  gateDescription: string;
+  validate?: (svg: string) => void;
+  meta: (source: VectorAssetMeta) => VectorAssetMeta;
+}
 /** Videoda görünen timeline: altyazı kapalıysa (`input.captions === false`) gömülmez; `.srt` yine tam timeline'dan. */
 /** Bölüme bağlı olmayan çizim için sanal bölüm (karakter bankası, stil örnekleri): durumu kaydedilmez. */
 function virtualState(id: string, packId: string, topic: string, lineStyle?: LineStyle): EpisodeState {
@@ -1811,6 +1835,7 @@ export class EpisodePipeline {
     // Çizilemeyen nesne çekimden düşer; video yine de çıkar.
     if (failed.length) this.log(msg("log.props.failed", { n: failed.length, list: joinTexts(failed, "log.join.indented") }));
     await this.vectorSideViews(state);
+    await this.vectorBackgroundViews(state);
   }
 
   /**
@@ -1839,34 +1864,121 @@ export class EpisodePipeline {
     });
   }
 
+  /**
+   * Ters açı (input.reverseViews, verilmezse açık): çok kullanılan odaya bir kez aynı yerin karşı tarafı çizilir
+   * (variety.ts REVERSE); aynı odada art arda gelen çekimler iki açı arasında gider. Anahtar asıl çizimden türer,
+   * kütüphanede durur. Asıl çizimi değişen odanın eski ters açısı kullanılmaz, yenisi çizilir. Harita/bayrak arka
+   * planına ters açı yok. Geçemezse (ok false) oda tek açıdan görünür.
+   */
+  private async vectorBackgroundViews(state: EpisodeState): Promise<void> {
+    if (state.input.reverseViews === false) return;
+    const views = (state.backgroundViews ??= {});
+    const todo = reverseCandidates(state.shots ?? []).flatMap((id) => {
+      const key = this.backgroundKeyOf(state, id);
+      return key && views[id]?.key !== reverseKeyOf(key) ? [{ id, key }] : [];
+    });
+    await mapLimit(todo, this.deps.concurrency ?? 3, async ({ id, key }) => {
+      views[id] = { key: reverseKeyOf(key), ok: await this.designReverseView(state, id, key) };
+      await this.save(state);
+    });
+    this.reverseShots(state);
+  }
+
+  /** Aynı odada art arda gelen çekimlere ters açıyı atar (hazır olanlarla); değişen çekim sayısı günlüğe. */
+  private reverseShots(state: EpisodeState): void {
+    const n = assignReverseViews(state.shots ?? [], this.readyViews(state));
+    if (n) this.log(msg("log.shots.reversed", { n }));
+  }
+
+  /** Arka planın asıl çizimi: kadrodaki mekânın seçimi ya da yönetmenin istediği ek arka plan (harita/bayrak değil). */
+  private backgroundKeyOf(state: EpisodeState, id: string): string | undefined {
+    const selected = state.concept?.selected[id]?.key;
+    if (selected) return selected;
+    const p = state.vectorProps?.[id];
+    return p?.kind === "background" && !p.map && !p.flag ? p.key : undefined;
+  }
+
+  /** Ters açısı kullanılabilir arka planlar: kapıdan geçmiş (ya da insanın kabul ettiği) ve asıl çizimi değişmemiş. */
+  private readyViews(state: EpisodeState): Set<string> {
+    return new Set(
+      Object.entries(state.backgroundViews ?? {}).flatMap(([id, v]) => {
+        const key = this.backgroundKeyOf(state, id);
+        return v.ok && key && v.key === reverseKeyOf(key) ? [id] : [];
+      }),
+    );
+  }
+
+  /** Ters açıyı çizer ya da kütüphaneden alır; kapıdan geçerse true. */
+  private designReverseView(state: EpisodeState, id: string, sourceKey: string): Promise<boolean> {
+    const location = state.cast?.locations.find((l) => l.id === id);
+    const name = location?.name ?? id;
+    return this.designDerivedView(state, {
+      id,
+      kind: "background",
+      key: reverseKeyOf(sourceKey),
+      sourceKey,
+      entityId: reverseAssetId(id),
+      name: msg("log.reverse.name", { name }),
+      fallback: msg("log.reverse.fallback", { name }),
+      designer: (source) => ({
+        kind: "background",
+        name,
+        description: location?.visualDescription ?? state.vectorProps?.[id]?.description ?? name,
+        view: "reverse",
+        ...(source.floorY === undefined ? {} : { floorY: source.floorY }),
+      }),
+      gateDescription: `The same place as in the reference image, seen from the opposite side (a reverse angle): the wall or view that faces it. Judge whether it is clearly the same place (architecture, materials, colours, light, style), not whether the wall content is identical.`,
+      // Zemin çizgisi asıl görünüşünki: kesmede kişiler aynı yükseklikte durur.
+      meta: (source) => ({ ...(source.floorY === undefined ? {} : { floorY: source.floorY }) }),
+    });
+  }
+
   /** Yan görünüşü çizer ya da kütüphaneden alır; kapıdan geçerse true. */
-  private async designSideView(state: EpisodeState, c: { id: string; name: string; visualDescription: string }, frontKey: string): Promise<boolean> {
-    const key = sideKeyOf(frontKey);
-    const name = msg("log.side.name", { name: c.name });
-    const label = trText(name);
+  private designSideView(state: EpisodeState, c: { id: string; name: string; visualDescription: string }, frontKey: string): Promise<boolean> {
+    return this.designDerivedView(state, {
+      id: c.id,
+      kind: "character",
+      key: sideKeyOf(frontKey),
+      sourceKey: frontKey,
+      entityId: sideAssetId(c.id),
+      name: msg("log.side.name", { name: c.name }),
+      fallback: msg("log.side.fallback", { name: c.name }),
+      designer: () => ({ kind: "character", name: c.name, description: c.visualDescription, view: "side" }),
+      gateDescription: `The same person as in the reference image, drawn in side view (profile) facing right. Judge identity (face, hair, headgear, outfit, colours), not the viewing angle.`,
+      validate: (svg) => {
+        const missing = RIG.required.filter((id) => !svg.includes(`id="${id}"`));
+        if (missing.length) throw new LocalizedError(msg("err.asset.rigMissing", { parts: missing.join(", ") }));
+      },
+      meta: (front) => ({ realHeight: front.realHeight, grounded: true }),
+    });
+  }
+
+  /**
+   * Onaylı bir çizimden türeyen ikinci görünüş (karakterin yan görünüşü, arka planın ters açısı). Kütüphanede kapıdan
+   * geçmiş hali varsa alınır; yoksa onaylı çizime (SVG ve görüntüsü) bakılarak çizilir, kapıda onunla karşılaştırılır
+   * ("referans" onaylı çizimin görüntüsüdür: aynı kişi / aynı yer mi). Anahtar kaynaktan türer: tekrar kullanılan
+   * çizimde para gitmez. Geçemezse en iyi deneme Stüdyo'da gösterilir (insan kabul ederse kullanılır); false döner.
+   */
+  private async designDerivedView(state: EpisodeState, view: DerivedView): Promise<boolean> {
+    const { key, kind, entityId } = view;
+    const label = trText(view.name);
     const record = (check: AssetCheck) => ((state.assetChecks ??= {})[key] = check);
     const cached = VectorAssetMeta.safeParse((await getJson(this.deps.store, `${key}.json`)) ?? {}).data;
     if (cached?.check?.passed && (await this.deps.store.get(key))) {
-      record({ ...cached.check, entityId: sideAssetId(c.id) });
-      this.log(msg("log.asset.fromLibrary", { name }));
+      record({ ...cached.check, entityId });
+      this.log(msg("log.asset.fromLibrary", { name: view.name }));
       return true;
     }
-    // İnsanın reddettiği paylaşılan yan çizim yerinde yeniden çizilmez (kütüphane bir bölümün kararıyla değişmez).
+    // İnsanın reddettiği paylaşılan çizim yerinde yeniden çizilmez (kütüphane bir bölümün kararıyla değişmez).
     if (cached?.check?.override?.decision === "rejected") {
-      record({ ...cached.check, entityId: sideAssetId(c.id) });
-      this.log(msg("log.side.fallback", { name: c.name }));
+      record({ ...cached.check, entityId });
+      this.log(view.fallback);
       return false;
     }
-    const front = new TextDecoder().decode(await this.bytes(frontKey));
-    const frontMeta = VectorAssetMeta.parse((await getJson(this.deps.store, `${frontKey}.json`)) ?? {});
-    // Kapı yan çizimi ön çizimle karşılaştırır: "referans" onaylı ön çizimin görüntüsüdür (kimlik denetimi).
+    const front = new TextDecoder().decode(await this.bytes(view.sourceKey));
+    const frontMeta = VectorAssetMeta.parse((await getJson(this.deps.store, `${view.sourceKey}.json`)) ?? {});
     const references = [await rasterizeSvg(front)];
-    const brief: AssetBrief = {
-      kind: "character",
-      id: c.id,
-      name: label,
-      description: `The same person as in the reference image, drawn in side view (profile) facing right. Judge identity (face, hair, headgear, outfit, colours), not the viewing angle.`,
-    };
+    const brief: AssetBrief = { kind, id: view.id, name: label, description: view.gateDescription };
     let best: { svg: string; res: GateResult } | undefined;
     let fix: string | undefined;
     let previous: string | undefined;
@@ -1878,69 +1990,65 @@ export class EpisodePipeline {
         out = await this.agent(
           state,
           "keyframes",
-          vectorDesigner(
-            { kind: "character", name: c.name, description: c.visualDescription, lineStyle: lineStyleOf(state), view: "side", front, references, fix, previous },
-            state.style!,
-            this.agentDeps,
-          ),
+          vectorDesigner({ ...view.designer(frontMeta), lineStyle: lineStyleOf(state), front, references, fix, previous }, state.style!, this.agentDeps),
         );
       } catch (e) {
         // Tasarımcının kendi hatası bir çizim hakkı yer; iptal gibi diğer hatalar yukarı çıkar.
         if (!(e instanceof AgentError)) throw e;
-        this.log(msg("log.asset.designerError", { name, attempt, error: firstLine(e) }));
+        this.log(msg("log.asset.designerError", { name: view.name, attempt, error: firstLine(e) }));
         continue;
       }
       let svg: string;
       try {
         const clean = sanitizeSvg(out.svg);
-        svg = stripBackdrop(clean, svgSize(clean));
-        const missing = RIG.required.filter((id) => !svg.includes(`id="${id}"`));
-        if (missing.length) throw new LocalizedError(msg("err.asset.rigMissing", { parts: missing.join(", ") }));
+        // Arka plan sahnenin tamamıdır: zemini atılmaz.
+        svg = kind === "background" ? clean : stripBackdrop(clean, svgSize(clean));
+        view.validate?.(svg);
       } catch (e) {
         fix = `- The SVG was invalid: ${trText(errorText(e))}`;
-        this.log(msg("log.asset.invalidSvg", { name, attempt, error: errorText(e) }));
+        this.log(msg("log.asset.invalidSvg", { name: view.name, attempt, error: errorText(e) }));
         continue;
       }
       const res = await this.gateCheck(state, "keyframes", brief, svg, references);
-      const passed = gatePasses("character", res.scores);
-      if (betterGate("character", res.scores, best?.res.scores)) best = { svg, res };
-      this.log(msg("log.asset.attempt", { name, attempt, score: scoreText(res), mark: passed ? "✓" : "✗" }));
+      const passed = gatePasses(kind, res.scores);
+      if (betterGate(kind, res.scores, best?.res.scores)) best = { svg, res };
+      this.log(msg("log.asset.attempt", { name: view.name, attempt, score: scoreText(res), mark: passed ? "✓" : "✗" }));
       if (passed) break;
       previous = svg;
       fix = res.defects.map((d) => `- ${d}`).join("\n");
     }
     if (!best) {
-      this.log(msg("log.side.fallback", { name: c.name }));
+      this.log(view.fallback);
       return false;
     }
     const check: AssetCheck = {
-      kind: "character",
+      kind,
       name: label,
       guess: best.res.guess,
       recognizable: best.res.scores.recognizable,
       fidelity: best.res.scores.fidelity,
-      passed: gatePasses("character", best.res.scores),
+      passed: gatePasses(kind, best.res.scores),
       defects: best.res.defects,
       attempts: draws,
       sources: [],
       refs: [],
-      // Sahibi "<karakter>~side": Stüdyo'daki kabul/ret ön çizimi (konsept seçimini) değil yan görünüşü etkiler.
-      entityId: sideAssetId(c.id),
+      // Sahibi "<kimlik>~side" / "<kimlik>~rev": Stüdyo'daki kabul/ret asıl çizimi (konsept seçimini) değil bu görünüşü etkiler.
+      entityId,
     };
-    const meta = { realHeight: frontMeta.realHeight, grounded: true };
+    const meta = view.meta(frontMeta);
     if (!check.passed) {
       // En iyi deneme yalnız Stüdyo'da gösterilir; insan kabul ederse kullanılır.
       const rejectedKey = key.replace(/\.svg$/, ".rejected.svg");
       await this.deps.store.put(rejectedKey, new TextEncoder().encode(best.svg), "image/svg+xml");
       await putJson(this.deps.store, `${rejectedKey}.json`, meta);
       record({ ...check, rejectedKey });
-      this.log(msg("log.side.fallback", { name: c.name }));
+      this.log(view.fallback);
       return false;
     }
     record(check);
     await this.deps.store.put(key, new TextEncoder().encode(best.svg), "image/svg+xml");
     await putJson(this.deps.store, `${key}.json`, { ...meta, check });
-    this.log(msg("log.asset.drawn", { name, kb: (best.svg.length / 1024).toFixed(1), draws }));
+    this.log(msg("log.asset.drawn", { name: view.name, kb: (best.svg.length / 1024).toFixed(1), draws }));
     return true;
   }
 
@@ -2060,6 +2168,8 @@ export class EpisodePipeline {
     }
     for (const l of state.cast?.locations ?? []) if (selected[l.id]) await add(l.id, "background", selected[l.id]!.key);
     for (const [id, p] of Object.entries(state.vectorProps ?? {})) if (p.key) await add(id, p.kind ?? "prop", p.key);
+    // Ters açılar (aynı odada art arda kesmede karşı taraf); asıl çizimi değişmiş odanınki kullanılmaz.
+    for (const id of this.readyViews(state)) await add(reverseAssetId(id), "background", state.backgroundViews![id]!.key);
     return out;
   }
   private async keyframe(
@@ -2523,6 +2633,7 @@ export class EpisodePipeline {
     },
 
     timeline: async (state) => {
+      if (motionModeOf(state.input) === "vector") this.reverseShots(state);
       const vector = motionModeOf(state.input) === "vector" ? await this.vectorAssets(state, "timeline") : {};
       if (motionModeOf(state.input) === "vector") await this.mathBoards(state);
       state.timeline = buildTimeline(state, (key) => key, vector);

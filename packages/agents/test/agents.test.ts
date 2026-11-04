@@ -257,6 +257,24 @@ describe("vektör ajanları", () => {
     expect(a.model).toBe(models().creative);
   });
 
+  it("ters açı: oda tuvali, asıl görünüşün SVG'si, görüntüsü ve zemin çizgisi; gerçek özne metni yok", async () => {
+    const a = await capture((d) =>
+      vectorDesigner({ kind: "background", name: "Ofis", description: "small office", view: "reverse", front: "<svg>oda</svg>", floorY: 700.4, references: [img(5)] }, style, d),
+    );
+    expect(a.system).toContain("The EMPTY SHELL of the place");
+    expect(a.prompt).toContain("Draw the REVERSE ANGLE");
+    expect(a.prompt).toContain("the wall–floor line at y = 700 (return it as floorY)");
+    expect(a.prompt).toContain("<front_svg>\n<svg>oda</svg>\n</front_svg>");
+    expect(a.prompt).not.toContain("REAL subject");
+    expect(a.prompt).not.toContain("approved FRONT view");
+    expect(a.images).toEqual(["BQ=="]);
+    // Zemin çizgisi bilinmiyorsa istenmez; karakterde "reverse" yan görünüş gibi davranmaz.
+    const b = await capture((d) => vectorDesigner({ kind: "background", name: "Ofis", description: "small office", view: "reverse", front: "<svg>oda</svg>" }, style, d));
+    expect(b.prompt).not.toContain("wall–floor line");
+    const c = await capture((d) => vectorDesigner({ kind: "character", name: "Billy", description: "rider", view: "reverse" }, style, d));
+    expect(c.prompt).not.toContain("REVERSE ANGLE");
+  });
+
   it("plan metni siluet ve ipuçlarını içerir, boş listeleri atlar", () => {
     expect(planBlock(plan)).toBe(
       "Drawing plan (prepared from the references; where it differs from the description, the plan wins):\nSubject: a saddle\nPose/view: side view\nSilhouette: wide and low\nMust be clearly visible: stirrups; horn",

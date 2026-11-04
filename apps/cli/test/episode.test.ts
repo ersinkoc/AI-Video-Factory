@@ -102,6 +102,7 @@ describe("episode new", () => {
       qa: true,
       realism: true,
       sideViews: false,
+      reverseViews: true,
       captions: true,
       lineStyle: undefined,
       stylePack: STYLE_AUTO,

@@ -97,6 +97,11 @@ export const PIPELINE_MESSAGES = {
     tr: "  {name}: yan görünüş kalite kapısından geçemedi; karakter önden yürüyecek",
     en: "  {name}: the side view failed the quality gate; the character will walk in front view",
   },
+  "log.reverse.name": { tr: "{name} (ters açı)", en: "{name} (reverse angle)" },
+  "log.reverse.fallback": {
+    tr: "  {name}: ters açı kalite kapısından geçemedi; oda tek açıdan görünecek",
+    en: "  {name}: the reverse angle failed the quality gate; the room will be shown from one side",
+  },
   "log.asset.readyMadeFailed": { tr: "  {name}: hazır SVG aranamadı ({error})", en: "  {name}: could not search for a ready-made SVG ({error})" },
   "log.asset.readyMade": {
     tr: '  {name}: hazır SVG "{title}" ({license}) → {score} {mark}',
@@ -138,6 +143,7 @@ export const PIPELINE_MESSAGES = {
   "log.scene.clones": { tr: ", {n} kopya karakter atıldı", en: ", {n} duplicate characters dropped" },
   "log.scene.planReused": { tr: "  {scene}: önceki çalıştırmanın planı kullanıldı", en: "  {scene}: reused the plan from the previous run" },
   "log.shots.vector": { tr: "  {shots} vektör çekim, {props} nesne/mekân", en: "  {shots} vector shots, {props} props/locations" },
+  "log.shots.reversed": { tr: "  {n} çekim odanın ters açısından (aynı odada art arda kesmede karşı duvar)", en: "  {n} shots use the room's reverse angle (the opposite wall when cutting within one room)" },
   "log.shots.varied": { tr: "  {n} çekimin boyu değişti (aynı odada aynı kişilere art arda aynı boyda kesme)", en: "  {n} shot sizes changed (same room, same people, same size in a row)" },
   "log.review.batchSkipped": { tr: "  inceleme grubu atlandı: {error}", en: "  review batch skipped: {error}" },
   "log.stills.wait": {

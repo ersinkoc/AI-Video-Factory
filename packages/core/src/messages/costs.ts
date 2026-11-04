@@ -122,6 +122,10 @@ export const COSTS_MESSAGES = {
     tr: "yürüyen karakter başına yan görünüş (~${usd} + kapı); kütüphanede olanlar ücretsiz",
     en: "side view per walking character (~${usd} + gate); those already in the library are free",
   },
+  "cost.basis.reverseViews": {
+    tr: "çok kullanılan oda başına ters açı (en çok {max}, ~${usd} + kapı); kütüphanede olanlar ücretsiz",
+    en: "reverse angle per heavily used room (at most {max}, ~${usd} + gate); those already in the library are free",
+  },
   "cost.basis.props": {
     tr: "tahmin: yeni nesneler; kütüphanede olanlar ücretsiz",
     en: "estimate: new objects only; those already in the library are free",

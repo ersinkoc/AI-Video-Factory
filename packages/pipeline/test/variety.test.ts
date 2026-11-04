@@ -1,6 +1,6 @@
 import { VectorShot } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { shotSize, varyShotSizes } from "../src/variety.ts";
+import { assignReverseViews, REVERSE, reverseCandidates, shotSize, varyShotSizes } from "../src/variety.ts";
 
 const isCharacter = (id: string) => id.startsWith("c");
 const shot = (camera: object, layers: object[] = [{ asset: "c1", x: 700 }, { asset: "c2", x: 1100, anims: [{ type: "talk" }] }], extra: object = {}) => ({
@@ -49,5 +49,32 @@ describe("çekim boyu çeşitliliği", () => {
       [{}, shot(base)],
     ];
     for (const list of cases) expect(varyShotSizes(list as { vector?: VectorShot }[], isCharacter)).toBe(0);
+  });
+});
+
+describe("ters açı ataması", () => {
+  const at = (background?: string) => (background === undefined ? {} : { vector: VectorShot.parse({ ...(background ? { background } : {}), layers: [] }) });
+
+  it("aday: en az minShots çekimde ve en az bir kez art arda; en çok kullanılandan, en çok max", () => {
+    const run = (id: string, n: number) => Array.from({ length: n }, () => at(id));
+    // a 7 (ters açı kimliği asıl odaya sayılır), b 6, c 6; d ve x dörder kez ve hiç art arda değil; e 2.
+    const shots = [...run("a", 6), at("a~rev"), ...run("b", 6), ...run("c", 6), ...Array.from({ length: 8 }, (_, i) => at(i % 2 ? "d" : "x")), ...run("e", 2), at(), at("")];
+    expect(REVERSE).toEqual({ minShots: 6, max: 3 });
+    expect(reverseCandidates(shots)).toEqual(["a", "b", "c"]);
+    expect(reverseCandidates([...shots, ...run("f", 9)])).toEqual(["f", "a", "b"]);
+  });
+
+  it("aynı odada art arda gelenlerin ikincisi, dördüncüsü… ters açıdan; hazır olmayan oda ve önceki atama geri alınır", () => {
+    const shots = [at("a"), at("a"), at("a~rev"), at("b"), at("b"), at(), at("a"), at("a")];
+    expect(assignReverseViews(shots, new Set(["a"]))).toBe(3);
+    expect(shots.map((s) => s.vector?.background)).toEqual(["a", "a~rev", "a", "b", "b", undefined, "a", "a~rev"]);
+    // Oda artık hazır değil (ters açı reddedildi): bütün atamalar geri alınır.
+    expect(assignReverseViews(shots, new Set())).toBe(2);
+    expect(shots.map((s) => s.vector?.background)).toEqual(["a", "a", "a", "b", "b", undefined, "a", "a"]);
+  });
+
+  it("çekim boyu çeşitliliği ters açıyı aynı oda sayar", () => {
+    const pair = [shot({ zoomFrom: 1, zoomTo: 1.1 }), shot({ zoomFrom: 1.05, zoomTo: 1.15 }, undefined, { background: "room~rev" })];
+    expect(varyShotSizes(pair, isCharacter)).toBe(1);
   });
 });

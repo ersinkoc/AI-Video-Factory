@@ -3,6 +3,7 @@ import type { ProviderAdapter } from "@ys/media-gateway";
 import { formatText, trText } from "@ys/core";
 import { estimateEpisode as estimateRaw, progressOf as progressRaw, runStatusOf, STALL_AFTER_MS } from "../src/estimate.ts";
 import type { EpisodeState, PlannedShotState } from "../src/state.ts";
+import { REVERSE } from "../src/variety.ts";
 
 /** Tahmini Türkçe metinleriyle karşılaştırmak için: mesajlar trText ile düz metne çevrilir. */
 const estimateEpisode = (...args: Parameters<typeof estimateRaw>) => {
@@ -69,7 +70,8 @@ describe("tahmin: vektör modu", () => {
     expect(rows("concept")).toEqual([expect.objectContaining({ providerId: "claude", via: "SVG", quantity: 3, unit: "varlık" })]);
     expect(rows("concept")[0]!.basis).not.toContain("kadro tahmini");
     expect(rows("shots")).toEqual([expect.objectContaining({ providerId: "claude", unit: "sahne", quantity: 2 })]);
-    expect(rows("keyframes").map((r) => [r.providerId, r.via])).toEqual([["claude", "SVG"], ["claude", "taslak denetimi"]]);
+    // Nesneler, odaların ters açısı (verilmezse açık), taslak denetimi.
+    expect(rows("keyframes").map((r) => [r.providerId, r.via])).toEqual([["claude", "SVG"], ["claude", "SVG"], ["claude", "taslak denetimi"]]);
     expect(rows("keyframes")[0]!.quantity).toBe(4);
     expect(rows("render")[0]).toMatchObject({ seconds: 30 + 60 * 1.9 });
     expect(rows("render")[0]!.basis).toContain("vektör");
@@ -77,6 +79,20 @@ describe("tahmin: vektör modu", () => {
     // Vektör modunda görsel/video sağlayıcısı istenmez ama ses yine router'dan.
     expect(rows("voice")[0]!.providerId).toBe("tts");
     expect(rows("keyframes").some((r) => r.basis.includes("yan görünüş"))).toBe(false);
+  });
+
+  it("ters açı: planlamadan önce en çok REVERSE.max mekân, sonra çizilenler; kapalıysa satır yok", () => {
+    const reverseRow = (s: EpisodeState) => estimateEpisode(s, { providers, latency: {} }, "vector").rows.find((r) => r.basis.includes("ters açı"));
+    const before = reverseRow(state({ cast }))!;
+    // İki mekân: ikisi de aday sayılır.
+    expect(before).toMatchObject({ stage: "keyframes", providerId: "claude", via: "SVG", quantity: 2, unit: "varlık" });
+    // Çizim + kapı, kapıdan dönerse (%60) bir tur daha.
+    expect(before.costUsd).toBeCloseTo(2 * (0.04 + 0.028) * 1.6);
+    expect(before.basis).toBe("çok kullanılan oda başına ters açı (en çok 3, ~$0.04 + kapı); kütüphanede olanlar ücretsiz");
+    const many = { ...cast, locations: Array.from({ length: 5 }, (_, i) => ({ ...cast.locations[0]!, id: `l${i}` })) };
+    expect(reverseRow(state({ cast: many }))!.quantity).toBe(REVERSE.max);
+    expect(reverseRow(state({ cast, backgroundViews: { l1: { key: "k", ok: true }, l2: { key: "k2", ok: false } } }))!.quantity).toBe(2);
+    expect(reverseRow(state({ cast }, { reverseViews: false }))).toBeUndefined();
   });
 
   it("yan görünüş açıksa yürüyen karakter başına satır: planlamadan önce bütün kadro, sonra çizilenler", () => {

@@ -1,4 +1,4 @@
-import type { VectorShot } from "@ys/core";
+import { baseBackgroundId, reverseAssetId, type VectorShot } from "@ys/core";
 
 /** Çekim boyu: geniş (zoom < 1,25), orta (< 1,6), yakın. Sınırlar yönetmen talimatındaki örneklerle aynı. */
 export type ShotSize = "wide" | "medium" | "close";
@@ -36,7 +36,7 @@ export function varyShotSizes(shots: { vector?: VectorShot }[], isCharacter: (as
   for (let i = 1; i < shots.length; i++) {
     const prev = shots[i - 1]!.vector;
     const cur = shots[i]!.vector;
-    if (!prev || !cur || !cur.background || prev.background !== cur.background || cur.math || cur.camera.panX !== 0) continue;
+    if (!prev?.background || !cur?.background || baseBackgroundId(prev.background) !== baseBackgroundId(cur.background) || cur.math || cur.camera.panX !== 0) continue;
     const cast = people(cur);
     if (!cast || cast !== people(prev)) continue;
     const size = shotSize(cur.camera);
@@ -47,6 +47,57 @@ export function varyShotSizes(shots: { vector?: VectorShot }[], isCharacter: (as
     const focusX = step.size === "close" ? lead.x : chars.reduce((s, l) => s + l.x, 0) / chars.length;
     cur.camera = { ...cur.camera, zoomFrom: step.zoomFrom, zoomTo: step.zoomTo, focusX: Math.round(focusX) };
     changed++;
+  }
+  return changed;
+}
+
+/**
+ * Ters açı (4 Kas, render sonrası inceleme: "repetitive" notlarının çoğu "önceki çekimle aynı oda", "aynı bej oda";
+ * bölümlerde çekimlerin ~%40'ı bir öncekiyle aynı arka planda, bir oda 30 çekimin 20'sinde). Çok kullanılan odaya bir
+ * kez aynı yerin karşı tarafı çizilir; aynı odada art arda gelen çekimler iki açı arasında gider (karşı çekim).
+ * minShots: en az bu kadar çekimde kullanılan arka plan; max: bölüm başına en çok bu kadar ters açı çizimi.
+ */
+export const REVERSE = { minShots: 6, max: 3 } as const;
+
+/** Ters açısı çizilecek arka planlar: en az minShots çekimde ve en az bir kez art arda; en çok kullanılandan, en çok max. */
+export function reverseCandidates(shots: { vector?: VectorShot }[]): string[] {
+  const uses = new Map<string, { n: number; runs: number }>();
+  let prev: string | undefined;
+  for (const s of shots) {
+    const bg = s.vector?.background ? baseBackgroundId(s.vector.background) : undefined;
+    if (bg) {
+      const u = uses.get(bg) ?? { n: 0, runs: 0 };
+      u.n++;
+      if (bg === prev) u.runs++;
+      uses.set(bg, u);
+    }
+    prev = bg;
+  }
+  return [...uses]
+    .filter(([, u]) => u.n >= REVERSE.minShots && u.runs > 0)
+    .sort((a, b) => b[1].n - a[1].n)
+    .slice(0, REVERSE.max)
+    .map(([id]) => id);
+}
+
+/**
+ * Aynı arka planda art arda gelen çekimlerde ikincisi (dördüncüsü…) ters açıyla gösterilir; yalnız ters açısı hazır
+ * (ready) arka planlarda. Önceki atamalar önce geri alınır: yeniden planlanan sahnelerde ve ters açısı reddedilen
+ * odada sonuç yine tutarlı. Arka planı değişen çekim sayısını döner (yerinde değiştirir).
+ */
+export function assignReverseViews(shots: { vector?: VectorShot }[], ready: Set<string>): number {
+  let changed = 0;
+  let prev: string | undefined;
+  let run = 0;
+  for (const s of shots) {
+    const v = s.vector;
+    const before = v?.background;
+    const bg = before ? baseBackgroundId(before) : undefined;
+    run = bg && bg === prev ? run + 1 : 0;
+    prev = bg;
+    if (!v || !bg) continue;
+    v.background = run % 2 === 1 && ready.has(bg) ? reverseAssetId(bg) : bg;
+    if (v.background !== before) changed++;
   }
   return changed;
 }

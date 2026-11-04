@@ -76,9 +76,14 @@ export interface VectorAssetBrief {
   plan?: AssetPlan;
   /** Gerçek kişinin referanslarından ölçülen benzerlik kaydı (likenessAnalyst). */
   likeness?: Likeness;
-  /** Karakterin yan görünüşü: front onaylı ön çizimdir (aynı kişi yandan çizilir; references ön çizimin görüntüsü). */
-  view?: "side";
+  /**
+   * Türeyen görünüş: front onaylı çizimdir, references onun görüntüsü. side: karakterin yan görünüşü (aynı kişi yandan);
+   * reverse: arka planın ters açısı (aynı yerin karşı tarafı).
+   */
+  view?: "side" | "reverse";
   front?: string;
+  /** Ters açıda korunacak zemin çizgisi (onaylı görünüşün floorY'si): kesmede kişiler aynı yükseklikte kalır. */
+  floorY?: number;
 }
 
 /** Varlık türünün kısıtı: plan bunun dışına çıkan her şeyi "moved" listesine ayırır. */
@@ -195,6 +200,7 @@ export function vectorDesigner(
   deps?: AgentDeps,
 ): Promise<AgentResult<VectorAssetOut>> {
   const side = brief.kind === "character" && brief.view === "side";
+  const reverse = brief.kind === "background" && brief.view === "reverse";
   const canvas = side
     ? SIDE_CANVAS
     : brief.kind === "character"
@@ -238,8 +244,10 @@ ${canvas}${isolated}
 ${SVG_RULES}${lessonsBlock(brief.lessons)}`,
       prompt: `${brief.kind === "character" ? "Character" : brief.kind === "background" ? "Location" : "Object"}: ${brief.name}
 ${brief.description}${brief.plan ? `\n\n${planBlock(brief.plan)}` : ""}${brief.likeness && likenessBlock(brief.likeness) ? `\n\n${likenessBlock(brief.likeness)}` : ""}${brief.variation ? `\nThis is variation #${brief.variation}: make a clearly different design while keeping the same identity.` : ""}${
-        // Yan görünüşte ekli görsel gerçek özne değil, onaylı ön çizimin görüntüsüdür.
-        side
+        // Türeyen görünüşte ekli görsel gerçek özne değil, onaylı çizimin görüntüsüdür.
+        reverse
+          ? `\n\nThe attached image shows the approved view of this place; its SVG is below. Draw the REVERSE ANGLE: the opposite side of the same place, as a camera turned around 180° sees it. Keep its identity exactly: architecture, wall and floor materials, colours, light, line weight and level of detail${brief.floorY === undefined ? "" : `, and the wall–floor line at y = ${Math.round(brief.floorY)} (return it as floorY)`}. Show what is on that side instead of repeating the same wall: for a room, the wall with the entrance door, another window or a board; outdoors, the view in the other direction. All canvas and stage-band rules above still apply.\n<front_svg>\n${brief.front}\n</front_svg>`
+          : side
           ? `\n\nThis is the approved FRONT view of this character (the attached image shows it rendered). Draw the same person in profile facing right: keep the identity (face shape, hair, headgear, outfit, colours, accessories, line weight) exactly.\n<front_svg>\n${brief.front}\n</front_svg>`
           : brief.references?.length
           ? `\n\nThe ${brief.references.length} attached image(s) show the REAL subject. Realism is mandatory: match its silhouette, proportions, colours, materials and the number and arrangement of its distinctive parts (pins, windows, arches, domes, buttons, stripes, headgear, beard, glasses). Simplify textures into flat vector shapes in the art style; do not copy readable text, logos or watermarks. If a reference shows extra things around the subject, draw only the subject.`

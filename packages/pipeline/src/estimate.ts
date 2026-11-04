@@ -3,6 +3,7 @@ import { billing, rankProviders, type GenerationRequest, type ProviderAdapter } 
 import { gateBefore, isApproved, motionModeOf, STAGES, type EpisodeState, type MotionMode, type Stage } from "./state.ts";
 import { SHORT } from "./short.ts";
 import { clipSeconds } from "./timing.ts";
+import { REVERSE } from "./variety.ts";
 
 /*
  * Bölüm maliyet ve süre tahmini. Para harcamaz, ağır bağımlılık yüklemez (stüdyo sunucusu çağırır).
@@ -72,6 +73,8 @@ const GATE = { checkUsd: 0.002, extraDraws: 0.6, planUsd: 0.015, readyMadeUsd: 0
  * 31 Eki defter ölçümü: vector-designer:character ~$0.128, redraw ~$0.183, kör tahmin + kapı ~$0.028.
  */
 const SIDE_VIEW = { drawUsd: 0.13, redrawUsd: 0.18, checkUsd: 0.028, sec: 40 };
+/** Ters açı (input.reverseViews): çok kullanılan oda başına bir arka plan çizimi (Sonnet, VECTOR.backgroundUsd) + kapı. */
+const REVERSE_VIEW = { drawUsd: 0.04, checkUsd: 0.028, sec: 40 };
 
 const withReality = (drawUsd: number) => GATE.planUsd + drawUsd * (1 + GATE.extraDraws) + GATE.checkUsd * (1 + GATE.extraDraws);
 
@@ -275,6 +278,20 @@ export function estimateEpisode(state: EpisodeState, ctx: EstimateContext, modeO
         costUsd: walkers * (SIDE_VIEW.drawUsd + SIDE_VIEW.checkUsd + GATE.extraDraws * (SIDE_VIEW.redrawUsd + SIDE_VIEW.checkUsd)),
         seconds: Math.ceil(walkers / PARALLEL) * SIDE_VIEW.sec,
         basis: msg("cost.basis.sideViews", { usd: SIDE_VIEW.drawUsd }),
+      });
+    }
+    if (input.reverseViews !== false) {
+      // Kaç odanın ters açı isteyeceği çekim planından önce bilinmez: üst sınır, en çok REVERSE.max mekân.
+      const rooms = state.backgroundViews ? Object.keys(state.backgroundViews).length : Math.min(REVERSE.max, locs);
+      add({
+        stage: "keyframes",
+        providerId: "claude",
+        via: msg("cost.via.svg"),
+        quantity: rooms,
+        unit: msg("unit.asset"),
+        costUsd: rooms * (REVERSE_VIEW.drawUsd + REVERSE_VIEW.checkUsd) * (1 + GATE.extraDraws),
+        seconds: Math.ceil(rooms / PARALLEL) * REVERSE_VIEW.sec,
+        basis: msg("cost.basis.reverseViews", { max: REVERSE.max, usd: REVERSE_VIEW.drawUsd }),
       });
     }
     // Render öncesi taslak denetimi: her çekime bir kare + ucuz eleştiri, sorunlu sahneler bir kez yeniden planlanır.

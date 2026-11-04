@@ -209,6 +209,9 @@ const tr = {
   "gate.planCues": "Görünmesi gerekenler: {items}",
   "gate.planMoved": "Bu çizime girmeyen: {items}",
   "form.realism": "Gerçeklik denetimi",
+  "form.reverseViews": "Odaya ters açı",
+  "form.reverseViews.hint":
+    "Çok kullanılan odalara (en çok 3) aynı yerin karşı tarafı bir kez çizilir; aynı odada art arda gelen çekimler iki açı arasında gider (oda başına ~$0.11, kütüphanede olan ücretsiz).",
   "form.sideViews": "Yürürken yan görünüş",
   "form.sideViews.hint":
     "Vektör modunda yürüyen karakterlere ikinci (yandan) çizim yapılır, yürürken ona döner. Karakter başına bir çizim + kalite denetimi (~$0,15–0,35 Claude), kütüphanede saklanır.",
@@ -767,6 +770,9 @@ const en: Record<MessageKey, string> = {
   "gate.planCues": "Must be visible: {items}",
   "gate.planMoved": "Not in this drawing: {items}",
   "form.realism": "Reality check",
+  "form.reverseViews": "Reverse angle of rooms",
+  "form.reverseViews.hint":
+    "Rooms used in many shots (at most 3) get the opposite side of the same place drawn once; consecutive shots in one room cut between the two angles (~$0.11 per room, free when it is already in the library).",
   "form.sideViews": "Side view when walking",
   "form.sideViews.hint":
     "In vector mode, walking characters get a second (profile) drawing and turn to it while walking. One drawing + quality check per character (~$0.15–0.35 Claude), kept in the library.",

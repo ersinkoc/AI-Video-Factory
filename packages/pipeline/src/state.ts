@@ -74,6 +74,11 @@ export interface EpisodeInput {
    */
   sideViews?: boolean;
   /**
+   * Vektör modunda çok kullanılan odalara ters açı çizilir (oda başına bir tasarımcı + kapı çağrısı, en çok 3,
+   * kütüphanede saklanır); aynı odada art arda gelen çekimler iki açı arasında gider. Verilmezse açık.
+   */
+  reverseViews?: boolean;
+  /**
    * Altyazı videoya gömülsün mü. Verilmezse (eski bölümler, CLI) gömülür; Stüdyo formu açıkça seçtirir. Her durumda
    * videonun yanına .srt yazılır (YouTube'a ayrı altyazı olarak yüklenebilir).
    */
@@ -288,6 +293,11 @@ export interface EpisodeState {
    * ok false: kapıdan geçemedi (karakter önden yürür, aynı ön çizim için yeniden çizilmez).
    */
   sideViews?: Record<string, { key: string; ok: boolean }>;
+  /**
+   * Odaların ters açıları (input.reverseViews): arka plan kimliği → asıl çizimden türeyen SVG anahtarı; ok false:
+   * kapıdan geçemedi (oda tek açıdan görünür, aynı çizim için yeniden çizilmez). Çekimler `<oda>~rev` ile kullanır.
+   */
+  backgroundViews?: Record<string, { key: string; ok: boolean }>;
   /** Seçili karakterlerin 3D figür önizlemesi (3D paketler): SVG anahtarı → PNG anahtarı; Stüdyo konsept kartında. */
   figurePreviews?: Record<string, string>;
   /** Kalite kapısı sonuçları (varlık anahtarı → sonuç); reddedilenler de görünür. */
