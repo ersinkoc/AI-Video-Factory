@@ -578,7 +578,23 @@ export function sanitizeSvg(raw: string): string {
   }
   const svg = out.join("");
   if (!/^<svg[\s>]/i.test(svg)) throw new Error("SVG bulunamadı");
-  return svg;
+  return withViewBox(svg);
+}
+
+/**
+ * Kökte viewBox yoksa genişlik ve yükseklikten (birimsiz ya da px) eklenir (4 Kas): render kökün boyutunu kutuya göre
+ * %100 yapar; viewBox'sız çizim kutuya ölçeklenmiyor, doğal pikseliyle taşıyordu. Commons'tan 835 px'lik açık kitap
+ * masadaki küçük kitap yerine kişiyi örtüyor, 2475 px'lik dizüstü kutusunun dışında kalıp görünmüyor, 24 px'lik mektup
+ * nokta kadar kalıyordu (8 varlık, 21 çekim). Temizlenmiş çıktıda değerler hep çift tırnaklı.
+ */
+function withViewBox(svg: string): string {
+  // Çağıran kökün <svg ile başladığını denetledi; öznitelik grubu boş da olsa eşleşir.
+  const attrs = /^<svg((?:\s[^\s=]+="[^"]*")*)/i.exec(svg)![1]!;
+  if (/\sviewBox="/i.test(attrs)) return svg;
+  const size = (name: string) => Number(new RegExp(`\\s${name}="\\s*(\\d+(?:\\.\\d+)?)\\s*(?:px)?\\s*"`, "i").exec(attrs)?.[1]);
+  const [w, h] = [size("width"), size("height")];
+  if (!(w > 0 && h > 0)) return svg;
+  return `<svg viewBox="0 0 ${w} ${h}"${svg.slice(4)}`;
 }
 const num = (attrs: string, name: string): number | undefined => {
   const m = new RegExp(`\\s${name}="([-\\d.]+)(%?)"`).exec(attrs);

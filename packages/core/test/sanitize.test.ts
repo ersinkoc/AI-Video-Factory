@@ -37,3 +37,24 @@ describe("temizleyici: boşluksuz öznitelikler", () => {
     expect(sanitizeSvg('<svg viewBox="0 0 1 1"><rect x="1"y="2"/></svg>')).toBe('<svg viewBox="0 0 1 1"><rect x="1" y="2"/></svg>');
   });
 });
+
+describe("temizleyici: viewBox'sız kök (4 Kas, Commons çizimleri)", () => {
+  it("genişlik ve yükseklikten viewBox eklenir: render kutuya ölçekler, çizim doğal pikseliyle taşmaz", () => {
+    expect(sanitizeSvg('<svg xmlns="http://www.w3.org/2000/svg" width="835.5" height="567"><rect width="10" height="10"/></svg>')).toBe(
+      '<svg viewBox="0 0 835.5 567" xmlns="http://www.w3.org/2000/svg" width="835.5" height="567"><rect width="10" height="10"/></svg>',
+    );
+    expect(sanitizeSvg('<svg height="24px" width=" 24 "></svg>')).toBe('<svg viewBox="0 0 24 24" height="24px" width=" 24 "></svg>');
+  });
+
+  it("viewBox varsa, boyut yüzdeyse, eksikse ya da sayı değilse dokunulmaz", () => {
+    for (const raw of [
+      '<svg viewBox="0 0 5 5" width="10" height="10"></svg>',
+      '<svg width="100%" height="100%"></svg>',
+      '<svg width="10"></svg>',
+      '<svg width="10" height="0"></svg>',
+      '<svg width="1e3" height="10"></svg>',
+      "<svg></svg>",
+    ])
+      expect(sanitizeSvg(raw)).toBe(raw);
+  });
+});
