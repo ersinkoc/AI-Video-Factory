@@ -39,7 +39,7 @@ const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
 const { CALLOUT } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -55,6 +55,8 @@ const asset = (id: string, kind: "character" | "prop" | "background", svg: strin
   VectorAsset.parse({ id, kind, svg, width, height, meta });
 
 const ASSETS = {
+  // Ekranlı nesne: kasa, ekran (mon-glass), ayak.
+  monitor: asset("monitor", "prop", '<svg viewBox="0 0 200 180"><rect width="200" height="140" fill="#dddddd"/><rect id="mon-glass" x="20" y="15" width="160" height="105" fill="#1b2430"/><rect x="80" y="140" width="40" height="40" fill="#999999"/></svg>', 200, 180, { realHeight: 0.5, grounded: true }),
   box: asset("box", "prop", '<svg viewBox="0 0 100 100"><rect id="box" width="100" height="100" fill="#ff0000"/></svg>', 100, 100),
   // Yüksek tezgâh (1 m): masa başı işte eller yukarı kalkar.
   counter: asset("counter", "prop", '<svg viewBox="0 0 200 100"><rect id="counter" width="200" height="100" fill="#663300"/></svg>', 200, 100, { realHeight: 1, surface: 1, grounded: true }),
@@ -1514,6 +1516,17 @@ describe("vektör sahne: büyütme balonu ve atmosfer katmanı", () => {
     expect(dark.querySelector("[data-callout] line")!.getAttribute("stroke")).toBe("#ffd84d");
   });
 
+  it("ekranlı nesnenin balonu çekimin ekran içeriğini de gösterir (kişi de); ekranı bulunamayan nesnede yalnız çizim", () => {
+    const shot = (screen: object) => ({ layers: [{ asset: "hero", x: 1300, depth: 0.5 }, { asset: "monitor", x: 600, depth: 0.6, screen }, wall], callout: 1 });
+    expect(scene(shot({ kind: "terminal", lines: ["$ ls"] }), { frame: 150 }).querySelector('[data-callout="monitor"] [data-screen]')!.innerHTML).toContain("$ ls");
+    cleanup();
+    expect(scene(shot({ person: "hero" }), { frame: 150 }).querySelector('[data-callout="monitor"] [data-screen]')!.innerHTML).toContain('id="s1-co-s-p-');
+    cleanup();
+    const cup = { ...held, layers: [held.layers[0]!, { ...held.layers[1]!, screen: { lines: ["x"] } }, wall] };
+    const box = scene(cup, { frame: 150 }).querySelector('[data-callout="cup"]')!;
+    expect(box.querySelector("[data-screen]")).toBeNull();
+  });
+
   it("yönetmenin seçtiği küçük nesneye de; yakın çekimde, haritada, tahtalı çekimde ve küçük resimde yok", () => {
     expect(scene({ layers: [...boxShot([]).layers, wall], callout: 0 }, { frame: 150 }).querySelector('[data-callout="box"]')).not.toBeNull();
     cleanup();
@@ -2375,6 +2388,36 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     // Uzaktaki kişi (masanın yanında değil) kadrajı genişletmez.
     const far = { ...ada, index: 5, x: 200 };
     expect(closeUpCamera(cam, [desk, article, far, steam], false, person).cam.focusX).toBeCloseTo((1011 + 1565) / 2);
+  });
+
+  it("ekranlı nesne: çekimin ekran içeriği çizimin ekranının üstünde; aynalanınca yazı düz, elle çizilirken gizli; kişi ekranda", () => {
+    const code = { kind: "code", lines: ["print(1)"] };
+    const c = scene({ layers: [{ asset: "monitor", x: 900, depth: 0.3, screen: code }] });
+    const el = c.querySelector("[data-screen]") as HTMLElement;
+    expect(el.innerHTML).toContain("print");
+    // Ekran çizimin 20/200'ünden başlar, 160/200'ü kadar geniştir.
+    const box = layerBox(c, "mon-glass");
+    expect(parseFloat(el.style.left) / parseFloat(box.style.width)).toBeCloseTo(0.1, 3);
+    expect(parseFloat(el.style.width) / parseFloat(box.style.width)).toBeCloseTo(0.8, 3);
+    expect(el.style.transform).toBe("");
+    expect(el.style.opacity).toBe("1");
+    cleanup();
+    expect((scene({ layers: [{ asset: "monitor", x: 900, flip: true, screen: code }] }).querySelector("[data-screen]") as HTMLElement).style.transform).toBe("scaleX(-1)");
+    cleanup();
+    const drawing = scene({ layers: [{ asset: "monitor", x: 900, screen: code, anims: [{ type: "draw_on", start: 0, end: 0.5 }] }] }, { frame: 30 });
+    expect((drawing.querySelector("[data-screen]") as HTMLElement).style.opacity).toBe("0");
+    cleanup();
+    // Ekranda kadro karakterinin yüzü; kimlikleri katmanın önekiyle.
+    expect(scene({ layers: [{ asset: "monitor", x: 900, screen: { person: "hero" } }] }).querySelector("[data-screen]")!.innerHTML).toContain('id="s1-0-s-p-');
+    cleanup();
+    // İçerik verilmeyen, ekranı olmayan ya da karakter katmanında çizilmez.
+    expect(scene({ layers: [{ asset: "monitor", x: 900 }] }).querySelector("[data-screen]")).toBeNull();
+    cleanup();
+    expect(scene({ layers: [{ asset: "box", x: 900, screen: code }, { asset: "hero", x: 400, screen: code }] }).querySelector("[data-screen]")).toBeNull();
+    // Kişi yalnız karakter olabilir; aynı varlık için aynı nesne (önbellek).
+    expect(screenPersonOf(ASSETS, "box")).toBeUndefined();
+    expect(screenPersonOf(ASSETS, undefined)).toBeUndefined();
+    expect(screenPersonOf(ASSETS, "hero")).toBe(screenPersonOf(ASSETS, "hero"));
   });
 
   it("nesneye yaklaşan yakın çekim, yönetmenin kadrajında yüzü görünen kişiyi atmaz; kadrajda olmayanı almaz (Elixir s8-sh4)", () => {

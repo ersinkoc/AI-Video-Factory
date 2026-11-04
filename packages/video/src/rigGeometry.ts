@@ -43,7 +43,7 @@ const SKIP = /^(defs|clipPath|mask|pattern|symbol|marker|linearGradient|radialGr
 const SHAPE = /^(path|rect|circle|ellipse|line|polyline|polygon)$/i;
 
 let scope: paper.PaperScope | undefined;
-function geometry(): paper.PaperScope {
+export function geometry(): paper.PaperScope {
   if (!scope) {
     scope = new paper.PaperScope();
     scope.setup(new scope.Size(1, 1));

@@ -41,4 +41,15 @@ describe("anlatılan nesne (key): çekim açıklamasından", () => {
     expect(withKey(shot({}), "She smiles.", isProp)).not.toHaveProperty("key");
     expect(withKey(shot({ key: 0 }), "She smiles.", isProp)).not.toHaveProperty("key");
   });
+
+  it("açıklama nesne adlandırmıyorsa ekranında içerik gösterilen tek nesne key olur; iki ekranlı ya da kişide değil", () => {
+    const screen = { kind: "code", lines: ["print(1)"] };
+    const ls = (a: object, b: object) => VectorShot.parse({ layers: [{ asset: "c1", x: 0, ...a }, { asset: "p-monitor", x: 0, ...b }, { asset: "p-tv", x: 0 }] });
+    expect(withKey(ls({}, { screen }), "She smiles.", isProp).key).toBe(1);
+    // Açıklamada adı geçen nesne önce gelir.
+    expect(withKey(ls({}, { screen }), "She points at the tv.", isProp).key).toBe(2);
+    expect(withKey(ls({ screen }, {}), "She smiles.", isProp)).not.toHaveProperty("key");
+    const two = VectorShot.parse({ layers: [{ asset: "p-monitor", x: 0, screen }, { asset: "p-tv", x: 0, screen }] });
+    expect(withKey(two, "Two screens.", isProp)).not.toHaveProperty("key");
+  });
 });

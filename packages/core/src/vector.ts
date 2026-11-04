@@ -290,6 +290,25 @@ export type VectorAnim = z.infer<typeof VectorAnim>;
 export const VectorExpression = z.enum(["neutral", "happy", "sad", "angry", "worried", "surprised", "thinking"]);
 export type VectorExpression = z.infer<typeof VectorExpression>;
 
+/**
+ * Ekranlı ya da yazı yüzeyli nesnenin (bilgisayar, televizyon, dev ekran, telefon, tahta) bu çekimde gösterdiği (4 Kas,
+ * inceleme: ekranlı nesne bulunan 131 çekimin 54'ünde "ekran boş", "kod yok", "Gates'in yüzü dev ekranda değil"; tasarımcı
+ * ekranı bir kez çizer, aynı monitör her çekimde başka şey göstermeli). Kod bunu çizimin kendi ekranının üstüne çizer.
+ */
+export const ScreenKind = z.enum(["text", "code", "terminal", "web", "search", "chat"]);
+export type ScreenKind = z.infer<typeof ScreenKind>;
+export const VectorScreen = z
+  .object({
+    kind: ScreenKind.default("text").describe(
+      "code: program text in its real language; terminal: a command line; web: a web page; search: a search box (title = the query, lines = results); chat: a conversation (lines alternate sides); text: a slide, headline, scoreboard, caption or the writing on a board",
+    ),
+    title: z.string().optional().describe("Short heading: file name, page title, search query or headline (episode language; names as written)"),
+    lines: z.array(z.string()).default([]).describe("At most 6 short lines (episode language; code in its own language)"),
+    person: z.string().optional().describe("Id of a cast character whose face is on the screen (a broadcast, a video call)"),
+  })
+  .describe("What this layer's display or board shows in this shot; only for a prop with a screen or a writing surface");
+export type VectorScreen = z.infer<typeof VectorScreen>;
+
 export const VectorLayer = z.object({
   asset: z.string(),
   /** Katmanın alt-orta noktası (x), 1920×1080 tuvalde. */
@@ -314,6 +333,7 @@ export const VectorLayer = z.object({
   anims: z.array(VectorAnim).default([]),
   /** Sadece karakterler: çekim boyunca yüz ifadesi (anlatımın duygusu). */
   expression: VectorExpression.optional(),
+  screen: VectorScreen.optional(),
 });
 export type VectorLayer = z.infer<typeof VectorLayer>;
 

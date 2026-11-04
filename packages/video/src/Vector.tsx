@@ -25,6 +25,7 @@ import {
   type VectorExpression,
   type VectorAsset,
   type VectorLayer,
+  type VectorScreen,
   type VectorMood,
   type VectorShot,
   type VectorText,
@@ -38,6 +39,7 @@ import {
 import { useMemo, type CSSProperties } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
+import { screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
 import { visualVector } from "./entrance.ts";
 import { Ambience } from "./Ambience.tsx";
 import { Crowd, crowdFigures, crowdZ, type CrowdFigure } from "./crowd.tsx";
@@ -392,6 +394,17 @@ export function faceFor(asset: VectorAsset): FaceFit {
   let f = faces.get(asset);
   if (!f) faces.set(asset, (f = asset.meta.figure ? NO_FACE : fitFace(faceOf(asset.svg))));
   return f;
+}
+
+const persons = new WeakMap<VectorAsset, ScreenPerson>();
+
+/** Ekranda yüzü gösterilecek kadro karakteri (çizimi ve baş kutusu; varlık başına bir kez); karakter değilse undefined. */
+export function screenPersonOf(assets: Assets, id: string | undefined): ScreenPerson | undefined {
+  const a = id === undefined ? undefined : assets[id];
+  if (a?.kind !== "character") return undefined;
+  let p = persons.get(a);
+  if (!p) persons.set(a, (p = { svg: a.svg, head: faceFor(a).head }));
+  return p;
 }
 
 const brows = new WeakMap<VectorAsset, SplitBrows | null>();
@@ -2047,6 +2060,7 @@ function Layer({
   sketch,
   draw,
   zoom = 1,
+  person,
 }: {
   layer: VectorLayer;
   asset: VectorAsset;
@@ -2058,8 +2072,17 @@ function Layer({
   draw?: number;
   /** Kameranın en büyük zoom'u: 3D figür tuvali yakın çekimde buna göre keskin çizilir. */
   zoom?: number;
+  /** Ekranda yüzü görünen kadro karakteri (layer.screen.person). */
+  person?: ScreenPerson;
 }) {
   const { width: w, height: h } = placed;
+  // Ekranın bu çekimdeki içeriği çizimin kendi ekranının üstüne (screen.ts); ekranı bulunamayan nesnede çizilmez.
+  const rect = layer.screen && asset.kind === "prop" ? screenFor(asset) : undefined;
+  const face = useMemo(() => {
+    if (!rect || !layer.screen) return undefined;
+    const box = screenBox(asset.svg, rect, w, h);
+    return { box, svg: screenSvg(layer.screen, box.w, box.h, { fill: rect.fill, rx: rect.rx * box.k, person, prefix: `${prefix}s-` }) };
+  }, [rect, layer.screen, asset.svg, w, h, person, prefix]);
   const { tr, pose } = motion;
   // 3D figür: SVG yerine three.js kuklası (yürürken kendisi yana döner). WebGL açılamazsa SVG pozuyla birlikte yedek
   // olarak gösterilir.
@@ -2130,6 +2153,14 @@ function Layer({
         </>
       ) : (
         drawn
+      )}
+      {face && (
+        <div
+          data-screen
+          // Aynalanan nesnede ekranın yeri aynalanır, yazısı düz okunur. Elle çizilirken ekran çizim bitince açılır.
+          style={{ position: "absolute", left: face.box.x, top: face.box.y, width: face.box.w, height: face.box.h, transform: motion.flip ? "scaleX(-1)" : undefined, opacity: draw === undefined || draw >= 1 ? 1 : 0 }}
+          dangerouslySetInnerHTML={{ __html: face.svg }}
+        />
       )}
     </div>
   );
@@ -2462,11 +2493,33 @@ const BEHIND = new Set<Visual["ambience"]>(["confetti", "embers", "dust"]);
  * Büyütme balonu: nesnenin çizimi yuvarlak, kenarlı bir pencerede büyük; pencereden nesneye ince bir çizgi ve nesnenin
  * üstünde küçük bir nokta. Yaylanarak açılır, çekim sonuna kadar kalır.
  */
-function Callout({ asset, target, at, p, prefix, accent }: { asset: VectorAsset; target: readonly [number, number]; at: readonly [number, number]; p: number; prefix: string; accent: string }) {
+function Callout({
+  asset,
+  target,
+  at,
+  p,
+  prefix,
+  accent,
+  screen,
+  person,
+}: {
+  asset: VectorAsset;
+  target: readonly [number, number];
+  at: readonly [number, number];
+  p: number;
+  prefix: string;
+  accent: string;
+  screen?: VectorScreen;
+  person?: ScreenPerson;
+}) {
   const s = calloutScale(p);
   if (s === 0) return null;
   const { r } = CALLOUT;
   const svg = prefixSvgIds(fitSvg(asset.svg, "meet"), prefix);
+  // Çizim balonun içindeki kare kutuda (kenarlardan %13 içeride); ekranı varsa içeriği de onun üstünde.
+  const side = 2 * r * (1 - 2 * 0.13);
+  const rect = screen && asset.kind === "prop" ? screenFor(asset) : undefined;
+  const box = rect && screenBox(asset.svg, rect, side, side);
   return (
     <div data-callout={asset.id} style={{ position: "absolute", left: 0, top: 0, width: W, height: H, opacity: Math.min(1, s) }}>
       <svg width={W} height={H} style={{ position: "absolute", left: 0, top: 0 }}>
@@ -2489,6 +2542,13 @@ function Callout({ asset, target, at, p, prefix, accent }: { asset: VectorAsset;
         }}
       >
         <div style={{ position: "absolute", inset: "13%" }} dangerouslySetInnerHTML={{ __html: svg }} />
+        {box && (
+          <div
+            data-screen
+            style={{ position: "absolute", left: 2 * r * 0.13 + box.x, top: 2 * r * 0.13 + box.y, width: box.w, height: box.h }}
+            dangerouslySetInnerHTML={{ __html: screenSvg(screen!, box.w, box.h, { fill: rect.fill, rx: rect.rx * box.k, person, prefix: `${prefix}s-` }) }}
+          />
+        )}
       </div>
     </div>
   );
@@ -2670,7 +2730,7 @@ export interface ShotFrame {
   motions: Map<number, Motion>;
   texts: ReturnType<typeof layoutTexts>;
   drawnAt: Map<number, PlacedLayer>;
-  inset?: { asset: VectorAsset; target: [number, number]; at: [number, number] };
+  inset?: { asset: VectorAsset; target: [number, number]; at: [number, number]; screen?: VectorScreen; person?: ScreenPerson };
 }
 
 export function shotFrame(
@@ -2770,7 +2830,10 @@ export function shotFrame(
     // Yakın çekimde yüz büyük: balon bir yüzü örtecekse açılmaz.
     const box = { x: spot[0] - CALLOUT.r, y: spot[1] - CALLOUT.r, w: 2 * CALLOUT.r, h: 2 * CALLOUT.r };
     if (zoom >= CALLOUT.closeUp && faces.some((f) => overlap(box, f) > 0)) return undefined;
-    return { asset: safe[spec.layers[index]!.asset]!, target, at: spot };
+    const layer = spec.layers[index]!;
+    // Ekranlı nesnenin balonu da çekimin ekran içeriğini gösterir.
+    const person = screenPersonOf(safe, layer.screen?.person);
+    return { asset: safe[layer.asset]!, target, at: spot, ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}) };
   })();
   return { p, t, k, dur, motions, texts, drawnAt, ...(inset ? { inset } : {}) };
 }
@@ -2880,6 +2943,7 @@ function ShotStage({
                 sketch={lineStyle === "sketch"}
                 draw={drawOf(layer.anims, p)}
                 zoom={Math.max(cam.zoomFrom, cam.zoomTo)}
+                person={screenPersonOf(safe, layer.screen?.person)}
               />,
             ];
           })}

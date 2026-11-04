@@ -55,6 +55,8 @@ export function withKey(spec: VectorShot, description: string, isProp: (asset: s
   const asked = spec.key === undefined ? undefined : spec.layers[spec.key];
   if (asked && isProp(asked.asset)) return spec;
   const { key: _drop, ...rest } = spec;
-  const key = keyPropOf(description, spec.layers, isProp);
+  // Açıklamadan çıkmazsa ekranında içerik gösterilen tek nesne anlatılandır (screen): kamera ekran okunana dek yaklaşır.
+  const screens = spec.layers.flatMap((l, i) => (l.screen && isProp(l.asset) ? [i] : []));
+  const key = keyPropOf(description, spec.layers, isProp) ?? (screens.length === 1 ? screens[0] : undefined);
   return key === undefined ? rest : { ...rest, key };
 }
