@@ -1365,8 +1365,17 @@ export function closeUpCamera(
   const gl = Math.min(...group.map((g) => g.x - g.width / 2));
   const gr = Math.max(...group.map((g) => g.x + g.width / 2));
   const beside = (h: PlacedLayer) => !whole(h) && !surfaces.has(h.index) && !group.includes(h) && h.x + h.width >= gl && h.x - h.width <= gr;
+  // Yönetmenin kadrajında yüzü görünen kişi de kadrajda kalır (4 Kas: masadaki dizüstüne yaklaşan kamera "Valim dizüstünün
+  // başında" çekiminde Valim'i, masanın bir adım yanında durduğu için kadrajdan atıyordu; 263 yakın çekimin 36'sında
+  // yönetmenin gösterdiği kişi kayboluyordu, 28'inde açıklama o kişiyi anlatıyordu; incelemede bunların 23'ü "hikâye dışı",
+  // 21'i "boş kare"). Yüz, kutunun üst onda biri. Yürüyen kişi hariç (person): durduğu yer çekim boyunca değişir.
+  const faceSeen = (h: PlacedLayer) => {
+    const y = h.y - h.height * 0.9;
+    return h.x >= x0 && h.x <= x0 + W / at.scale && y >= y0 && y <= y0 + H / at.scale;
+  };
+  const watched = (h: PlacedLayer) => person(h) && !group.includes(h) && faceSeen(h);
   const heads = placed
-    .filter((h) => (group.some((g) => g.heldBy === h.index) || beside(h)) && seen(h))
+    .filter((h) => ((group.some((g) => g.heldBy === h.index) || beside(h)) && seen(h)) || watched(h))
     .map((h) => ({ ...h, width: h.width * 0.5, height: h.height * 0.2, y: h.y - h.height * 0.8 }));
   const framed = [...group, ...extra, ...heads];
   // Yönetmenin kadrajında görünmeyen kişiye (bilerek köşeye odaklanan kamera) portre yapılmaz.

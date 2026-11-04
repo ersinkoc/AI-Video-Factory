@@ -2377,6 +2377,33 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     expect(closeUpCamera(cam, [desk, article, far, steam], false, person).cam.focusX).toBeCloseTo((1011 + 1565) / 2);
   });
 
+  it("nesneye yaklaşan yakın çekim, yönetmenin kadrajında yüzü görünen kişiyi atmaz; kadrajda olmayanı almaz (Elixir s8-sh4)", () => {
+    const desk = { ...PL, index: 0, x: 900, y: 980, width: 281, height: 260, grounded: true };
+    const laptop = { ...PL, index: 1, x: 900, y: 720, width: 107, height: 75, grounded: true, on: 0 };
+    // Masanın bir adım yanında: "masasında" sayılmıyordu, kamera dizüstüne yaklaşınca kadrajdan çıkıyordu.
+    const valim = { ...PL, index: 2, x: 1350, y: 990, width: 300, height: 600, grounded: true };
+    const whole = (pl: { index: number }) => pl.index !== 2;
+    const person = (pl: { index: number }) => pl.index === 2;
+    const cam = { zoomFrom: 1.5, zoomTo: 1.8, panX: 0, focusX: 900, focusY: 500 };
+    const out = closeUpCamera(cam, [desk, laptop, valim], false, whole, person);
+    expect(out.subject).toBe(1);
+    // Yine yaklaşılır, ama başı (1350 ± 75, kutunun üst beşte biri) iki uçta da kadrajda.
+    expect(out.cam.zoomTo).toBeGreaterThan(1.8);
+    for (const k of [0, 1]) {
+      const [l, t] = cameraPoint(out.cam, k, out.centre, [1350 - 75, 990 - 600]);
+      const [r, b] = cameraPoint(out.cam, k, out.centre, [1350 + 75, 990 - 480]);
+      expect(Math.min(l, t)).toBeGreaterThanOrEqual(0);
+      expect(r).toBeLessThanOrEqual(1920);
+      expect(b).toBeLessThanOrEqual(1080);
+    }
+    // Yönetmenin kadrajının dışındaki kişi kadrajı genişletmez: yalnız dizüstü çerçevelenir.
+    const alone = closeUpCamera(cam, [desk, laptop], false, whole, person).cam;
+    expect(closeUpCamera(cam, [desk, laptop, { ...valim, x: 1700 }], false, whole, person).cam).toEqual(alone);
+    expect(alone.focusX).toBe(900);
+    // Yürüyen kişi (person değil) yerinde durmaz: kadraj ona göre kurulmaz.
+    expect(closeUpCamera(cam, [desk, laptop, valim], false, whole).cam).toEqual(alone);
+  });
+
   it("kişi yakın çekimi belden yukarı: kafa üstte küçük payla, kesim belde; oturan biraz aşağıda, yanındaki de kadrajda", () => {
     const man = { ...PL, index: 0, x: 960, y: 951, width: 289, height: 578 };
     const isMan = (pl: { index: number }) => pl.index <= 1;
