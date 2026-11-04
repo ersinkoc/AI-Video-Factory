@@ -1,5 +1,5 @@
 import type { WordTiming } from "@ys/core";
-import { sayAbbreviation, sayNumber } from "./numbers.ts";
+import { attachSuffix, sayAbbreviation, sayNumber } from "./numbers.ts";
 
 /**
  * Seslendirmede yabancı terimlerin okunuşu (3 Kas, kullanıcı: Gemini TTS Türkçe anlatımın içindeki "C++"yı "si artı
@@ -82,6 +82,17 @@ export const LEXICON: Record<string, Record<string, string>> = {
     "Silicon Valley": "silikın veli",
     "3D": "üç de",
     "2D": "iki de",
+    // Anlatıcının açarak söylediği kısaltmalar (4 Kas, kullanıcı: "TBMM … Türkiye Büyük Millet Meclisi olmalı"); ek
+    // açılıma göre yeniden kurulur. Bağlama özgü olanları (CHP, İTC…) telaffuz ajanı ekler.
+    TBMM: "Türkiye Büyük Millet Meclisi",
+    ABD: "Amerika Birleşik Devletleri",
+    AB: "Avrupa Birliği",
+    BM: "Birleşmiş Milletler",
+    SSCB: "Sovyet Sosyalist Cumhuriyetler Birliği",
+    TDK: "Türk Dil Kurumu",
+    MEB: "Milli Eğitim Bakanlığı",
+    THY: "Türk Hava Yolları",
+    TCDD: "Türkiye Cumhuriyeti Devlet Demiryolları",
     "≈": "yaklaşık",
     "~": "yaklaşık",
   },
@@ -152,7 +163,10 @@ export function sayPlan(text: string, terms: Record<string, string>, lang = ""):
     const written = tokens.slice(i, i + hit.parts.length);
     const first = split(written[0]!);
     const last = split(written.at(-1)!);
-    const spoken = `${first.lead}${hit.spoken}${last.tail}`.split(/\s+/);
+    // Açılımla okunan kısaltmada ek yeniden kurulur ("ABD'ye" → "Amerika Birleşik Devletleri'ne"; numbers.ts).
+    const expanded = lang === "tr" && /^\p{Lu}{2,6}$/u.test(first.core) && /\s/.test(hit.spoken);
+    const tail = expanded ? last.tail.replace(/^(['’])(\p{L}+)/u, (_all, mark: string, suffix: string) => mark + attachSuffix(hit.spoken, suffix)) : last.tail;
+    const spoken = `${first.lead}${hit.spoken}${tail}`.split(/\s+/);
     groups.push({ written, spoken });
     used[hit.written] = hit.spoken;
     i += hit.parts.length;

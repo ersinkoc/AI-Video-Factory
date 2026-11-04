@@ -20,6 +20,9 @@ describe("telaffuz ajanı", () => {
     expect(await text()).toBe("Already handled, do not list: C++, Java\n\nNarration:\nC++ ve Steve Jobs");
     expect(params!.options.systemPrompt).toContain('language "tr"');
     expect(params!.options.systemPrompt).toContain("si pılas pılas");
+    // Anlatıcının açarak söylediği kısaltma tam adıyla; sayıları kod okur.
+    expect(params!.options.systemPrompt).toContain("TBMM → Türkiye Büyük Millet Meclisi");
+    expect(params!.options.systemPrompt).toContain("Numbers, years, percentages");
     await expect(pronouncer({ language: "en", text: "Gürel", known: [] }, { queryFn })).rejects.toThrow(AgentError);
     expect(await text()).toBe("Narration:\nGürel");
   });

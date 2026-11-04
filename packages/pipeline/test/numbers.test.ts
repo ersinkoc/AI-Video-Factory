@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { harmonize, ordinal, romanValue, sayAbbreviation, sayInteger, sayNumber, type Part } from "../src/numbers.ts";
+import { attachSuffix, harmonize, ordinal, romanValue, sayAbbreviation, sayInteger, sayNumber, type Part } from "../src/numbers.ts";
 import { LEXICON, restoreWords, sayPlan } from "../src/pronounce.ts";
 
 /**
@@ -109,6 +109,35 @@ describe("cümlede okunuş", () => {
     // Noktasız ya da sözlükte olmayan.
     expect(sayAbbreviation(parts("vb ve"), 0)).toBeUndefined();
     expect(sayAbbreviation(parts("vd. ve"), 0)).toBeUndefined();
+  });
+
+  it("kısaltmanın açılımına ek Türkçe kuralla takılır: tamlamadan sonra zamir n'si, ünsüzden sonra kaynaştırma düşer", () => {
+    expect(attachSuffix("Amerika Birleşik Devletleri", "ye")).toBe("ne");
+    expect(attachSuffix("Avrupa Birliği", "den")).toBe("nden");
+    expect(attachSuffix("Avrupa Birliği", "ten")).toBe("nden");
+    expect(attachSuffix("Türkiye Büyük Millet Meclisi", "nin")).toBe("nin");
+    expect(attachSuffix("Türkiye Büyük Millet Meclisi", "yi")).toBe("ni");
+    expect(attachSuffix("Türkiye Büyük Millet Meclisi", "yle")).toBe("yle");
+    expect(attachSuffix("Türk Dil Kurumu", "de")).toBe("nda");
+    expect(attachSuffix("Birleşmiş Milletler", "ye")).toBe("e");
+    expect(attachSuffix("Birleşmiş Milletler", "nin")).toBe("in");
+    expect(attachSuffix("Birleşmiş Milletler", "yle")).toBe("le");
+    expect(attachSuffix("Birleşmiş Milletler", "de")).toBe("de");
+    expect(attachSuffix("Birleşmiş Milletler", "ler")).toBe("ler");
+    // Tamlama olmayan ünlüyle biten açılım kendi kaynaştırmasını korur; ünsüz sertse t.
+    expect(attachSuffix("nato", "ya")).toBe("ya");
+    expect(attachSuffix("nato", "nun")).toBe("nun");
+    expect(attachSuffix("nato", "a")).toBe("ya");
+    expect(attachSuffix("Kuzey Kıbrıs", "ta")).toBe("ta");
+  });
+
+  it("cümlede kısaltma açılır, ek ona uyar; İngilizce anlatımda ek olduğu gibi", () => {
+    expect(say("TBMM'nin kararı ABD'ye ve AB'den BM'ye, SSCB'nin çöküşü; TDK'ye göre MEB'de THY ile.")).toBe(
+      "Türkiye Büyük Millet Meclisi'nin kararı Amerika Birleşik Devletleri'ne ve Avrupa Birliği'nden Birleşmiş Milletler'e, Sovyet Sosyalist Cumhuriyetler Birliği'nin çöküşü; Türk Dil Kurumu'na göre Milli Eğitim Bakanlığı'nda Türk Hava Yolları ile.",
+    );
+    // Kısaltma olmayan terimin eki yazarın biçiminde kalır; İngilizce anlatımda Türkçe ek kuralı yok.
+    expect(say("C++'ın")).toBe("si pılas pılas'ın");
+    expect(sayPlan("ABD'ye", { ABD: "Amerika Birleşik Devletleri" }, "en").spoken).toBe("Amerika Birleşik Devletleri'ye");
   });
 
   it("yalnız Türkçe; altyazı rakamı gösterir, ağız şekli okunuşu izler", () => {

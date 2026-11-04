@@ -163,6 +163,30 @@ export function sayAbbreviation(parts: readonly Part[], i: number): { take: numb
   return { take: 1, spoken: `${lead}${said}${goesOn ? tail.slice(1) : tail}` };
 }
 
+/**
+ * Kısaltmanın açılımına ek takar (4 Kas, kullanıcı: "TBMM gibi kısaltmalar Türkiye Büyük Millet Meclisi olmalı"). Yazar
+ * eki harf okunuşuna uydurur ("ABD'ye": a-be-de'ye); açılımda ek Türkçe kuralla yeniden kurulur: tamlama sonundan
+ * (Meclisi, Birliği, Devletleri) sonra durum eki zamir n'si alır ("Devletleri'ne", "Birliği'nden", "Meclisi'nin";
+ * vasıta eki y ile: "Meclisi'yle"), ünsüzden sonra kaynaştırma düşer ("Milletler'e", "Milletler'in"), ünlüler uyar.
+ */
+export function attachSuffix(stem: string, suffix: string): string {
+  const compound = /\s/.test(stem.trim()) && /[ıiuü]$/.test(stem);
+  const endsVowel = VOWELS.includes(stem.at(-1)!);
+  let buffer = "";
+  let rest = suffix;
+  if (/^[yn][aeıioöuü]/.test(rest) || /^yl/.test(rest)) {
+    buffer = rest[0]!;
+    rest = rest.slice(1);
+  }
+  let lead = "";
+  if (VOWELS.includes(rest[0]!)) lead = !endsVowel ? "" : compound ? "n" : buffer || "y";
+  else if (/^[dt]/.test(rest) && compound) lead = "n";
+  else if (/^l[ae]/.test(rest) && buffer === "y" && endsVowel) lead = "y";
+  // Zamir n'sinden sonra bulunma/ayrılma eki yumuşak kalır ("Meclisi'nde").
+  const out = harmonize(stem, lead + rest);
+  return lead === "n" && /^n[t]/.test(out) ? `nd${out.slice(2)}` : out;
+}
+
 /** Ekin kesme işaretinden sonraki harflerini yeni köke uydurur ("'lük," → "'lık,"). */
 const reharmonize = (stem: string, tail: string) => tail.replace(/^(['’])(\p{L}+)/u, (_all, mark: string, suffix: string) => mark + harmonize(stem, suffix));
 
