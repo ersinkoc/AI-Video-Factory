@@ -1172,6 +1172,8 @@ const CROSSED: [PosePart, keyof PartPose, number][] = [
 ];
 /** Kısalan uyluk kadar karakter aşağı iner ki ayaklar yerde kalsın (iskelet pikseli). */
 const SIT_DROP = (RIG.pivots["shin-l"][1] - RIG.pivots["leg-l"][1]) * (1 - SIT_THIGH);
+/** Oturan kişi render'da bu kadar aşağı iner (tuval pikseli). */
+const sitDrop = (pl: PlacedLayer) => (pl.sitting ? SIT_DROP * (pl.height / RIG.height) : 0);
 
 const rot = ([x, y]: readonly [number, number], deg: number): [number, number] => {
   const r = (deg * Math.PI) / 180;
@@ -1263,6 +1265,8 @@ export function closeUpCamera(
   whole: (pl: PlacedLayer) => boolean = () => false,
   /** Yerinde duran kişi: yakın çekimin öznesiyse belden yukarı kadrajlanır (portrait). */
   person: (pl: PlacedLayer) => boolean = () => false,
+  /** Anlatılan nesnenin katmanı (VectorShot.key): yönetmenin kadrajında görünüyorsa özne odur. */
+  key?: number,
 ): { cam: VectorShot["camera"]; centre: boolean; subject?: number } {
   const z = Math.max(cam.zoomFrom, cam.zoomTo);
   const keep = { cam, centre: false };
@@ -1287,7 +1291,10 @@ export function closeUpCamera(
   // Elde tutulan ya da masaya konan nesne (anlatılan şey) kişiden önce özne olur: kamera kişiyi seçince kâğıt bant,
   // iPad, disket gerçek boyunda göğüs hizasında küçük kalıyordu (Microsoft incelemesi, 1 Kas: "paper tape tiny in the
   // hand, not a close-up"; 25 ölçek notunun en büyük grubu).
-  const props = standing.filter((pl) => whole(pl) && (pl.heldBy !== undefined || pl.on !== undefined) && seen(pl));
+  // Anlatılan nesne (yerde, duvarda da olabilir) odağa en yakın nesneden önce gelir: odak kişinin yüzündeyken masadaki
+  // kâğıt yerine yakındaki fincan seçilebiliyordu.
+  const keyed = placed.find((pl) => pl.index === key && whole(pl) && !surfaces.has(pl.index) && seen(pl));
+  const props = keyed ? [keyed] : standing.filter((pl) => whole(pl) && (pl.heldBy !== undefined || pl.on !== undefined) && seen(pl));
   const subject = (props.length ? props : standing.length ? standing : placed).reduce((a, b) => (dist(b) < dist(a) ? b : a));
   // Nesne öznesinde ölçü alanın karekökü (ince uzun bant en uzun kenarıyla "büyük" sayılıyordu) ve hedef okunur boy.
   const side = props.length ? Math.sqrt(subject.width * subject.height) : Math.max(subject.width, subject.height);
@@ -1345,10 +1352,8 @@ const PORTRAIT = { headroom: 0.07, waist: 0.44, shoulders: 0.35, width: 0.8, gai
  * öğeler de kadrajda kalır. Yaklaşma kazancı küçükse (iki kişi uzak, büyük pano) yönetmenin kadrajı kalır.
  */
 function portrait(cam: VectorShot["camera"], z: number, people: PlacedLayer[], extra: PlacedLayer[]): { cam: VectorShot["camera"]; centre: boolean } | undefined {
-  // Oturan render'da biraz aşağı iner (SIT_DROP).
-  const drop = (pl: PlacedLayer) => (pl.sitting ? SIT_DROP * (pl.height / RIG.height) : 0);
-  const top = Math.min(...people.map((pl) => pl.y + drop(pl) - pl.height * (1 - HEAD_TOP)), ...extra.map((pl) => pl.y - pl.height));
-  const bottom = Math.max(...people.map((pl) => pl.y + drop(pl) - pl.height * PORTRAIT.waist), ...extra.map((pl) => pl.y));
+  const top = Math.min(...people.map((pl) => pl.y + sitDrop(pl) - pl.height * (1 - HEAD_TOP)), ...extra.map((pl) => pl.y - pl.height));
+  const bottom = Math.max(...people.map((pl) => pl.y + sitDrop(pl) - pl.height * PORTRAIT.waist), ...extra.map((pl) => pl.y));
   const left = Math.min(...people.map((pl) => pl.x - pl.width * PORTRAIT.shoulders), ...extra.map((pl) => pl.x - pl.width / 2));
   const right = Math.max(...people.map((pl) => pl.x + pl.width * PORTRAIT.shoulders), ...extra.map((pl) => pl.x + pl.width / 2));
   const zoom = Math.min(CLOSE_UP.maxZoom, (H * (1 - PORTRAIT.headroom)) / (bottom - top), (PORTRAIT.width * W) / (right - left));
@@ -1471,6 +1476,74 @@ export function fillWide(
 }
 
 /**
+ * Anlatılan nesneye yaklaşma: ekrandaki boyu (alanın karekökü, kare yüksekliğinin kesri) readable'dan azsa hedef
+ * target; en çok most zoom; nesne ve başlar kadrajın width × height'ına sığar; kazanç gain'den azsa kamera kalır.
+ * head: başın kişi boyundaki payı (tepeden), closeUpCamera ile aynı. Eklem kesimini önlemek için zoom step adımlarla
+ * en çok tighten katına kadar artar; çekim içindeki yaklaşma/uzaklaşma en çok drift oranında.
+ */
+export const KEY = { readable: 0.3, target: 0.4, most: 2.4, width: 0.9, height: 0.85, gain: 1.1, head: 0.2, tighten: 1.3, step: 1.04, drift: 1.08 } as const;
+
+/**
+ * Geniş/orta planda anlatılan nesne (VectorShot.key) okunmayacak kadar küçükse kamera ona yaklaşır (4 Kas, inceleme:
+ * 380 karenin 164'ünde "wrong_scale"; adı açıklamada geçen en küçük nesne ekranda kare yüksekliğinin %25'inden azken
+ * çekimlerin %60'ı "minik telefon/kâğıt/ekran" notu alıyordu, %40'tan büyükken %25'i). Nesne gerçek boyunda kalır (çizim
+ * gerçekliği); yönetmenin ona "en az karenin üçte biri" dersi 22 kez verilmişti ama yerdeki/masadaki nesnenin boyunu
+ * yönetmen seçemiyor. Kadrajda (çekimin sonunda) başı görünen her kişinin başı kadrajda kalır: kimse kadrajdan atılmaz,
+ * yalnız gövdeler kesilebilir (eklem kuralı ve yarım yüz sonra jointSafe/faceSafe'te). Odak nesneyle başların ortası.
+ */
+export function keyCamera(cam: VectorShot["camera"], centre: boolean, key: PlacedLayer, people: PlacedLayer[]): { cam: VectorShot["camera"]; centre: boolean } | undefined {
+  const side = Math.sqrt(key.width * key.height);
+  if (side * Math.min(cam.zoomFrom, cam.zoomTo) >= KEY.readable * H) return undefined;
+  const at = cameraAt(cam, 1, centre);
+  const x0 = -at.tx / at.scale - (at.panX / 100) * W;
+  const y0 = -at.ty / at.scale;
+  const heads = people
+    .map((h) => {
+      // Çizilen başın tepesi kutunun tepesinin HEAD_TOP altında (portrait ile aynı).
+      const t = h.y + sitDrop(h) - h.height * (1 - HEAD_TOP);
+      return { l: h.x - h.width * 0.25, r: h.x + h.width * 0.25, t, b: t + h.height * KEY.head };
+    })
+    .filter((b) => {
+      const [cx, cy] = [(b.l + b.r) / 2, (b.t + b.b) / 2];
+      return cx >= x0 && cx <= x0 + W / at.scale && cy >= y0 && cy <= y0 + H / at.scale;
+    });
+  const boxes = [{ l: key.x - key.width / 2, r: key.x + key.width / 2, t: key.y - key.height, b: key.y }, ...heads];
+  const l = Math.min(...boxes.map((b) => b.l));
+  const r = Math.max(...boxes.map((b) => b.r));
+  const t = Math.min(...boxes.map((b) => b.t));
+  const b = Math.max(...boxes.map((b) => b.b));
+  const z = Math.max(cam.zoomFrom, cam.zoomTo);
+  const zoom = Math.min(KEY.most, (KEY.target * H) / side, (KEY.width * W) / (r - l), (KEY.height * H) / (b - t));
+  if (zoom < z * KEY.gain) return undefined;
+  // Kişi varsa başlar üstte PORTRAIT.headroom payıyla durur (ortalanınca kafaların üstünde karenin üçte biri boş duvar
+  // kalıyordu). Kişisiz: bölge ortalanır.
+  // Yönetmenin yavaş yaklaşması en çok drift oranında kalır: yakın kadrajda %14'lük itme hem hızlı görünür hem başlangıç
+  // karesini o kadar genişletir ki kişi dizinden kesiliyordu.
+  const low = Math.max(Math.min(cam.zoomFrom, cam.zoomTo) / z, 1 / KEY.drift);
+  const frame = (zoom: number): VectorShot["camera"] => {
+    const view = H / zoom;
+    const focusY = heads.length ? t - PORTRAIT.headroom * view + view / 2 : (t + b) / 2;
+    const at = (v: number) => (v === z ? zoom : zoom * low);
+    return { ...cam, panX: 0, zoomFrom: at(cam.zoomFrom), zoomTo: at(cam.zoomTo), focusX: (l + r) / 2, focusY };
+  };
+  const shows = (c: VectorShot["camera"]) =>
+    [0, 1].every((k) => {
+      const at = cameraAt(c, k, true);
+      const [x0, y0] = [-at.tx / at.scale, -at.ty / at.scale];
+      return boxes.every((q) => q.l >= x0 - 1 && q.r <= x0 + W / at.scale + 1 && q.t >= y0 - 1 && q.b <= y0 + H / at.scale + 1);
+    });
+  // Ayakta duran biri diz ile uyluk ortası arasından kesiliyorsa (jointSafe kuralı) biraz daha yaklaşılır: yoksa jointSafe
+  // kadrajı yukarı kaydırıp boş duvarı geri getiriyordu (uzaktaki kısa kişi dizinden kesilirken). Nesne ve başlar iki
+  // uçta da kadrajda kalmalı; olmuyorsa ilk kadraj kalır, jointSafe düzeltir.
+  const standing = people.filter((pl) => !pl.sitting);
+  for (let k = zoom; k <= Math.min(CLOSE_UP.maxZoom, zoom * KEY.tighten); k *= KEY.step) {
+    const c = frame(k);
+    if (shows(c) && jointSafe(c, true, standing, [], HEAD_TOP) === c) return { cam: c, centre: true };
+  }
+  return { cam: frame(zoom), centre: true };
+}
+
+/**
  * Ayakta duranın alttan kesileceği yer: ya ayakları kadrajda (alt kenara kare boyunun %1'i pay) ya da kesim en az uyluk
  * ortasında (boyunun alttan %27'si); arası (bilek, baldır, diz) kesilmez. Odak bu adımla taranır (tuval pikseli).
  */
@@ -1483,7 +1556,14 @@ const CROP = { feet: 0.01, thigh: 0.27, step: 4 } as const;
  * ayaktaki kişi için kural sağlanmıyorsa kamera dikeyde en az kaydırmayla buna uyan odağa geçer; kafalar ve önceden
  * bütün görünen nesneler kadrajda kalır. Uyan odak yoksa kamera olduğu gibi kalır.
  */
-export function jointSafe(cam: VectorShot["camera"], centre: boolean, people: PlacedLayer[], whole: PlacedLayer[]): VectorShot["camera"] {
+export function jointSafe(
+  cam: VectorShot["camera"],
+  centre: boolean,
+  people: PlacedLayer[],
+  whole: PlacedLayer[],
+  /** Kadrajda kalması gereken baş tepesi kutunun tepesinden bu kesir aşağıda (keyCamera: çizilen baş, HEAD_TOP). */
+  headTop = 0,
+): VectorShot["camera"] {
   const z = Math.max(cam.zoomFrom, cam.zoomTo);
   if (z <= 1 || !people.length) return cam;
   const frames = (c: VectorShot["camera"]) =>
@@ -1503,7 +1583,7 @@ export function jointSafe(cam: VectorShot["camera"], centre: boolean, people: Pl
           if (!inX(f, pl)) return true;
           const bottom = f.y0 + f.h;
           // Kafa kadrajda; ayaklar içeride ya da kesim uyluk ortasının üstünde.
-          return pl.y - pl.height >= f.y0 - 1 && (pl.y + CROP.feet * f.h <= bottom || pl.y - bottom >= CROP.thigh * pl.height);
+          return pl.y - pl.height * (1 - headTop) >= f.y0 - 1 && (pl.y + CROP.feet * f.h <= bottom || pl.y - bottom >= CROP.thigh * pl.height);
         }) && kept.every((pl) => !inX(f, pl) || fits(f, pl)),
     );
   if (safe(cam)) return cam;
@@ -2452,7 +2532,8 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
   });
   const { cam, centre, subject } = ((): { cam: VectorShot["camera"]; centre: boolean; subject?: number } => {
     const isPerson = (pl: PlacedLayer) => safe[spec.layers[pl.index]!.asset]!.kind === "character";
-    const close = closeUpCamera(spec.camera, heldFraming(placed, spec.layers), Boolean(bg?.meta.exact), (pl) => !isPerson(pl), (pl) => isPerson(pl) && !moving(pl.index));
+    const held = heldFraming(placed, spec.layers);
+    const close = closeUpCamera(spec.camera, held, Boolean(bg?.meta.exact), (pl) => !isPerson(pl), (pl) => isPerson(pl) && !moving(pl.index), spec.key);
     if (bg?.meta.exact) return close;
     // Yerinde duranların yüzleri (dinlenme pozunda): kadrajın kenarında yarım kalmasın (faceSafe).
     const neutral = (pl: PlacedLayer): Motion => ({ tr: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 }, flip: spec.layers[pl.index]!.flip, squash: 1 });
@@ -2463,9 +2544,17 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
     // Boş geniş çekim içeriğe yaklaşır; sahneye giren biri varsa yolu kadrajda kalsın diye yaklaşılmaz.
     const filled = placed.some((pl) => moving(pl.index)) ? undefined : fillWide(close.cam, placed, (pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character");
     const wide = filled ?? { cam: frameWide(close.cam, keep), centre: false };
-    // Son olarak ayakta duranlar eklem yerinden kesilmez (oturanın bacağı masanın ardında, ona bakılmaz).
+    // Anlatılan nesne okunmuyorsa ona yaklaşılır (keyCamera). Sahneye giren biri, kayan kamera, Manim tahtası (ortada
+    // durur) ve figüranlı kalabalık çekimi (kalabalığın kendisi anlatılır) hariç.
+    const key = held.find((pl) => pl.index === spec.key && !isPerson(pl));
+    const steady = !spec.math && !spec.crowd && spec.camera.panX === 0 && !placed.some((pl) => moving(pl.index));
+    const keyed = key && steady ? keyCamera(wide.cam, wide.centre, key, held.filter(isPerson)) : undefined;
+    const framed = keyed ?? wide;
+    // Son olarak ayakta duranlar eklem yerinden kesilmez (oturanın bacağı masanın ardında, ona bakılmaz); nesne kadrajda kalır.
     const people = placed.filter((pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character" && !pl.sitting);
-    return { cam: faceSafe(jointSafe(wide.cam, wide.centre, people, keep), wide.centre, faces, false, bodies), centre: wide.centre };
+    // Anlatılan nesneye yaklaşan kadrajda başlar çizilen tepeleriyle üstte durur (keyCamera ile aynı ölçü).
+    const joint = keyed ? jointSafe(framed.cam, true, people, [...keep, key!], HEAD_TOP) : jointSafe(framed.cam, framed.centre, people, keep);
+    return { cam: faceSafe(joint, framed.centre, faces, false, bodies), centre: framed.centre, ...(keyed ? { subject: key!.index } : {}) };
   })();
   // Dikey kadraj: geniş çekimde kenara düşen kişi/nesne kesilmesin diye sahne gerektiği kadar küçülür (contentFit).
   // Yakın çekim bilerek kırpar; harita tuvalin tamamıdır; tahta ekrana sabittir, sahneyle aynı ölçekte kalmalı.

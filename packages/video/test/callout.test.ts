@@ -36,6 +36,19 @@ describe("büyütme balonu: hangi nesne", () => {
     expect(calloutTarget(shot({ callout: 2 }), placed.slice(0, 2), props, 1)).toBeUndefined();
   });
 
+  it("anlatılan nesne (key) hâlâ küçükse ona; okunur boydaysa, karakterse ya da yerleşmemişse öteki adaylar", () => {
+    // Masa (0), üstünde küçük kalem (1, 20 px) ve anlatılan kâğıt (2, 200 px: %25'in altında, balon).
+    const placed = [pl(0, 300), pl(1, 20, { on: 0 }), pl(2, 200, { on: 0 })];
+    const all = () => true;
+    expect(calloutTarget(shot({ key: 2 }), placed, all, 1)).toBe(2);
+    // 200 × 1,4 = 280 ≥ 270: okunuyor; sıra masadaki en küçük nesneye gelir.
+    expect(calloutTarget(shot({ key: 2 }), placed, all, 1.4)).toBe(1);
+    expect(calloutTarget(shot({ key: 2 }), placed, (i) => i !== 2, 1)).toBe(1);
+    expect(calloutTarget(shot({ key: 2 }), placed.slice(0, 2), all, 1)).toBe(1);
+    // Yönetmenin balonu önce gelir.
+    expect(calloutTarget(shot({ key: 2, callout: 1 }), placed, all, 1)).toBe(1);
+  });
+
   it("yakın çekimde yalnız kameranın okunur boya getiremediği özne nesneye; Manim tahtalı çekimde hiç", () => {
     const placed = [pl(0, 600), pl(1, 60, { heldBy: 0 }), pl(2, 100, { on: 0 })];
     // Kişi yakın çekimi (özne nesne yok): balon yok.

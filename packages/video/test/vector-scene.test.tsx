@@ -39,7 +39,7 @@ const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
 const { CALLOUT } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -2408,6 +2408,97 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     expect(closeUpCamera({ ...cam, focusX: 900, focusY: 600 }, [person, { ...tape, width: 300, height: 300, y: 800 }], false, thing).centre).toBe(false);
     // Odaksız kamera merkezden yaklaşır; tuvalden küçük zoom'da da ortada kalır.
     expect(cameraTransform({ zoomFrom: 0.5, zoomTo: 0.5, panX: 0 }, 0, true)).toBe("translate(480px, 270px) scale(0.5) translateX(0%)");
+  });
+
+  it("yakın çekimde anlatılan nesne (key) odağa yakın nesneden önce özne olur; yüzey ve kadraj dışındaki key sayılmaz", () => {
+    const all = () => true;
+    const cam = { zoomFrom: 1.6, zoomTo: 1.8, panX: 0, focusX: 700, focusY: 700 };
+    const desk = { ...PL, index: 0, x: 960, y: 950, width: 600, height: 300 };
+    const cup = { ...PL, index: 1, x: 720, y: 650, width: 40, height: 40, on: 0 };
+    const paper = { ...PL, index: 2, x: 1150, y: 650, width: 50, height: 30, on: 0 };
+    expect(closeUpCamera(cam, [desk, cup, paper], false, all).subject).toBe(1);
+    expect(closeUpCamera(cam, [desk, cup, paper], false, all, () => false, 2).subject).toBe(2);
+    // Üstünde bir şey duran masa özne olmaz; duvardaki ekran (havada) olur, kadraj dışındaki olmaz.
+    expect(closeUpCamera(cam, [desk, cup, paper], false, all, () => false, 0).subject).toBe(1);
+    const screen = { ...PL, index: 3, x: 1000, y: 450, width: 60, height: 40, grounded: false };
+    expect(closeUpCamera(cam, [desk, cup, screen], false, all, () => false, 3).subject).toBe(3);
+    expect(closeUpCamera(cam, [desk, cup, { ...screen, x: 1880, y: 200 }], false, all, () => false, 3).subject).toBe(1);
+  });
+
+  it("geniş çekimde okunmayan anlatılan nesneye yaklaşılır: başlar üstte, nesne ve başlar iki uçta kadrajda, eklem yerinden kesmez", () => {
+    const cam = { zoomFrom: 1, zoomTo: 1.06, panX: 0, focusX: 960, focusY: 540 };
+    const man = { ...PL, index: 0, x: 800, y: 950, width: 280, height: 560 };
+    const paper = { ...PL, index: 1, x: 1000, y: 760, width: 60, height: 60, on: 2 };
+    const out = keyCamera(cam, false, paper, [man])!;
+    expect(out).toMatchObject({ centre: true, cam: { panX: 0 } });
+    const zoom = out.cam.zoomTo;
+    expect(zoom).toBeGreaterThan(KEY.most);
+    expect(zoom).toBeLessThanOrEqual(KEY.most * KEY.tighten);
+    expect(out.cam.zoomTo / out.cam.zoomFrom).toBeCloseTo(1.06);
+    for (const k of [0, 1]) {
+      const [, head] = cameraPoint(out.cam, k, true, [man.x, man.y - man.height * 0.9]);
+      const [, low] = cameraPoint(out.cam, k, true, [paper.x, paper.y]);
+      expect(head).toBeGreaterThanOrEqual(0);
+      expect(low).toBeLessThanOrEqual(1080);
+    }
+    // Çekim sonunda çizilen başın üstünde karenin %7'si pay.
+    expect(cameraPoint(out.cam, 1, true, [man.x, man.y - man.height * 0.9])[1]).toBeCloseTo(0.07 * 1080);
+    expect(jointSafe(out.cam, true, [man], [], 0.1)).toBe(out.cam);
+    // Yönetmenin hızlı yaklaşması kısalır (en çok %8), sabit kamera sabit kalır.
+    const push = keyCamera({ ...cam, zoomFrom: 1.05, zoomTo: 1.2 }, false, paper, [man])!.cam;
+    expect(push.zoomTo / push.zoomFrom).toBeCloseTo(KEY.drift);
+    const still = keyCamera({ ...cam, zoomFrom: 1.1, zoomTo: 1.1 }, false, paper, [man])!.cam;
+    expect(still.zoomFrom).toBe(still.zoomTo);
+    // Oturan kişinin başı render'daki gibi biraz aşağıda: odak da aşağı iner.
+    expect(keyCamera(cam, false, paper, [{ ...man, sitting: true }])!.cam.focusY).toBeGreaterThan(out.cam.focusY!);
+    // Kişisiz: nesne ortalanır, en çok KEY.most.
+    const alone = keyCamera(cam, false, paper, [])!;
+    expect(alone).toMatchObject({ cam: { zoomTo: KEY.most, focusX: 1000, focusY: 730 }, centre: true });
+    expect(alone.cam.zoomFrom).toBeCloseTo(KEY.most / 1.06);
+  });
+
+  it("anlatılan nesneye yaklaşma: okunuyorsa, kazanç küçükse yok; kadraj dışındaki kişi sayılmaz; eklem kuralı sağlanamazsa ilk kadraj", () => {
+    const cam = { zoomFrom: 1, zoomTo: 1.06, panX: 0, focusX: 960, focusY: 540 };
+    const man = (index: number, x: number) => ({ ...PL, index, x, y: 950, width: 280, height: 560 });
+    const paper = { ...PL, index: 1, x: 1000, y: 760, width: 60, height: 60, on: 2 };
+    expect(keyCamera(cam, false, { ...paper, width: 400, height: 400 }, [man(0, 800)])).toBeUndefined();
+    // İki uçtaki kişinin başları kadrajın genişliğini dolduruyor: yaklaşmaya yer yok.
+    expect(keyCamera(cam, false, paper, [man(0, 100), man(3, 1820)])).toBeUndefined();
+    // Yönetmenin kadrajında (sol yarıya yakın çekim) olmayan kişi kadraja çekilmez.
+    const left = { zoomFrom: 1.3, zoomTo: 1.3, panX: 0, focusX: 400, focusY: 540 };
+    const near = keyCamera(left, false, { ...paper, x: 700 }, [man(0, 600), man(3, 1800)])!;
+    expect(near.cam.focusX).toBeLessThan(1000);
+    // Uzaktaki kısa kişi her yakınlıkta dizinden kesiliyor: ilk kadraj kalır, jointSafe sonra düzeltir.
+    const far = { ...PL, index: 3, x: 1250, y: 880, width: 240, height: 480 };
+    const fallback = keyCamera(cam, false, paper, [man(0, 800), far])!;
+    expect(fallback.cam.zoomTo).toBeCloseTo(KEY.most);
+    expect(jointSafe(fallback.cam, true, [man(0, 800), far], [], 0.1)).not.toBe(fallback.cam);
+  });
+
+  it("çekimde anlatılan nesne (key): kamera ona yaklaşır ve özne olur; kayan kamera, tahta, kalabalık, sahneye giren ya da kişiyi gösteren key'de yaklaşmaz", () => {
+    const layers = [
+      { asset: "panorama", x: 960, y: 1080, height: 1080 },
+      { asset: "desk", x: 1000, depth: 0.3 },
+      { asset: "check", x: 1000, on: 1 },
+      { asset: "hero", x: 760, depth: 0.3 },
+    ];
+    const camera = { zoomFrom: 1, zoomTo: 1.06, panX: 0, focusX: 960, focusY: 540 };
+    const model = (extra: object = {}) => shotModel(VectorShot.parse({ layers, camera, ...extra }), ASSETS, "outline", 1920, 1080, false, 5);
+    const plain = model();
+    expect(plain.subject).toBeUndefined();
+    const keyed = model({ key: 2 });
+    expect(keyed).toMatchObject({ centre: true, subject: 2 });
+    expect(keyed.cam.zoomTo).toBeGreaterThan(plain.cam.zoomTo * KEY.gain);
+    const hero = keyed.placed.find((p) => p.index === 3)!;
+    for (const k of [0, 1]) expect(cameraPoint(keyed.cam, k, true, [hero.x, hero.y - hero.height * 0.9])[1]).toBeGreaterThanOrEqual(0);
+    for (const extra of [
+      { key: 2, camera: { ...camera, panX: 0.3 } },
+      { key: 2, math: { steps: ["a=b"] } },
+      { key: 2, crowd: { size: "group" } },
+      { key: 3 },
+      { key: 2, layers: [...layers, { asset: "walker", x: 200, depth: 0.5, anims: [{ type: "walk", toX: 400 }] }] },
+    ])
+      expect(model(extra).subject).toBeUndefined();
   });
 
   it("kadraj için elde tutulan nesne tutuş duruşundaki elin altına konur (render ile aynı), aynalıda öbür yana", () => {

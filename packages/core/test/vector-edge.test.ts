@@ -148,4 +148,13 @@ describe("uniqueCharacters", () => {
     expect(keepShotLayers({ ...spec, callout: undefined }, [true, false, true])).not.toHaveProperty("callout");
     expect(uniqueCharacters(VectorShot.parse({ layers: [{ asset: "c1", x: 0 }, { asset: "c1", x: 1 }, { asset: "p", x: 2 }], callout: 2 }), isChar).callout).toBe(1);
   });
+
+  it("anlatılan nesne (key) da balon gibi yeniden eşlenir; atılan katmanı gösteren key kalkar", () => {
+    const spec = VectorShot.parse({ layers: [{ asset: "a", x: 0 }, { asset: "b", x: 1 }, { asset: "c", x: 2 }], key: 2, callout: 1 });
+    expect(keepShotLayers(spec, [false, true, true])).toMatchObject({ key: 1, callout: 0 });
+    const dropped = keepShotLayers(spec, [true, false, false]);
+    expect(dropped).not.toHaveProperty("key");
+    expect(dropped).not.toHaveProperty("callout");
+    expect(uniqueCharacters(VectorShot.parse({ layers: [{ asset: "c1", x: 0 }, { asset: "c1", x: 1 }, { asset: "p", x: 2 }], key: 2 }), isChar).key).toBe(1);
+  });
 });

@@ -34,7 +34,8 @@ export interface Box {
 }
 
 /**
- * Balonla gösterilecek katman: yönetmenin seçtiği küçük nesne, yoksa elde tutulan küçük nesne, o da yoksa masaya/rafa
+ * Balonla gösterilecek katman: yönetmenin seçtiği küçük nesne, yoksa anlatılan nesne (key) hâlâ küçükse o, yoksa elde
+ * tutulan küçük nesne, o da yoksa masaya/rafa
  * konan çok küçük nesnelerin en küçüğü (3 Kas, Java planı: yönetmen 27 çekimde hiç balon seçmedi; C# incelemesi: "zarf
  * masada minik", "Java penceresi küçük"). Üstünde bir şey duran yüzey aday değil. Haritada ve Manim tahtalı çekimde balon
  * yok. Yakın çekimde yalnız özne nesne (closeUpCamera'nın subject'i), kamera onu okunur boya getiremediyse: başı kadrajda
@@ -51,6 +52,9 @@ export function calloutTarget(spec: VectorShot, placed: PlacedLayer[], isProp: (
     const asked = placed.find((pl) => pl.index === spec.callout);
     return asked && isProp(asked.index) && small(asked, CALLOUT.askedBelow) ? asked.index : undefined;
   }
+  // Anlatılan nesne (VectorShot.key) kamera yaklaştıktan sonra hâlâ küçükse; değilse öteki adaylara bakılır.
+  const key = placed.find((pl) => pl.index === spec.key && isProp(pl.index) && small(pl, CALLOUT.askedBelow));
+  if (key) return key.index;
   const held = placed.find((pl) => pl.heldBy !== undefined && isProp(pl.index) && small(pl, CALLOUT.autoBelow));
   if (held) return held.index;
   const surfaces = new Set(placed.map((pl) => pl.on));

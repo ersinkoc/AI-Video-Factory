@@ -404,7 +404,19 @@ export const VectorShot = z.object({
     .int()
     .nonnegative()
     .optional()
-    .describe("Index of a small key prop (a page, screen, coin, chip, card) to show magnified in a round inset next to the scene; use it in wide and medium shots when the narration is about that object"),
+    .describe("Index of a second small object that must also be read (a page, screen, coin, chip, card), shown magnified in a round inset next to the scene"),
+  /**
+   * Anlatılan nesne (katman indeksi; 4 Kas, inceleme: 380 karenin 164'ünde "wrong_scale", çoğu "ana nesne minik":
+   * gerçek boyundaki telefon, kâğıt, ekran geniş çekimde birkaç yüz piksel). Kamera onu okunur boya getirene kadar
+   * yaklaşır, kişilerin başları kadrajda kalır; yine küçükse büyütme balonu ona açılır. Yönetmen vermezse planlamada
+   * çekimin açıklamasından çıkarılır (pipeline key-prop.ts).
+   */
+  key: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("Index of the object layer this shot is about (the narrated phone, page, screen, machine); code moves the camera in until it reads and magnifies it if still small"),
   crowd: VectorCrowd.optional().describe(
     "Anonymous extras drawn by code in rows at the back (an army, an audience, protesters, a market, a team, a court); the cast stands in front of them",
   ),
@@ -424,11 +436,16 @@ export function keepLayers<L extends VectorLayer>(layers: L[], keep: boolean[]):
   );
 }
 
-/** Çekimin katmanlarından yalnız keep[i] olanlar kalır; katman ve çekim düzeyindeki başvurular (balon) yeniden eşlenir. */
-export function keepShotLayers<S extends Pick<VectorShot, "layers" | "callout">>(spec: S, keep: boolean[]): S {
-  const { callout, ...rest } = spec;
-  const kept = callout !== undefined && keep[callout] ? keep.slice(0, callout).filter(Boolean).length : undefined;
-  return { ...rest, layers: keepLayers(spec.layers, keep), ...(kept === undefined ? {} : { callout: kept }) } as S;
+/**
+ * Çekimin katmanlarından yalnız keep[i] olanlar kalır; katman ve çekim düzeyindeki başvurular (balon, anlatılan nesne)
+ * yeniden eşlenir, atılan katmana işaret eden bırakılır.
+ */
+export function keepShotLayers<S extends Pick<VectorShot, "layers" | "callout" | "key">>(spec: S, keep: boolean[]): S {
+  const { callout, key, ...rest } = spec;
+  const ref = (idx: number | undefined) => (idx !== undefined && keep[idx] ? keep.slice(0, idx).filter(Boolean).length : undefined);
+  const c = ref(callout);
+  const k = ref(key);
+  return { ...rest, layers: keepLayers(spec.layers, keep), ...(c === undefined ? {} : { callout: c }), ...(k === undefined ? {} : { key: k }) } as S;
 }
 
 /** Aynı karakter bir çekimde bir kez görünür (bir kişi iki yerde olamaz): sonraki kopyalar atılır. */

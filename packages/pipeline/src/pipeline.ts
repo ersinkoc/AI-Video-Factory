@@ -126,6 +126,7 @@ import { existingSamples, loadStyleSamples, SAMPLE_BRIEF, STYLE_SAMPLES_ID, STYL
 import { shortRange, shortTimeline } from "./short.ts";
 import { buildTimeline, clipSeconds, resolveShotTimes, sceneOffsets, toSrt } from "./timing.ts";
 import { assignReverseViews, reverseCandidates, varyShotSizes } from "./variety.ts";
+import { withKey } from "./key-prop.ts";
 import { looksLikeObject } from "./cast-kind.ts";
 import type { EpisodeReview } from "./state.ts";
 
@@ -1306,7 +1307,8 @@ export class EpisodePipeline {
         motionPrompt: "",
         camera: "static" as const,
         ambience: s.ambience,
-        vector: { ...unique, background },
+        // Anlatılan nesne: yönetmen vermediyse açıklamadan (kamera ona yaklaşır, küçükse balon açılır).
+        vector: withKey({ ...unique, background }, s.description, (id) => props[id]?.kind === "prop"),
       };
     });
     this.log(
