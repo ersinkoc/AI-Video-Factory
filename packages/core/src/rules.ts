@@ -62,9 +62,10 @@ export const VERTICAL_SAFE = { top: 250, bottom: 420, right: 150 } as const;
 
 /**
  * Hikâye nesnesinin okunabilir en kısa "en uzun kenarı" (m, derinlik ölçeğiyle çarpılır). Fiziksel olarak doğru ama
- * ekranda 15 px kalan not, kitap, çip görünmez (30 Eki denemesi); çizgi filmdeki gibi abartılır.
+ * ekranda 15 px kalan not, kitap, çip görünmez (30 Eki denemesi); çizgi filmdeki gibi abartılır. air: duvarda/havada
+ * sunulan nesne, elde gösterilen gibi (4 Kas yakın çekim denetimi: kişinin yanında havada sunulan telefon 28×51 px'ti).
  */
-export const READABLE_SIDE = { held: 0.28, surface: 0.18, floor: 0.14 } as const;
+export const READABLE_SIDE = { held: 0.28, surface: 0.18, floor: 0.14, air: 0.28 } as const;
 
 export interface GateScores {
   recognizable: number;

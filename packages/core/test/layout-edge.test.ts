@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONVERSE, floorYOf, resolveLayout, STAGE, VectorShot, type VectorAsset } from "../src/index.ts";
+import { CONVERSE, floorYOf, READABLE_SIDE, resolveLayout, STAGE, VectorShot, type VectorAsset } from "../src/index.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({
   id,
@@ -50,6 +50,34 @@ describe("sahne fiziği: kenar durumlar", () => {
     // y de derinlik de yoksa: duvarda, zemin çizgisinin biraz üstünde ve gerçek boyun %80'i.
     expect(by(3).y).toBe(STAGE.defaultFloorY - 60);
     expect(by(3).height).toBeCloseTo(STAGE.pxPerMeter * 0.8);
+  });
+
+  it("duvarda/havada sunulan küçük nesne okunur boyun altına düşmez, yönetmenin verdiği boy dahil; büyük öğe olduğu gibi kalır", () => {
+    const assets = {
+      phone: asset("phone", "prop", { realHeight: 0.15, grounded: false }, 200, 400),
+      card: asset("card", "prop", { realHeight: 0.08, grounded: false }, 800, 400),
+      poster: asset("poster", "prop", { realHeight: 1, grounded: false }),
+    };
+    const placed = resolveLayout(
+      shot([
+        { asset: "phone", x: 400, y: 500 },
+        { asset: "card", x: 800, y: 500 },
+        { asset: "phone", x: 1200, y: 500, height: 30 },
+        { asset: "poster", x: 1600, y: 500 },
+      ]),
+      assets,
+    );
+    const by = (i: number) => placed.find((p) => p.index === i)!;
+    // En uzun kenar en az READABLE_SIDE.air (0,28 m), duvar öğesi gibi %80 ölçekle: 0,28 × 400 × 0,8 = 89,6 px.
+    const least = READABLE_SIDE.air * STAGE.pxPerMeter * 0.8;
+    expect(by(0).height).toBeCloseTo(least);
+    expect(by(0).fixes).toContain("okunamayacak kadar küçüktü, büyütüldü");
+    // Yatık nesnede en uzun kenar genişlik.
+    expect(by(1).width).toBeCloseTo(least);
+    expect(by(1).height).toBeCloseTo(least / 2);
+    expect(by(2).height).toBeCloseTo(least);
+    expect(by(3).height).toBeCloseTo(STAGE.pxPerMeter * 0.8);
+    expect(by(3).fixes).toEqual([]);
   });
 
   it("grounded=true nesnenin derinliği yoksa 0,3 varsayılır", () => {

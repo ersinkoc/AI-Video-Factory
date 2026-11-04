@@ -14,8 +14,10 @@ export const CALLOUT = {
   restingBelow: 0.06,
   /** Yönetmen istese de bundan büyük görünen nesneye balon açılmaz (zaten okunuyor). */
   askedBelow: 0.25,
-  /** Bu zoom'dan itibaren yakın çekim: nesne zaten büyük. */
+  /** Bu zoom'dan itibaren yakın çekim: balon yalnız kameranın okunur boya getiremediği özne nesneye açılır. */
   closeUp: 1.5,
+  /** Yakın çekimin öznesi olan nesne ekranda (alanın karekökü) kare yüksekliğinin bundan azıysa balon. */
+  closeBelow: 0.15,
   /** Belirme: çekimin bu oranında başlar, bu sürede (oran) tamamlanır. */
   appear: 0.1,
   grow: 0.08,
@@ -34,11 +36,16 @@ export interface Box {
 /**
  * Balonla gösterilecek katman: yönetmenin seçtiği küçük nesne, yoksa elde tutulan küçük nesne, o da yoksa masaya/rafa
  * konan çok küçük nesnelerin en küçüğü (3 Kas, Java planı: yönetmen 27 çekimde hiç balon seçmedi; C# incelemesi: "zarf
- * masada minik", "Java penceresi küçük"). Üstünde bir şey duran yüzey aday değil. Yakın çekimde, haritada ve Manim tahtalı
- * çekimde balon yok (nesne zaten büyük ya da orta alan dolu).
+ * masada minik", "Java penceresi küçük"). Üstünde bir şey duran yüzey aday değil. Haritada ve Manim tahtalı çekimde balon
+ * yok. Yakın çekimde yalnız özne nesne (closeUpCamera'nın subject'i), kamera onu okunur boya getiremediyse: başı kadrajda
+ * tutulan kişinin masasındaki çek, kâğıt, disket hâlâ minikti (4 Kas yakın çekim denetimi, 131 çekimin 18'i).
  */
-export function calloutTarget(spec: VectorShot, placed: PlacedLayer[], isProp: (index: number) => boolean, zoom: number): number | undefined {
-  if (zoom >= CALLOUT.closeUp || spec.math) return undefined;
+export function calloutTarget(spec: VectorShot, placed: PlacedLayer[], isProp: (index: number) => boolean, zoom: number, subject?: number): number | undefined {
+  if (spec.math) return undefined;
+  if (zoom >= CALLOUT.closeUp) {
+    const pl = placed.find((p) => p.index === subject);
+    return pl && isProp(pl.index) && Math.sqrt(pl.width * pl.height) * zoom < CALLOUT.closeBelow * H ? pl.index : undefined;
+  }
   const small = (pl: PlacedLayer, below: number) => pl.height * zoom < below * H;
   if (spec.callout !== undefined) {
     const asked = placed.find((pl) => pl.index === spec.callout);

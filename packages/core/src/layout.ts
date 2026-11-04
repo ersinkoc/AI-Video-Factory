@@ -23,6 +23,8 @@ export const STAGE = {
 const DEFAULT_REAL_HEIGHT: Record<VectorAsset["kind"], number> = { character: 1.7, prop: 0.8, background: 0 };
 /** Elde tutulan nesnenin varsayılan boyu (m). */
 const HELD_REAL_HEIGHT = 0.3;
+/** Duvardaki/havadaki öğe arkada durur: gerçek boyunun bu kesriyle çizilir. */
+const WALL_SCALE = 0.8;
 
 /** Nesnenin boyunu, en uzun kenarı okunabilir sınırın altına düşmeyecek şekilde büyütür. */
 function readableHeight(h: number, aspect: number, minSide: number, fixes: string[]): number {
@@ -299,8 +301,12 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
       out = { index: i, x: layer.x, y, height: sized * STAGE.pxPerMeter * scale, scale, z: 100 * (1 - depth), sitting: false, grounded: true, fixes };
       if (layer.height !== undefined && Math.abs(layer.height - out.height) > out.height * 0.15) fixes.push("boy gerçek ölçüye göre düzeltildi");
     } else {
-      // Duvarda/havada: verilen y ve boy; hepsi yerdeki öğelerin arkasında.
-      const h = layer.height ?? real * STAGE.pxPerMeter * 0.8;
+      // Duvarda/havada: verilen y ve boy; hepsi yerdeki öğelerin arkasında. Nesne okunur boyun altına düşmez (yönetmenin
+      // verdiği boy dahil): öteki yerleşimlerin alt sınırı burada yoktu, havada sunulan telefon minik kalıyordu.
+      const given = layer.height ?? real * STAGE.pxPerMeter * WALL_SCALE;
+      const least = (READABLE_SIDE.air / Math.max(aspect, 1)) * STAGE.pxPerMeter * WALL_SCALE;
+      if (given < least) fixes.push("okunamayacak kadar küçüktü, büyütüldü");
+      const h = Math.max(given, least);
       out = { index: i, x: layer.x, y: layer.y ?? floorY - 60, height: h, scale: 1, z: -10 + i * 0.01, sitting: false, grounded: false, fixes };
     }
     if (layer.z !== undefined) out.z = layer.z;

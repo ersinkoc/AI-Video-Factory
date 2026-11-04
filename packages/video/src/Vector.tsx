@@ -1151,7 +1151,7 @@ export function closeUpCamera(
   whole: (pl: PlacedLayer) => boolean = () => false,
   /** Yerinde duran kişi: yakın çekimin öznesiyse belden yukarı kadrajlanır (portrait). */
   person: (pl: PlacedLayer) => boolean = () => false,
-): { cam: VectorShot["camera"]; centre: boolean } {
+): { cam: VectorShot["camera"]; centre: boolean; subject?: number } {
   const z = Math.max(cam.zoomFrom, cam.zoomTo);
   const keep = { cam, centre: false };
   if (z < CLOSE_UP.zoom || exactBackground || !placed.length) return keep;
@@ -1179,6 +1179,8 @@ export function closeUpCamera(
   const subject = (props.length ? props : standing.length ? standing : placed).reduce((a, b) => (dist(b) < dist(a) ? b : a));
   // Nesne öznesinde ölçü alanın karekökü (ince uzun bant en uzun kenarıyla "büyük" sayılıyordu) ve hedef okunur boy.
   const side = props.length ? Math.sqrt(subject.width * subject.height) : Math.max(subject.width, subject.height);
+  // Özne nesneyse bildirilir: yakınlaşma onu okunur boya getiremezse büyütme balonu açılır (calloutTarget).
+  const tag = props.length ? { subject: subject.index } : {};
   const small = props.length ? CLOSE_UP.target : CLOSE_UP.min;
   // Aynı yüzeydeki nesneler birlikte kadrajlanır (masada iPod ve iPhone: yalnız birine yaklaşınca öteki kenarda kesiliyordu).
   const group = subject.on === undefined ? [subject] : standing.filter((pl) => pl.on === subject.on);
@@ -1204,7 +1206,7 @@ export function closeUpCamera(
   }
   if (side * z >= small * H) {
     const fit = [...(whole(subject) ? group : []), ...extra];
-    return fit.length ? fitWhole(cam, z, fit) : keep;
+    return { ...(fit.length ? fitWhole(cam, z, fit) : keep), ...tag };
   }
   const l = Math.min(...framed.map((pl) => pl.x - pl.width / 2));
   const r = Math.max(...framed.map((pl) => pl.x + pl.width / 2));
@@ -1214,7 +1216,7 @@ export function closeUpCamera(
   const x = (l + r) / 2;
   const y = extra.length || heads.length ? (top + bottom) / 2 : centre(subject)[1];
   // Zoom zaten tavandaysa yalnız odak düzelir.
-  return { cam: { ...cam, zoomFrom: cam.zoomFrom * Math.max(1, k), zoomTo: cam.zoomTo * Math.max(1, k), focusX: x, focusY: y }, centre: true };
+  return { cam: { ...cam, zoomFrom: cam.zoomFrom * Math.max(1, k), zoomTo: cam.zoomTo * Math.max(1, k), focusX: x, focusY: y }, centre: true, ...tag };
 }
 
 /**
@@ -2258,6 +2260,8 @@ export interface ShotModel {
   keep: PlacedLayer[];
   cam: VectorShot["camera"];
   centre: boolean;
+  /** Yakın çekimin öznesi olan nesnenin katmanı (closeUpCamera); okunur boya gelemediyse balon ona açılır. */
+  subject?: number;
   /** Dikey kadrajda sahnenin ölçeği. */
   fit: number;
   /** Yönetmen planında kodun düzelttiği ya da düşürdüğü jestler (staging.ts); denetim bunları bildirir. */
@@ -2300,7 +2304,7 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
     if (moving(pl.index)) return false;
     return safe[layer.asset]!.kind === "character" || ((pl.grounded || pl.heldBy !== undefined) && pl.width < W * 0.4);
   });
-  const { cam, centre } = (() => {
+  const { cam, centre, subject } = ((): { cam: VectorShot["camera"]; centre: boolean; subject?: number } => {
     const isPerson = (pl: PlacedLayer) => safe[spec.layers[pl.index]!.asset]!.kind === "character";
     const close = closeUpCamera(spec.camera, heldFraming(placed, spec.layers), Boolean(bg?.meta.exact), (pl) => !isPerson(pl), (pl) => isPerson(pl) && !moving(pl.index));
     if (bg?.meta.exact) return close;
@@ -2309,7 +2313,7 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
     const still = placed.filter((pl) => isPerson(pl) && !moving(pl.index));
     const faces = still.map((pl) => boxOf(faceCorners(safe[spec.layers[pl.index]!.asset]!).map((c) => rigToCanvas(pl, spec.layers[pl.index]!, neutral(pl), c))));
     const bodies = still.map((pl) => ({ x: pl.x - pl.width / 2, y: pl.y - pl.height, w: pl.width, h: pl.height }));
-    if (close.centre) return { cam: faceSafe(close.cam, true, faces, true, bodies), centre: true };
+    if (close.centre) return { ...close, cam: faceSafe(close.cam, true, faces, true, bodies) };
     // Boş geniş çekim içeriğe yaklaşır; sahneye giren biri varsa yolu kadrajda kalsın diye yaklaşılmaz.
     const filled = placed.some((pl) => moving(pl.index)) ? undefined : fillWide(close.cam, placed, (pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character");
     const wide = filled ?? { cam: frameWide(close.cam, keep), centre: false };
@@ -2325,7 +2329,7 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
     const xs = keep.flatMap((pl) => [0, 1].flatMap((q) => [pl.x - pl.width / 2, pl.x + pl.width / 2].map((x) => cameraPoint(cam, q, centre, [x, pl.y])[0])));
     return contentFit(width, base, xs);
   })();
-  return { spec, safe, placed, ...(bg ? { bg } : {}), keep, cam, centre, fit, problems };
+  return { spec, safe, placed, ...(bg ? { bg } : {}), keep, cam, centre, ...(subject === undefined ? {} : { subject }), fit, problems };
 }
 
 /** Çekimin bir karesi: katmanların hareketi, ekrandaki yazılar, elde tutulanların yeri ve büyütme balonu. */
@@ -2345,7 +2349,7 @@ export function shotFrame(
   model: ShotModel,
   o: { shotId: string; frame: number; fps: number; durationInFrames: number; voice?: Voice; width: number; height: number; insets: boolean; overlay: boolean },
 ): ShotFrame {
-  const { spec, safe, placed, bg, cam, centre, fit } = model;
+  const { spec, safe, placed, bg, cam, centre, fit, subject } = model;
   const { shotId, frame, fps, voice, width, height, insets } = o;
   const p = Math.min(1, frame / Math.max(1, o.durationInFrames));
   const t = frame / fps;
@@ -2403,26 +2407,32 @@ export function shotFrame(
   // Büyütme balonu: anlatılan küçük nesne yuvarlak pencerede büyük; yüzleri ve yazıları örtmeyen yerde.
   const inset = (() => {
     if (!insets || bg?.meta.exact || o.overlay) return undefined;
-    const index = calloutTarget(spec, placed, (i) => safe[spec.layers[i]!.asset]!.kind === "prop", Math.max(cam.zoomFrom, cam.zoomTo));
+    const zoom = Math.max(cam.zoomFrom, cam.zoomTo);
+    const index = calloutTarget(spec, placed, (i) => safe[spec.layers[i]!.asset]!.kind === "prop", zoom, subject);
     if (index === undefined) return undefined;
     const at = drawnAt.get(index)!;
     const tr = motions.get(index)!.tr;
     const target = cameraPoint(cam, k, centre, [at.x + tr.x, at.y + tr.y - (at.height * tr.scale) / 2]);
     const scale = cameraAt(cam, k, centre).scale;
+    const faces = heads.map((h) => {
+      const [x, y] = cameraPoint(cam, k, centre, h.at);
+      const tall = cameraPoint(cam, k, centre, h.foot)[1] - y;
+      return { x: x - tall * 0.12, y, w: tall * 0.24, h: tall * 0.22 };
+    });
     const avoid: Box[] = [
       // Nesnenin kendisi, yüzler ve yazılar.
       { x: target[0] - (at.width * scale) / 2, y: target[1] - (at.height * scale) / 2, w: at.width * scale, h: at.height * scale },
-      ...heads.map((h) => {
-        const [x, y] = cameraPoint(cam, k, centre, h.at);
-        const tall = cameraPoint(cam, k, centre, h.foot)[1] - y;
-        return { x: x - tall * 0.12, y, w: tall * 0.24, h: tall * 0.22 };
-      }),
+      ...faces,
       ...texts.map((tx) => {
         const w = Math.min(CARD.width, tx.text.text.length * tx.size * 0.56) + 40;
         return tx.card ? { x: tx.x, y: tx.y, w, h: tx.size * 1.4 } : { x: tx.x - w / 2, y: tx.y - tx.size * 0.7, w, h: tx.size * 1.4 };
       }),
     ];
-    return { asset: safe[spec.layers[index]!.asset]!, target, at: calloutSpot(target, avoid) };
+    const spot = calloutSpot(target, avoid);
+    // Yakın çekimde yüz büyük: balon bir yüzü örtecekse açılmaz.
+    const box = { x: spot[0] - CALLOUT.r, y: spot[1] - CALLOUT.r, w: 2 * CALLOUT.r, h: 2 * CALLOUT.r };
+    if (zoom >= CALLOUT.closeUp && faces.some((f) => overlap(box, f) > 0)) return undefined;
+    return { asset: safe[spec.layers[index]!.asset]!, target, at: spot };
   })();
   return { p, t, k, dur, motions, texts, drawnAt, ...(inset ? { inset } : {}) };
 }

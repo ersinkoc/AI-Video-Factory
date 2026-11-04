@@ -36,9 +36,17 @@ describe("büyütme balonu: hangi nesne", () => {
     expect(calloutTarget(shot({ callout: 2 }), placed.slice(0, 2), props, 1)).toBeUndefined();
   });
 
-  it("yakın çekimde ve Manim tahtalı çekimde balon yok", () => {
-    const placed = [pl(0, 600), pl(1, 60, { heldBy: 0 })];
+  it("yakın çekimde yalnız kameranın okunur boya getiremediği özne nesneye; Manim tahtalı çekimde hiç", () => {
+    const placed = [pl(0, 600), pl(1, 60, { heldBy: 0 }), pl(2, 100, { on: 0 })];
+    // Kişi yakın çekimi (özne nesne yok): balon yok.
     expect(calloutTarget(shot(), placed, props, CALLOUT.closeUp)).toBeUndefined();
+    // Özne 60 px × 1,5 = 90 < 162 (kare yüksekliğinin %15'i): balon; 100 px × 2 = 200: zaten okunur.
+    expect(calloutTarget(shot(), placed, props, CALLOUT.closeUp, 1)).toBe(1);
+    expect(calloutTarget(shot(), placed, props, 2, 2)).toBeUndefined();
+    // Özne karakterse ya da yerleşmemişse yok; yönetmenin seçtiği nesne yakın çekimde sayılmaz.
+    expect(calloutTarget(shot(), placed, props, 2, 0)).toBeUndefined();
+    expect(calloutTarget(shot(), placed, props, 2, 9)).toBeUndefined();
+    expect(calloutTarget(shot({ callout: 2 }), placed, props, 2)).toBeUndefined();
     expect(calloutTarget(shot({ math: { steps: ["a=b"] } }), placed, props, 1)).toBeUndefined();
   });
 });

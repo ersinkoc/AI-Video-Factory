@@ -37,6 +37,7 @@ const { clapClosed, penDown, typingTaps } = await import("../src/gesture-timing.
 const { tip } = await import("../src/ik.ts");
 const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
+const { CALLOUT } = await import("../src/callout.ts");
 const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
@@ -54,6 +55,8 @@ const asset = (id: string, kind: "character" | "prop" | "background", svg: strin
 
 const ASSETS = {
   box: asset("box", "prop", '<svg viewBox="0 0 100 100"><rect id="box" width="100" height="100" fill="#ff0000"/></svg>', 100, 100),
+  // Masaya konan yatık küçük nesne (çek): okunur en uzun kenarla bile alanı küçük.
+  check: asset("check", "prop", '<svg viewBox="0 0 400 100"><rect id="check" width="400" height="100" fill="#00ffff"/></svg>', 400, 100, { realHeight: 0.04 }),
   cup: asset("cup", "prop", '<svg viewBox="0 0 100 100"><rect id="cup" width="100" height="100" fill="#00ff00"/></svg>', 100, 100, { realHeight: 0.3 }),
   chair: asset("chair", "prop", '<svg viewBox="0 0 100 100"><rect id="chair" width="100" height="100" fill="#0000ff"/></svg>', 100, 100, { realHeight: 0.9, surface: 0.5, grounded: true }),
   hero: asset(
@@ -1298,6 +1301,29 @@ describe("vektör sahne: büyütme balonu ve atmosfer katmanı", () => {
     expect(scene(held, { frame: 150, overlay: "library/math/x.webm" }).querySelector("[data-callout]")).toBeNull();
     cleanup();
     expect(scene(held, { frame: 150, insets: false }).querySelector("[data-callout]")).toBeNull();
+  });
+
+  it("yakın çekimde kamera masadaki özneyi okunur boya getiremezse balon ona açılır; bir yüzü örtecekse açılmaz", () => {
+    const frame = (layers: object[], focusX: number) => {
+      const m = shotModel(VectorShot.parse({ layers, camera: { zoomFrom: 2, zoomTo: 2, focusX, focusY: 650 } }), ASSETS, "outline", 1920, 1080, false, 5);
+      return { m, f: shotFrame(m, { shotId: "s1", frame: 120, fps: 30, durationInFrames: 150, width: 1920, height: 1080, insets: true, overlay: false }) };
+    };
+    const small = (m: ReturnType<typeof frame>["m"]) => {
+      const pl = m.placed.find((p) => p.index === m.subject)!;
+      return Math.sqrt(pl.width * pl.height) * Math.max(m.cam.zoomFrom, m.cam.zoomTo) < CALLOUT.closeBelow * 1080;
+    };
+    // Masada çek, yanında kişi: kamera kişinin başını da kadrajda tuttuğu için çek okunur boya gelemez.
+    const one = frame([{ asset: "walker", x: 600, depth: 0.3 }, { asset: "longtable", x: 1000, depth: 0.3 }, { asset: "check", x: 900, on: 1 }], 900);
+    expect(one.m.subject).toBe(2);
+    expect(small(one.m)).toBe(true);
+    expect(one.f.inset?.asset.id).toBe("check");
+    // İki yanında birer kişi: balonun her aday yeri bir yüzü örtüyor.
+    const two = frame([{ asset: "walker", x: 760, depth: 0.3 }, { asset: "ada", x: 1160, depth: 0.3 }, { asset: "longtable", x: 960, depth: 0.3 }, { asset: "check", x: 960, on: 2 }], 960);
+    expect(two.m.subject).toBe(3);
+    expect(small(two.m)).toBe(true);
+    expect(two.f.inset).toBeUndefined();
+    // Kişi yakın çekiminde özne nesne yok.
+    expect(frame([{ asset: "walker", x: 960, depth: 0.3 }], 960).m.subject).toBeUndefined();
   });
 
   it("konfeti, kıvılcım ve toz karakterlerin arkasında; yağmur önde; ikisi de yazıların altında ve sahne tuvali boyunda", () => {
