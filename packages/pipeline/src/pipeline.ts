@@ -102,6 +102,7 @@ import { generateFlag, generateMap } from "./geo.ts";
 import { HISTORY, historyCredits, loadHistory, type Polity } from "./history.ts";
 import { boardAccent, cleanMath, renderBoard } from "./manim.ts";
 import { lintShot } from "@ys/video/lint";
+import { stillMoment } from "@ys/video/moment";
 import { LEXICON, restoreWords, sayPlan } from "./pronounce.ts";
 import { MUSIC_RATE, musicTrack } from "@ys/video/music";
 import { mixSfx, sfxEvents, wavFile } from "@ys/video/sfx";
@@ -1436,9 +1437,12 @@ export class EpisodePipeline {
    */
   private async renderShotStills(state: EpisodeState, full: Timeline, dir: string, only?: Set<string>): Promise<Record<string, string>> {
     const timeline = onScreen(state, full);
-    // Çekimin %80'i: giriş ve daktilo animasyonları bitmiş olur (ortadan alınca yarım yazı kusur sanılıyordu).
+    // Yazılar açılmış, girişler bitmiş, kişilerin planlanan jestleri görünürken (stillMoment; yoksa çekimin %80'i: ortadan
+    // alınca yarım yazı kusur sanılıyordu, %80'de ise çoğu jest bitmişti).
     const frames = Object.fromEntries(
-      timeline.visuals.filter((v) => !only || only.has(v.shotId)).map((v) => [v.shotId, v.fromFrame + Math.floor(v.durationInFrames * 0.8)]),
+      timeline.visuals
+        .filter((v) => !only || only.has(v.shotId))
+        .map((v) => [v.shotId, v.fromFrame + Math.floor(v.durationInFrames * stillMoment(v, timeline.vectorAssets, timeline.fps))]),
     );
     const outDir = join(dir, "stills");
     await mkdir(outDir, { recursive: true });
