@@ -1383,6 +1383,8 @@ export class EpisodePipeline {
     const shots = state.shots ?? [];
     const files = await this.renderShotStills(state, timeline, dir);
     const subtitles = state.input.captions !== false;
+    // Bölümün stili ve paleti: paketin bilerek seçtiği renkler (tek renkli, sepya) kusur sayılmasın.
+    const style = state.style && { artStyle: state.style.artStyle, palette: state.style.palette };
 
     // O anda duyulan anlatım ve kodun yaptığı yerleşim düzeltmeleri, karenin değerlendirilmesi için.
     const spoken = (startMs: number, endMs: number) =>
@@ -1405,7 +1407,7 @@ export class EpisodePipeline {
       );
       if (!items.length) return;
       try {
-        const out = await this.agent(state, stage, sceneCritic(items, known, this.agentDeps, subtitles));
+        const out = await this.agent(state, stage, sceneCritic(items, known, this.agentDeps, subtitles, style));
         for (const s of out.shots) {
           // Altyazısız videoda "altyazı alanında" kusuru olamaz (denetçi yine de derse taslak yeniden planlanmasın).
           const issues = subtitles ? s.issues : s.issues.filter((i) => i.type !== "text_on_subtitles");

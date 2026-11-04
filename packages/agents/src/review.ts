@@ -48,9 +48,18 @@ export interface CriticShot {
 
 /**
  * Bir grup çekim karesini denetler (ucuz görsel model). `subtitles` false ise videoda gömülü altyazı yoktur:
- * alt çeyrek resme aittir, orada duran şey kusur sayılmaz.
+ * alt çeyrek resme aittir, orada duran şey kusur sayılmaz. style: bölümün sanat stili ve paleti (4 Kas: denetçiye
+ * "flat vector" deniyordu; bilerek tek renkli paketlerin (manga ekran tonu, sepya kum, kurşun kalem) her karesine "soluk,
+ * çamurlu palet" yazıyordu: en yeni dört bölümün 92 palet notunun 72'si bu üç paketten. Puan düşüyor, taslak incelemesi
+ * düzelmeyecek sahneleri yeniden planlatıyor, "parlak doygun renk kullan" dersi bütün paketlerin tasarımcısına gidiyordu).
  */
-export function sceneCritic(shots: CriticShot[], known: string[], deps?: AgentDeps, subtitles = true): Promise<AgentResult<SceneCriticOut>> {
+export function sceneCritic(
+  shots: CriticShot[],
+  known: string[],
+  deps?: AgentDeps,
+  subtitles = true,
+  style?: { artStyle: string; palette: string[] },
+): Promise<AgentResult<SceneCriticOut>> {
   return runStructured(
     {
       name: "scene-critic",
@@ -58,7 +67,8 @@ export function sceneCritic(shots: CriticShot[], known: string[], deps?: AgentDe
       effort: "low",
       schema: SceneCriticOut,
       images: shots.map((s) => s.image),
-      system: `You review frames of an animated explainer video (flat vector style, ${subtitles ? "subtitles at the bottom" : "no burned-in subtitles: the bottom of the frame belongs to the picture"}). Image N belongs to the N-th shot listed in the prompt.
+      system: `You review frames of an animated explainer video (${style ? `art style: ${style.artStyle}; palette: ${style.palette.join(", ")}` : "flat vector style"}, ${subtitles ? "subtitles at the bottom" : "no burned-in subtitles: the bottom of the frame belongs to the picture"}). Image N belongs to the N-th shot listed in the prompt.
+The channel chose the art style and the palette: a monochrome, sepia, grey, pencil or otherwise limited palette and the style's own texture (grain, screentone, paper, hatching) are intended, not problems. Do not report them and do not give lessons about the palette or the style; report colour only when a subject or a text cannot be told apart from what is behind it.
 Report only problems a viewer would notice:
 - text_overlap: on-screen texts overlap each other or a face; ${subtitles ? "text_on_subtitles: text sits in the bottom quarter where subtitles go; " : ""}unreadable_text: low contrast or tiny.
 - cluttered: too many elements or a busy background competing with the subject; empty: nothing meaningful on screen.

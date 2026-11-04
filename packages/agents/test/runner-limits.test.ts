@@ -262,7 +262,7 @@ describe("yardımcılar", () => {
   it("ders bloğu boşsa hiçbir şey eklemez", () => {
     expect(lessonsBlock(undefined)).toBe("");
     expect(lessonsBlock([])).toBe("");
-    expect(lessonsBlock(["a", "b"])).toBe("\nLessons from previous episodes (follow them):\n- a\n- b");
+    expect(lessonsBlock(["a", "b"])).toBe("\nLessons from previous episodes (follow them, but they never override the channel's art style and palette):\n- a\n- b");
   });
 
   it("AgentError maliyeti, modeli ve ajanı taşır", () => {

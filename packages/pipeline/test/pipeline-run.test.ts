@@ -1058,6 +1058,9 @@ describe("timeline, render ve inceleme", () => {
     const on = await h.pipeline.run(id, { only: "review" });
     expect(render.stills.mock.calls.at(-1)![0].timeline.captions.length).toBeGreaterThan(0);
     expect(callsOf("sceneCritic")[0]!.args[3]).toBe(true);
+    // Bölümün stili ve paleti denetçiye gider: paketin bilerek seçtiği palet kusur sayılmasın.
+    const styled = await h.pipeline.load(id);
+    expect(callsOf("sceneCritic")[0]!.args[4]).toEqual({ artStyle: styled.style!.artStyle, palette: styled.style!.palette });
     expect(on.review!.shots["s1-sh1"]!.issues.map((i) => i.type)).toEqual(["text_on_subtitles", "empty"]);
 
     const s = await h.pipeline.load(id);

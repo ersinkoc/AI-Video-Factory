@@ -106,7 +106,7 @@ describe("senaryo ajanları", () => {
   it("senarist ve doktor kelime bütçesini dilin konuşma hızından hesaplar, dersleri ekler", async () => {
     const a = await capture((d) => screenwriter({ ...brief, lessons: ["Kısa yaz"] }, story, d));
     expect(a.system).toContain("Total narration ≈ 230 words (115 wpm");
-    expect(a.system).toContain("Lessons from previous episodes (follow them):\n- Kısa yaz");
+    expect(a.system).toContain("Lessons from previous episodes (follow them, but they never override the channel's art style and palette):\n- Kısa yaz");
     expect(a.prompt).toBe(`Story:\n${JSON.stringify(story, null, 2)}`);
     const b = await capture((d) => scriptDoctor({ ...brief, lang: "en", wordsPerMinute: 100 }, story, script, d));
     expect(b.system).toContain("keep total narration ≈ 200 words");
@@ -176,6 +176,11 @@ describe("görsel denetçiler", () => {
     const c = await capture((d) => sceneCritic(shots, [], d, false));
     expect(c.system).toContain("no burned-in subtitles");
     expect(c.system).not.toContain("text_on_subtitles:");
+    // Bölümün stili ve paleti verilir; paketin bilerek seçtiği palet kusur sayılmaz.
+    expect(a.system).toContain("(flat vector style, ");
+    const m = await capture((d) => sceneCritic(shots, [], d, true, { artStyle: "manga screentone", palette: ["#111111", "#eeeeee"] }));
+    expect(m.system).toContain("(art style: manga screentone; palette: #111111, #eeeeee, subtitles at the bottom)");
+    expect(m.system).toContain("not problems. Do not report them and do not give lessons about the palette or the style");
   });
 
   it("ders küratörü kuralları indeksli listeler", async () => {

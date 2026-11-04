@@ -93,7 +93,11 @@ export function toOutputSchema(schema: z.ZodType): Record<string, unknown> {
 
 /** Önceki bölümlerden öğrenilen kurallar talimatın sonuna eklenir (boşsa hiçbir şey). */
 export function lessonsBlock(lessons: readonly string[] | undefined): string {
-  return lessons?.length ? `\nLessons from previous episodes (follow them):\n${lessons.map((l) => `- ${l}`).join("\n")}` : "";
+  // Dersler bütün paketlerden birikir: "parlak doygun renk kullan" gibi bir ders sepya ya da tek renkli paketin paletini
+  // ezmesin (4 Kas: defterdeki iki ders griyi, sepyayı, kahverengiyi yasaklıyordu).
+  return lessons?.length
+    ? `\nLessons from previous episodes (follow them, but they never override the channel's art style and palette):\n${lessons.map((l) => `- ${l}`).join("\n")}`
+    : "";
 }
 
 /** Görselli istek: SDK görsel bloklarını yalnız akış girdisiyle kabul ediyor. */
