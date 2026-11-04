@@ -39,7 +39,7 @@ const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
 const { CALLOUT } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, namesMatch, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -931,6 +931,53 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(talker([{ text: "aaa", startMs: 4900, endMs: 5300 }], {}).shapes).toEqual([]);
     // Konuşma penceresi dışında (yarıdan az girmiş) çizimin ağzı.
     expect(talker([{ text: "aaa", startMs: 4900, endMs: 5300 }], { anims: [{ type: "talk", start: 0.6, end: 0.9 }] }).css).not.toContain("visibility:hidden");
+  });
+
+  it("konuşulana dönme: dinleyen tam, konuşan kısmen döner; kendi bakışı olan jest ve yürüyüş dönüşü söndürür; kimse yoksa yok", () => {
+    const anim = (type: string, extra: object = {}) => VectorShot.parse({ layers: [{ asset: "hero", x: 0, anims: [{ type, ...extra }] }] }).layers[0]!.anims[0]!;
+    expect(facingOf([], 0.5, 5, undefined, 0)).toBe(0);
+    expect(facingOf([], 0.5, 5, 1, 0)).toBe(1);
+    expect(facingOf([], 0.5, 5, -1, 0)).toBe(-1);
+    expect(facingOf([anim("talk")], 0.5, 5, 1, 0)).toBeCloseTo(FACING.talker, 6);
+    expect(facingOf([anim("point")], 0.5, 5, 1, 0)).toBeCloseTo(0, 6);
+    expect(facingOf([anim("nod")], 0.5, 5, 1, 0)).toBe(1);
+    expect(facingOf([], 0.5, 5, 1, 0.5)).toBe(0.5);
+    // Jest girerken dönüş yavaşça söner (karede sıçramaz).
+    const entering = [0.46, 0.5, 0.55].map((p) => facingOf([anim("point", { start: 0.4 })], p, 5, 1, 0));
+    expect(entering[0]!).toBeGreaterThan(entering[1]!);
+    expect(entering[1]!).toBeGreaterThan(entering[2]!);
+  });
+
+  it("önden çizimde yüz konuşulana kayar, baş o yana eğilir; 3D figür o yana gerçekten döner; konuşan ağız şekli de kayar", () => {
+    const face = (layers: object[], index: number, speech?: { text: string; startMs: number; endMs: number }[]) => {
+      const c = scene({ layers }, { frame: 150, ...(speech ? { speech } : {}) });
+      const css = [...c.querySelectorAll("style")].map((s) => s.textContent).join("");
+      cleanup();
+      return { css, g: (part: string) => pose(css, part, `s1-${index}-`) };
+    };
+    // Dinleyen (solda) sağdakine döner; sağdaki soldakine.
+    const left = face([{ asset: "hero", x: 600, depth: 0 }, { asset: "talker", x: 1300, depth: 0 }], 0);
+    expect(left.g("mouth").tx).toBeCloseTo(FACING.mouth, 6);
+    expect(left.g("brows").tx).toBeGreaterThan(0);
+    expect(left.g("head").rotate).toBeGreaterThan(0);
+    const right = face([{ asset: "hero", x: 600, depth: 0 }, { asset: "talker", x: 1300, depth: 0 }], 1);
+    expect(right.g("mouth").tx).toBeCloseTo(-FACING.mouth, 6);
+    // Yalnız kişi kameraya bakar.
+    expect(face([{ asset: "hero", x: 960, depth: 0 }], 0).g("mouth").tx).toBe(0);
+    // Konuşan ağız şekli çizimin ağzıyla birlikte kayar.
+    const speech = [{ text: "aaa", startMs: 4900, endMs: 5300 }];
+    const talking = face([{ asset: "hero", x: 600, depth: 0 }, { asset: "talker", x: 1300, depth: 0, anims: [{ type: "talk" }] }], 1, speech);
+    const tx = talking.g("mouth").tx;
+    expect(tx).toBeLessThan(0);
+    expect(talking.css).toContain(`#s1-1-viseme-D{display:inline;transform:translateX(${tx.toFixed(2)}px)}`);
+    // 3D figür: yüz kaymaz, figür döner (yürürkenki dönüş yönüyle aynı işaret: sağdaki kişiye artı).
+    const layers = [{ asset: "toy", x: 600, depth: 0 }, { asset: "hero", x: 1300, depth: 0 }];
+    const m = shotModel(VectorShot.parse({ layers }), ASSETS, "outline", 1920, 1080, false, 5);
+    const f = shotFrame(m, { shotId: "s1", frame: 75, fps: 30, durationInFrames: 150, width: 1920, height: 1080, insets: false, overlay: false });
+    expect(f.motions.get(0)!.turn).toBeCloseTo(FACING.yaw, 6);
+    expect(f.motions.get(0)!.pose!.mouth!.tx).toBe(0);
+    const alone = shotModel(VectorShot.parse({ layers: [layers[0]] }), ASSETS, "outline", 1920, 1080, false, 5);
+    expect(shotFrame(alone, { shotId: "s1", frame: 75, fps: 30, durationInFrames: 150, width: 1920, height: 1080, insets: false, overlay: false }).motions.get(0)!.turn).toBeUndefined();
   });
 
   it("konuşan ağız: tersinmez ebeveynde çizimin ağzı kalır; 3D figürde ve yürürken yan çizimde şekil konmaz", () => {

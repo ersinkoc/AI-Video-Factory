@@ -254,6 +254,27 @@ interface Attention {
   workY?: number;
   /** Panoya yazarken kalemin panodaki yeri (iskelet tuvali). */
   board?: readonly [number, number];
+  /** Konuşulana dönüş (facingOf; −1…1, iskelet yönü): önden çizimde yüz parçaları o yana kayar. 3D figürde yok (gerçekten döner). */
+  facing?: number;
+}
+
+/**
+ * Konuşulana dönme (4 Kas; inceleme: "birbirine değil izleyiciye bakıyorlar", 2014 çekimin 76'sında): sahnede başka biri
+ * varsa kişi ona döner. Önden çizimde yüz parçaları başın içinde o yana kayar (eyes, brows, mouth px; üç çeyrek baş),
+ * baş head px kayıp tilt derece o yana eğilir; 3D figür gerçekten döner (yaw, 90°'nin kesri). Dinleyen tam döner,
+ * konuşan talker kadar (anlatıcı izleyiciye de konuşur). Kendi bakışı olan jestler (işaret, uzatma, klavye, yazı, okuma,
+ * düşünme, gösterme) ve yürüyüş dönüşü yumuşakça söndürür: açık/kapalı geçiş karede sıçrama yapardı.
+ */
+export const FACING = { eyes: 6, brows: 5, mouth: 5, head: 3, tilt: 2, yaw: 0.28, talker: 0.4 } as const;
+const LOOKS_ELSEWHERE = new Set<VectorAnim["type"]>(["point", "give", "typing", "writing", "reading", "think", "show"]);
+
+/** Konuşulana dönüş (−1…1; işareti konuşulanın iskelet yönü, lookDir); kimse yoksa 0. gait: adım genliği (0–1). */
+export function facingOf(anims: VectorAnim[], p: number, dur: number, lookDir: number | undefined, gait: number): number {
+  if (!lookDir) return 0;
+  const weight = (types: (a: VectorAnim) => boolean) => Math.max(0, ...anims.filter(types).map((a) => clamp01(gestureWeight(p, a, dur))));
+  const busy = weight((a) => LOOKS_ELSEWHERE.has(a.type));
+  const talking = weight((a) => a.type === "talk");
+  return lookDir * (1 - (1 - FACING.talker) * talking) * (1 - busy) * (1 - gait);
 }
 
 /** Masa başı işte ellerin kayması (iskelet px): gerçek masa üstüyle standart masa üstü arası, ±DESK_WORK.shift. */
@@ -503,6 +524,13 @@ function rigPose(
   const look = Math.floor(t / 2.5 + r("lk") * 3);
   const glance = random(`${seed}-look-${look}`);
   part("eyes").tx = face.lookX ?? (attention.lookDir && glance < 0.75 ? attention.lookDir * 5 + (glance - 0.375) * 3 : (glance - 0.5) * 8);
+  // Konuşulana dönük baş (FACING): yüz parçaları başın içinde o yana kayar, baş hafifçe o yana eğilir.
+  const facing = attention.facing ?? 0;
+  part("head").tx += FACING.head * facing;
+  part("head").rotate += FACING.tilt * facing;
+  part("eyes").tx += FACING.eyes * facing;
+  part("brows").tx += FACING.brows * facing;
+  part("mouth").tx += FACING.mouth * facing;
 
   // --- kendiliğinden jest: kolu meşgul eden bir animasyon yoksa ara ara anlatır gibi el hareketi
   // Dinleyenin dinlenme pozu (çekim boyunca): serbest, bir eli belde ya da elleri önde kavuşmuş. Bir sıra insanın hepsi
@@ -1684,6 +1712,10 @@ function motionOf(
     voice,
     face,
   };
+  // Konuşulana dönüş: önden çizimde yüz parçaları kayar, 3D figür gerçekten döner (yürürkenki dönüşün üstüne).
+  const facing = facingOf(anims, p, dur, attention.lookDir, gait.amount);
+  if (figure && facing) turn = (turn ?? 0) + FACING.yaw * facing;
+  else attention.facing = facing;
   // Son poz anatomiye kırpılır (anatomy.ts): jestler ve karışımları sınırı aşmamalı; aşan denetimde görünür.
   const { pose, strains } = anatomical(rigPose(anims, p, t, prefix, placed.sitting, layer.expression, gait, layer.flip, attention, dur), false);
   // Konuşma yarıdan fazla girmişken ses varsa şekil koddan çizilir; sessizlikte (X) çizimin kendi ağzı görünür.
@@ -1865,7 +1897,10 @@ function Layer({
   const mouths = useMemo(() => (mouth ? withMouths(drawnSvg, prefix, mouth, mood) : undefined), [drawnSvg, prefix, mouth, mood]);
   const svg = mouths ?? drawnSvg;
   const ids = mouthIds(prefix);
-  const speakCss = mouths && motion.speak ? `#${ids.mouth}{visibility:hidden}#${ids.shape(motion.speak)}{display:inline}` : "";
+  // Konuşan ağız şekli çizimin ağzıyla birlikte yana kayar (konuşulana dönük baş, başını sallama).
+  const mouthTx = motion.pose?.mouth?.tx ?? 0;
+  const shift = mouthTx ? `;transform:translateX(${mouthTx.toFixed(2)}px)` : "";
+  const speakCss = mouths && motion.speak ? `#${ids.mouth}{visibility:hidden}#${ids.shape(motion.speak)}{display:inline${shift}}` : "";
 
   // İskeletli karakterde parça dönüşleri kimlik seçicisiyle uygulanır (dönme noktaları RIG'de sabit).
   const rigCss = pose
