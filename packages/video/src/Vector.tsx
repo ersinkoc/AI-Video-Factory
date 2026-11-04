@@ -38,6 +38,7 @@ import {
 import { useMemo, type CSSProperties } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
+import { visualVector } from "./entrance.ts";
 import { Ambience } from "./Ambience.tsx";
 import { Crowd, crowdFigures, crowdZ, type CrowdFigure } from "./crowd.tsx";
 import { armBeats, BEAT, pulseAt, speechBeats, strokeAt } from "./beats.ts";
@@ -2532,7 +2533,9 @@ export function VectorScene({
     : undefined;
   const overlay = Boolean(visual.overlay);
   const dur = visual.durationInFrames / fps;
-  const model = useMemo(() => shotModel(visual.vector!, assets, lineStyle, width, height, overlay, dur), [visual.vector, assets, lineStyle, width, height, overlay, dur]);
+  // Sahnenin ilk çekiminde katmanlar sırayla belirir (entrance.ts).
+  const vector = useMemo(() => visualVector(visual, assets, fps)!, [visual, assets, fps]);
+  const model = useMemo(() => shotModel(vector, assets, lineStyle, width, height, overlay, dur), [vector, assets, lineStyle, width, height, overlay, dur]);
   const shot = shotFrame(model, { shotId: visual.shotId, frame, fps, durationInFrames: visual.durationInFrames, voice, width, height, insets, overlay });
   const [c0 = "#1d2433", c1 = "#3a4a66", accent = "#ffd84d"] = palette;
   const grain = useMemo(() => textureLayer(texture, `${visual.shotId}-tex`), [texture, visual.shotId]);

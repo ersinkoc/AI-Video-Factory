@@ -13,7 +13,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { Ambience } from "./Ambience.tsx";
-import { captionPages, CROSSFADE } from "./cut.ts";
+import { captionPages, cutsOf, cutStyle, type Cut } from "./cut.ts";
 import { stageFit, VectorScene } from "./Vector.tsx";
 
 export type EpisodeProps = { timeline: Timeline };
@@ -99,13 +99,14 @@ function MathBoard({ url }: { url: string }) {
 }
 
 /**
- * Çekim bir öncekinin üstüne solarak biner. İlk çekim solmaz: video siyahtan açılmasın, ilk kare dolu olsun (Shorts/Reels
- * küçük resmi ve otomatik oynatma ilk kareyi gösterir).
+ * Çekim bir öncekinin üstüne geçişiyle biner (cut.ts cutsOf: sahne içinde çapraz geçiş, sahne değişince silinme, kayma,
+ * daire ya da yakınlaşma). İlk çekimde geçiş yok: video siyahtan açılmasın, ilk kare dolu olsun (Shorts/Reels küçük resmi ve
+ * otomatik oynatma ilk kareyi gösterir).
  */
-function FadeIn({ children, first }: { children: ReactNode; first: boolean }) {
+export function CutIn({ children, cut }: { children: ReactNode; cut?: Cut }) {
   const frame = useCurrentFrame();
-  const opacity = first ? 1 : interpolate(frame, [0, CROSSFADE], [0, 1], { extrapolateRight: "clamp" });
-  return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
+  const q = cut ? interpolate(frame, [0, cut.frames], [0, 1], { extrapolateRight: "clamp", ...(cut.kind === "dissolve" ? {} : { easing: Easing.inOut(Easing.cubic) }) }) : 1;
+  return <AbsoluteFill style={cut ? cutStyle(cut, q) : {}}>{children}</AbsoluteFill>;
 }
 
 function Captions({ captions }: { captions: Timeline["captions"] }) {
@@ -165,15 +166,15 @@ export function EpisodeAudio({ timeline }: EpisodeProps) {
 }
 
 export function Episode({ timeline }: EpisodeProps) {
+  const cuts = useMemo(() => cutsOf(timeline.visuals, timeline.episodeId), [timeline.visuals, timeline.episodeId]);
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
       {timeline.visuals.map((v, i) => {
-        // Son çekim hariç her çekim bir sonrakinin üstüne binmesi için biraz uzatılır.
-        const overlap = i < timeline.visuals.length - 1 ? CROSSFADE : 0;
-        const duration = v.durationInFrames + overlap;
+        // Her çekim bir sonrakinin geçişi boyunca onun altında sürer (son çekim uzamaz).
+        const duration = v.durationInFrames + (cuts[i + 1]?.frames ?? 0);
         return (
           <Sequence key={v.shotId} from={v.fromFrame} durationInFrames={duration} name={v.shotId}>
-            <FadeIn first={i === 0}>
+            <CutIn cut={cuts[i]}>
               {v.kind === "motion_graphic" && v.vector ? (
                 <AbsoluteFill>
                   {/* Atmosfer sahnenin içinde çizilir: yazıların, balonun ve formül tahtasının altında kalır. */}
@@ -193,7 +194,7 @@ export function Episode({ timeline }: EpisodeProps) {
               ) : (
                 <Clip visual={v} />
               )}
-            </FadeIn>
+            </CutIn>
           </Sequence>
         );
       })}

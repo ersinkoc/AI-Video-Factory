@@ -18,6 +18,7 @@ const svg = (id: string, fill = "#000") => ({ id, kind: "prop", svg: `<svg><rect
 /** 30 fps; s1 (0–90, iki çekim), s2 (90–180), s3 (180–240, resim). */
 const base = (): Timeline =>
   ({
+    episodeId: "e1",
     fps: 30,
     width: 1920,
     height: 1080,

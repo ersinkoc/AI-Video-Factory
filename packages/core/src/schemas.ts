@@ -150,6 +150,8 @@ export const TimelineVisual = z.object({
   vector: VectorShot.optional(),
   /** Vektör sahnenin üstünde oynayan saydam klip (Manim tahtası; render klasöründeki yol). */
   overlay: z.string().optional(),
+  /** Sahnenin ilk çekimi (bölümün ilki değil): katmanlar geçişten sonra sırayla belirir (video/src/entrance.ts). */
+  enter: z.boolean().optional(),
   playbackRate: z.number().min(0.5).max(2).default(1),
 });
 

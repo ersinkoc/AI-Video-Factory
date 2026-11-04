@@ -133,7 +133,7 @@ export function buildTimeline(
   const offsets = sceneOffsets(sceneIds, voice);
   const totalMs = shots.reduce((m, s) => Math.max(m, s.endMs), 0);
 
-  const visuals: Timeline["visuals"] = shots.flatMap((shot): Timeline["visuals"] => {
+  const visuals: Timeline["visuals"] = shots.flatMap((shot, i): Timeline["visuals"] => {
     if (shot.vector) {
       const fromFrame = toFrame(shot.startMs);
       return [
@@ -146,6 +146,8 @@ export function buildTimeline(
           ambience: shot.ambience ?? "none",
           vector: shot.vector,
           ...(state.mathBoards?.[shot.id] ? { overlay: assetPath(state.mathBoards[shot.id]!) } : {}),
+          // Sahnenin ilk çekimi (bölümün ilki değil): katmanlar geçişten sonra sırayla belirir (@ys/video entrance.ts).
+          ...(i > 0 && shots[i - 1]!.sceneId !== shot.sceneId ? { enter: true } : {}),
           playbackRate: 1,
         },
       ];

@@ -3,7 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sideAssetId, type Timeline } from "@ys/core";
-import { captionPages, CROSSFADE } from "./cut.ts";
+import { captionPages, cutsOf } from "./cut.ts";
 
 /**
  * Parça parça render önbelleği (4 Kas): yönetmen notuyla yeniden oluşturulan iki sahne için ya da %80'de çöken render'dan
@@ -62,10 +62,12 @@ export async function chunkKeys(timeline: Timeline, ranges: ChunkRange[], public
   const ms = (frame: number) => (frame / timeline.fps) * 1000;
   const pages = timeline.captions.length ? captionPages(timeline.captions) : [];
   const last = timeline.visuals.length - 1;
+  // Episode: her çekim bir sonrakinin geçişi boyunca onun altında uzar (cutsOf); ilk çekime geçiş yok.
+  const cuts = cutsOf(timeline.visuals, timeline.episodeId);
+  const tail = (i: number) => cuts[i + 1]?.frames ?? 0;
   const keys: string[] = [];
   for (const { from, to } of ranges) {
-    // Episode: son çekim hariç her çekim bir sonrakinin altında CROSSFADE kare uzar; ilk çekim solmaz.
-    const shots = timeline.visuals.flatMap((v, i) => (v.fromFrame < to && v.fromFrame + v.durationInFrames + (i < last ? CROSSFADE : 0) > from ? [{ v, first: i === 0, last: i === last }] : []));
+    const shots = timeline.visuals.flatMap((v, i) => (v.fromFrame < to && v.fromFrame + v.durationInFrames + tail(i) > from ? [{ v, first: i === 0, last: i === last, cut: cuts[i] ?? null, tail: tail(i) }] : []));
     const assets: Record<string, unknown> = {};
     const files: Record<string, string> = {};
     for (const { v } of shots) {
@@ -75,7 +77,7 @@ export async function chunkKeys(timeline: Timeline, ranges: ChunkRange[], public
       } else if (v.assetUrl) files[v.assetUrl] = await fileKey(publicDir, v.assetUrl, memo);
       if (v.overlay) files[v.overlay] = await fileKey(publicDir, v.overlay, memo);
     }
-    const span = shots.length ? [Math.min(...shots.map((s) => ms(s.v.fromFrame))), Math.max(...shots.map((s) => ms(s.v.fromFrame + s.v.durationInFrames + CROSSFADE)))] : [ms(from), ms(to)];
+    const span = shots.length ? [Math.min(...shots.map((s) => ms(s.v.fromFrame))), Math.max(...shots.map((s) => ms(s.v.fromFrame + s.v.durationInFrames + s.tail)))] : [ms(from), ms(to)];
     const speech = (timeline.speech ?? []).filter((w) => w.endMs > span[0]! - CHUNK.speechPadMs && w.startMs < span[1]! + CHUNK.speechPadMs);
     const shown = pages.filter((p) => p.startMs < ms(to) && p.startMs + p.durationMs > ms(from));
     keys.push(

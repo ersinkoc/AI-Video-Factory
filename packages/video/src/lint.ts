@@ -1,4 +1,5 @@
 import { RIG, type PlacedLayer, type Timeline, type VectorAnim } from "@ys/core";
+import { visualVector } from "./entrance.ts";
 import { FAST_GESTURES } from "./motion.ts";
 import type { StagingCode } from "./staging.ts";
 import { boxOf, CARD, cameraPoint, faceCorners, rigToCanvas, shotFrame, shotModel, type Motion, type ShotFrame, type ShotModel } from "./Vector.tsx";
@@ -117,7 +118,7 @@ export function lintShot(visual: Visual, assets: Assets, o: { fps?: number; step
   const fps = o.fps ?? 30;
   const step = o.step ?? LINT.step;
   const dur = visual.durationInFrames / fps;
-  const model = shotModel(visual.vector, assets, "outline", 1920, 1080, Boolean(visual.overlay), dur);
+  const model = shotModel(visualVector(visual, assets, fps)!, assets, "outline", 1920, 1080, Boolean(visual.overlay), dur);
   const { spec, safe, placed } = model;
   const shotId = visual.shotId;
   const issues = new Map<string, LintIssue>();

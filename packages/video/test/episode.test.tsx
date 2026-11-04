@@ -68,6 +68,7 @@ const { Episode } = await import("../src/index.ts");
 const { EpisodeAudio } = await import("../src/Episode.tsx");
 const { Ambience } = await import("../src/Ambience.tsx");
 const { Thumbnail } = await import("../src/Thumbnail.tsx");
+const { CROSSFADE, SCENE_CUT } = await import("../src/cut.ts");
 type ThumbnailProps = import("../src/Thumbnail.tsx").ThumbnailProps;
 
 afterEach(() => {
@@ -199,35 +200,49 @@ const shot = (shotId: string, kind: string, extra: object = {}) => ({
 describe("bölüm kompozisyonu", () => {
   const imgTransform = (c: HTMLElement) => (c.querySelector('[data-kind="img"]') as HTMLElement).style.transform;
 
-  it("çekimler sırayla dizilir, sonuncu hariç hepsi geçiş kadar uzar", () => {
+  it("çekimler sırayla dizilir, sonuncu hariç hepsi sonrakinin geçişi kadar uzar: sahne içinde kısa, sahne değişince uzun", () => {
     const c = draw(
       <Episode
         timeline={timeline({
-          visuals: [shot("a", "still_motion", { fromFrame: 0 }), shot("b", "ai_clip", { fromFrame: 100 }), shot("c", "still_motion", { fromFrame: 200 })],
+          visuals: [shot("s1-sh1", "still_motion", { fromFrame: 0 }), shot("s1-sh2", "ai_clip", { fromFrame: 100 }), shot("s2-sh1", "still_motion", { fromFrame: 200 })],
         })}
       />,
     );
     const seq = [...c.querySelectorAll("section")].map((s) => [s.dataset.name, s.dataset.from, s.dataset.duration]);
     expect(seq).toEqual([
-      ["a", "0", "108"],
-      ["b", "100", "108"],
-      ["c", "200", "100"],
+      ["s1-sh1", "0", String(100 + CROSSFADE)],
+      ["s1-sh2", "100", String(100 + SCENE_CUT.frames)],
+      ["s2-sh1", "200", "100"],
     ]);
     expect((c.firstElementChild as HTMLElement).style.backgroundColor).toBe("black");
   });
 
   it("çekim geçişte yumuşakça belirir; ilk çekim solmaz, video siyahtan açılmaz", () => {
     const fade = (frame: number, nth = 1) => {
-      const c = draw(<Episode timeline={timeline({ visuals: [shot("a", "still_motion"), shot("b", "still_motion", { fromFrame: 100 })] })} />, frame);
+      const c = draw(<Episode timeline={timeline({ visuals: [shot("s1-sh1", "still_motion"), shot("s1-sh2", "still_motion", { fromFrame: 100 })] })} />, frame);
       const el = c.querySelectorAll("section")[nth]!.firstElementChild as HTMLElement;
       const o = el.style.opacity;
       cleanup();
-      return Number(o);
+      // Biçem yoksa (ilk çekim, geçiş bitti) tam görünür.
+      return o === "" ? 1 : Number(o);
     };
     expect(fade(0, 0)).toBe(1);
     expect(fade(0)).toBe(0);
     expect(fade(4)).toBeCloseTo(0.5);
     expect(fade(20)).toBe(1);
+  });
+
+  it("sahne değişince gelen çekim silinerek, kayarak, daireyle ya da yakınlaşarak gelir; geçiş bitince biçem kalmaz", () => {
+    const style = (frame: number) => {
+      const c = draw(<Episode timeline={timeline({ visuals: [shot("s1-sh1", "still_motion"), shot("s2-sh1", "still_motion", { fromFrame: 100 })] })} />, frame);
+      const el = c.querySelectorAll("section")[1]!.firstElementChild as HTMLElement;
+      const s = { clip: el.style.clipPath, transform: el.style.transform, opacity: el.style.opacity };
+      cleanup();
+      return s;
+    };
+    const mid = style(SCENE_CUT.frames / 2);
+    expect(mid.clip || mid.transform).not.toBe("");
+    expect(style(SCENE_CUT.frames + 2)).toEqual({ clip: "", transform: "", opacity: "" });
   });
 
   it("durağan kare varsayılan olarak yavaşça yakınlaşır (ken burns)", () => {

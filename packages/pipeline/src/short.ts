@@ -63,7 +63,8 @@ export function shortTimeline(timeline: Timeline, fromMs: number, toMs: number):
     width: SHORT.width,
     height: SHORT.height,
     durationInFrames: to - from,
-    visuals: timeline.visuals.flatMap(clip),
+    // İlk çekim dolu açılır (küçük resim ve otomatik oynatma ilk kareyi gösterir): kurulma girişi yok.
+    visuals: timeline.visuals.flatMap(clip).map((v, i) => (i === 0 ? { ...v, enter: undefined } : v)),
     audio: timeline.audio.filter((a) => a.role === "voice").flatMap(clip),
     captions: words(timeline.captions),
     speech: words(timeline.speech),

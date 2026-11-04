@@ -1,5 +1,6 @@
 import type { Timeline, VectorAnim, VectorCrowd } from "@ys/core";
 import { chantTimes, crowdVoices, stepTimes } from "./crowd-timing.ts";
+import { visualVector } from "./entrance.ts";
 import { GESTURE_RHYTHM } from "./gesture-timing.ts";
 import { KINETIC, kineticLength, revealWindow } from "./kinetic-timing.ts";
 
@@ -33,7 +34,8 @@ export function sfxEvents(timeline: Timeline): SfxEvent[] {
     if (!v.vector) continue;
     const at = (p: number) => Math.round(v.fromFrame + p * v.durationInFrames);
     const span = (a: VectorAnim) => a.end - a.start;
-    for (const layer of v.vector.layers) {
+    // Sahnenin ilk çekiminde beliren nesnelerin sesi de (entrance.ts).
+    for (const layer of visualVector(v, timeline.vectorAssets, timeline.fps)!.layers) {
       for (const a of layer.anims) {
         if (a.type === "pop") out.push({ frame: at(a.start), sound: "pop" });
         if (a.type === "slide_in" || a.type === "spin") out.push({ frame: at(a.start), sound: "whoosh" });

@@ -40,7 +40,7 @@ describe("Short timeline'ı", () => {
     durationInFrames: 100,
     visuals: [
       { shotId: "a", assetUrl: "a.png", kind: "still_motion", fromFrame: 0, durationInFrames: 40 },
-      { shotId: "b", assetUrl: "b.png", kind: "still_motion", fromFrame: 40, durationInFrames: 40 },
+      { shotId: "b", assetUrl: "b.png", kind: "still_motion", fromFrame: 40, durationInFrames: 40, enter: true },
       { shotId: "c", assetUrl: "c.png", kind: "still_motion", fromFrame: 80, durationInFrames: 20 },
     ],
     audio: [
@@ -67,6 +67,9 @@ describe("Short timeline'ı", () => {
       ["b", 5, 40],
     ]);
     expect(s.audio.map((a) => [a.assetUrl, a.fromFrame, a.durationInFrames])).toEqual([["v2", 5, 30]]);
+    // Short dolu açılır: ilk çekimi kurulmaz, sonrakiler kurulur.
+    expect(shortTimeline(tl, 4000, 9000).visuals.map((v) => v.enter)).toEqual([undefined, undefined]);
+    expect(s.visuals.map((v) => v.enter)).toEqual([undefined, true]);
     expect(s.captions).toEqual([
       { text: "içinde", startMs: 500, endMs: 1000 },
       { text: "taşan", startMs: 4400, endMs: 4500 },

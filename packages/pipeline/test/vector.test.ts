@@ -56,13 +56,17 @@ describe("vektör timeline", () => {
       voice: { s1: { key: "v.mp3", mimeType: "audio/mpeg", durationMs: 2000, words: [{ text: "merhaba", startMs: 0, endMs: 2000 }], estimatedTiming: false } },
       shots: [
         { id: "a", sceneId: "s1", kind: "still_motion", startMs: 0, endMs: 2000, description: "", imagePrompt: "", motionPrompt: "", camera: "static", ambience: "dust", vector: spec },
+        { id: "b", sceneId: "s1", kind: "still_motion", startMs: 2000, endMs: 3000, description: "", imagePrompt: "", motionPrompt: "", camera: "static", vector: spec },
+        { id: "c", sceneId: "s2", kind: "still_motion", startMs: 3000, endMs: 4000, description: "", imagePrompt: "", motionPrompt: "", camera: "static", vector: spec },
       ],
       keyframes: {},
     } as EpisodeState;
     const assets = { c1: { id: "c1", kind: "character" as const, svg: "<svg/>", width: 400, height: 800, meta: {} } };
 
     const tl = buildTimeline(state, (k) => k, assets);
-    expect(tl.visuals).toMatchObject([{ shotId: "a", kind: "motion_graphic", assetUrl: "", ambience: "dust", vector: { background: "l1" } }]);
+    expect(tl.visuals[0]).toMatchObject({ shotId: "a", kind: "motion_graphic", assetUrl: "", ambience: "dust", vector: { background: "l1" } });
+    // Sahnenin ilk çekimi (bölümün ilki değil) parça parça kurulur.
+    expect(tl.visuals.map((v) => v.enter)).toEqual([undefined, undefined, true]);
     expect(tl.vectorAssets).toEqual(assets);
     expect(tl.palette).toEqual(["#111111", "#222222", "#ffcc00"]);
   });
