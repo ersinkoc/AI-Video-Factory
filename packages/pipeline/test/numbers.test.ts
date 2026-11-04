@@ -137,6 +137,8 @@ describe("cümlede okunuş", () => {
     );
     // Kısaltma olmayan terimin eki yazarın biçiminde kalır; İngilizce anlatımda Türkçe ek kuralı yok.
     expect(say("C++'ın")).toBe("si pılas pılas'ın");
+    // Sözcük gibi okunan kısaltma açılmaz, harflenmez: küçük harfli sözcük; ek yazarınki.
+    expect(say("COBOL'un ardından NASA, NATO ve MS-DOS'u gördük.")).toBe("kobol'un ardından nasa, nato ve em es dos'u gördük.");
     expect(sayPlan("ABD'ye", { ABD: "Amerika Birleşik Devletleri" }, "en").spoken).toBe("Amerika Birleşik Devletleri'ye");
   });
 

@@ -117,7 +117,7 @@ Rules:
  * numbers.ts), adların okunuşunu sözlük ve telaffuz ajanı verir.
  */
 export const NUMBERS_AND_NAMES =
-  "Write numbers, years, amounts, percentages and ordinals with digits in the narration language's own conventions (Turkish: 1453, 1,5 milyon, 3.000, %75, II. Mehmed, 19. yüzyıl, 1990'larda; never an English decimal point); the voice stage reads them aloud correctly and the subtitles show the digits. No ≈, ~ or × in the narration: write the word. Keep names of people, companies, products and programming languages in their original spelling (C++, JavaScript, Steve Jobs); never translate them or respell them the way they sound.";
+  "Write numbers, years, amounts, percentages and ordinals with digits in the narration language's own conventions (Turkish: 1453, 1,5 milyon, 3.000, %75, II. Mehmed, 19. yüzyıl, 1990'larda; never an English decimal point); the voice stage reads them aloud correctly and the subtitles show the digits. No ≈, ~ or × in the narration: write the word. Keep names of people, companies, products and programming languages in their original spelling (C++, JavaScript, Steve Jobs), and abbreviations as abbreviations (TBMM, ABD, COBOL); never translate, expand or respell them the way they sound: the voice stage decides how each is said.";
 
 export function screenwriter(brief: EpisodeBrief, story: StoryOut, deps?: AgentDeps): Promise<AgentResult<ScriptOut>> {
   const wpm = wordsPerMinute(brief);

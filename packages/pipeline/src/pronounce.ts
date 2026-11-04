@@ -10,8 +10,10 @@ import { attachSuffix, sayAbbreviation, sayNumber } from "./numbers.ts";
  */
 
 /**
- * Yerleşik okunuşlar: dil → yazılış → okunuş. Türkçede yazılışı gibi okunanlar (Pascal, COBOL, Linux değil "linuks")
+ * Yerleşik okunuşlar: dil → yazılış → okunuş. Türkçede yazılışı gibi okunan adlar (Pascal; Linux değil "linuks")
  * yoktur; büyük/küçük harf duyarsız eşleşir, yalnız kelimenin tamamı (ek kesme işaretinden sonra korunur: "C++'ın").
+ * Sözcük gibi okunan büyük harfli kısaltmalar küçük harfli okunuşuyla buradadır (4 Kas, kullanıcı: "COBOL yazınca bir
+ * şey uydurma, kobol demelisin"): büyük harfi ses motoru harf harf okuyabiliyor; açılmaz, harflenmez.
  */
 export const LEXICON: Record<string, Record<string, string>> = {
   tr: {
@@ -93,6 +95,25 @@ export const LEXICON: Record<string, Record<string, string>> = {
     MEB: "Milli Eğitim Bakanlığı",
     THY: "Türk Hava Yolları",
     TCDD: "Türkiye Cumhuriyeti Devlet Demiryolları",
+    // Sözcük gibi okunan kısaltmalar: küçük harfle verilir ki ses motoru heceleyip harflemesin.
+    COBOL: "kobol",
+    FORTRAN: "fortran",
+    ALGOL: "algol",
+    LISP: "lisp",
+    ENIAC: "eniyak",
+    UNIVAC: "yunivak",
+    DOS: "dos",
+    "MS-DOS": "em es dos",
+    BIOS: "bayos",
+    RAM: "ram",
+    ROM: "rom",
+    NASA: "nasa",
+    NATO: "nato",
+    UNESCO: "yunesko",
+    UNICEF: "yunisef",
+    TÜBİTAK: "tübitak",
+    ASELSAN: "aselsan",
+    ODTÜ: "odtü",
     "≈": "yaklaşık",
     "~": "yaklaşık",
   },

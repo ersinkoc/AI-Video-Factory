@@ -22,6 +22,9 @@ describe("telaffuz ajanı", () => {
     expect(params!.options.systemPrompt).toContain("si pılas pılas");
     // Anlatıcının açarak söylediği kısaltma tam adıyla; sayıları kod okur.
     expect(params!.options.systemPrompt).toContain("TBMM → Türkiye Büyük Millet Meclisi");
+    // Sözcük gibi okunan kısaltma uydurulmaz: açılmaz, harflenmez.
+    expect(params!.options.systemPrompt).toContain("COBOL → kobol");
+    expect(params!.options.systemPrompt).toContain("Never invent");
     expect(params!.options.systemPrompt).toContain("Numbers, years, percentages");
     await expect(pronouncer({ language: "en", text: "Gürel", known: [] }, { queryFn })).rejects.toThrow(AgentError);
     expect(await text()).toBe("Narration:\nGürel");
