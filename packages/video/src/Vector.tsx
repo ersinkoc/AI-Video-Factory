@@ -1414,9 +1414,10 @@ export function frameWide(cam: VectorShot["camera"], keep: PlacedLayer[]): Vecto
 
 /**
  * Geniş çekimi doldurma: en çok zoom (yakın çekimin altında), yan pay, en az kazanç; ekranda kafaların üst sınırı,
- * nesnelerin alt sınırı (altyazı bandının üstü) ve kişinin kesilebileceği yer (diz, boyunun alttan %30'u).
+ * nesnelerin alt sınırı (altyazı bandının üstü) ve kişinin kesilebileceği yer (diz, boyunun alttan %30'u); en uzun
+ * kişinin en az tall'u boyundaki yer eşyası tabanından base kadar kesilebilir.
  */
-const FILL = { most: 1.8, margin: 1.2, gain: 1.1, top: 0.08, props: 0.8, knee: 0.3, offCentre: 0.15 } as const;
+const FILL = { most: 1.8, margin: 1.2, gain: 1.1, top: 0.08, props: 0.8, knee: 0.3, offCentre: 0.15, tall: 0.5, base: 0.25 } as const;
 
 /**
  * Geniş çekimde içerik kadrajın küçük bir bölümündeyse kamera ona yaklaşır (yakın çekim sınırının altında): boş
@@ -1439,8 +1440,18 @@ export function fillWide(
   // Üstünde bir şey duran ya da birinin oturduğu mobilya kişi gibi alttan kesilebilir (üst yarısı kalır): masa başındaki
   // kişinin orta planı böyledir; masanın ayağını altyazı bandının üstünde tutmak yaklaşmayı engelliyordu (Bilgisayarlar s4-sh4).
   const surfaces = new Set(content.map((pl) => pl.on));
+  // Kişinin yanında yerde duran uzun eşya (en uzun kişinin en az tall'u: makine, dolap, at) da kişi gibi tabanından en çok
+  // base kadar kesilebilir (4 Kas: bütün kalması gereken yer eşyası 968 geniş çekimin 273'ünde yaklaşmayı kesiyordu;
+  // geniş boş duvar ve zemin incelemenin en sık "empty" notuydu). Küçük eşya ve kişisiz sahnedeki eşya bütün kalır.
+  const tallest = Math.max(0, ...content.filter(person).map((pl) => pl.height));
   const lines = content.map((pl) =>
-    person(pl) ? { y: pl.y - pl.height * FILL.knee, max: 1 } : surfaces.has(pl.index) ? { y: pl.y - pl.height * 0.5, max: 1 } : { y: Math.min(H, pl.y), max: FILL.props },
+    person(pl)
+      ? { y: pl.y - pl.height * FILL.knee, max: 1 }
+      : surfaces.has(pl.index)
+        ? { y: pl.y - pl.height * 0.5, max: 1 }
+        : tallest && pl.grounded && pl.height >= tallest * FILL.tall
+          ? { y: pl.y - pl.height * FILL.base, max: 1 }
+          : { y: Math.min(H, pl.y), max: FILL.props },
   );
   const most = Math.min(FILL.most, W / FILL.margin / (right - left), ...lines.map((l) => ((l.max - FILL.top) * H) / (l.y - top)));
   // Yaklaşmaya değmiyorsa yönetmenin zoom'u kalır; ama içerik kadrajın bir yanına yığılıp öbür yarısı boşsa (Microsoft

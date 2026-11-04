@@ -2171,6 +2171,15 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     const withBox = fillWide({ ...cam, zoomTo: 1.1 }, [man(800), box], isMan)!;
     const z = withBox.cam.zoomTo;
     expect(540 + (950 - withBox.cam.focusY!) * z).toBeLessThanOrEqual(0.8 * 1080 + 0.5);
+    // Kişinin yanındaki uzun makine (boyunun yarısından uzun) kişi gibi tabanından en çok %25 kesilebilir: daha çok
+    // yaklaşılır; kısa sandık ve kişisiz sahnedeki makine bütün kalır.
+    const machine = { ...PL, x: 1150, y: 950, width: 300, height: 420 };
+    const tall = fillWide({ ...cam, zoomTo: 1.1 }, [man(800), machine], isMan)!;
+    const short = fillWide({ ...cam, zoomTo: 1.1 }, [man(800), { ...machine, height: 200, y: 950 }], isMan)!;
+    expect(tall.cam.zoomTo).toBeGreaterThan(short.cam.zoomTo);
+    expect(540 + (950 - 420 * 0.25 - tall.cam.focusY!) * tall.cam.zoomTo).toBeLessThanOrEqual(1080 + 0.5);
+    const empty = fillWide({ ...cam, zoomTo: 1.1 }, [machine], () => false);
+    expect(empty === undefined || 540 + (950 - empty.cam.focusY!) * empty.cam.zoomTo <= 0.8 * 1080 + 0.5).toBe(true);
     // Yakın çekim, boş sahne ve az kazanç: dokunulmaz.
     expect(fillWide({ ...cam, zoomTo: 1.6 }, [man(800)], isMan)).toBeUndefined();
     expect(fillWide(cam, [], isMan)).toBeUndefined();
@@ -2225,8 +2234,11 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     expect(out.cam.zoomTo).toBeGreaterThan(1.25 * 1.1);
     // Masanın üst yarısı kadrajda; tabanı kesilebilir.
     expect(540 + (978 - 298 * 0.5 - out.cam.focusY!) * out.cam.zoomTo).toBeLessThanOrEqual(1080 + 0.5);
-    // Üstünde bir şey yoksa masa küçük nesne gibi bütün kalmalı: yaklaşma değmez.
-    expect(fillWide(cam, [ada, desk], isAda)).toBeUndefined();
+    // Üstünde bir şey yoksa masa uzun yer eşyası gibi yalnız tabanından (en çok %25) kesilir; yine yaklaşılır.
+    const bare = fillWide(cam, [ada, desk], isAda)!;
+    expect(bare.cam.zoomTo).toBeLessThanOrEqual(out.cam.zoomTo);
+    expect(bare.cam.zoomTo).toBeGreaterThan(1.25 * 1.1);
+    expect(540 + (978 - 298 * 0.25 - bare.cam.focusY!) * bare.cam.zoomTo).toBeLessThanOrEqual(1080 + 0.5);
   });
 
   it("yaklaşmaya değmeyen ama bir yana yığılmış içerik yönetmenin zoom'uyla ortalanır (Microsoft s8-sh5)", () => {
