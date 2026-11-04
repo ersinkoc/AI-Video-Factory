@@ -39,7 +39,7 @@ const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
 const { CALLOUT } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -2190,9 +2190,20 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     // Ayaklar tuvalin dibindeyse kadraja giremez: kesim uyluk ortasına çıkar (kafa yine kadrajda).
     const low = { ...man, y: 1078 };
     expect(jointSafe(cam, false, [low], []).focusY).toBe(260);
-    // Bütün görünen yerdeki nesne kesilecekse ve başka çare yoksa kamera olduğu gibi kalır.
+    // Bütün görünen yerdeki nesne kesilecekse ve hiçbir odak ve zoom uymuyorsa kamera olduğu gibi kalır; zoom 1'in altına
+    // inilmez.
     const box = { ...PL, x: 1300, y: 960, width: 100, height: 100 };
     expect(jointSafe(cam, false, [low], [box])).toBe(cam);
+    const wide = { ...cam, zoomFrom: 1, zoomTo: 1.25 };
+    expect(jointSafe(wide, false, [low], [box])).toBe(wide);
+    // Odak yetmiyorsa zoom en az değişiklikle uyan kadrajı arar: 1,8'de ne ayaklar (baş taşar) ne uyluk kesimi (yerdeki
+    // sandık kesilir) uyar; bir adım geri çekilince ayaklar ve baş birlikte girer, itme oranı korunur.
+    const close = { zoomFrom: 1.8, zoomTo: 1.8, panX: 0, focusX: 960, focusY: 700 };
+    const crate = { ...PL, x: 1100, y: 950, width: 100, height: 80 };
+    const pulled = jointSafe(close, true, [man], [crate]);
+    expect(pulled.zoomTo).toBeCloseTo(1.8 / 1.02);
+    expect(pulled.zoomFrom).toBe(pulled.zoomTo);
+    expect(jointSafe(pulled, true, [man], [crate])).toBe(pulled);
     // Zaten bütün kalan nesne kısıt değildir.
     expect(jointSafe(cam, false, [low], [{ ...box, y: 1000 }]).focusY).toBe(260);
     // Uygun kadraj, kadraj dışındaki kişi, zoom 1, kişisiz sahne: dokunulmaz.
@@ -2203,8 +2214,27 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
       [cam, []],
     ] as const)
       expect(jointSafe(c, false, [...people], [])).toBe(c);
-    // Boyu kadraja sığmayan kişi: ne ayak ne uyluk kuralı sağlanır, kamera kalır.
-    expect(jointSafe(cam, false, [{ ...man, y: 1078, height: 1000 }], [])).toBe(cam);
+    // Boyu kadrajdan büyük kişi: bu zoom'da ne ayak ne uyluk kuralı sağlanır; biraz yaklaşınca kesim uyluk ortasına çıkar.
+    const tall = { ...man, y: 1078, height: 1000 };
+    const nearer = jointSafe(cam, false, [tall], []);
+    expect(nearer.zoomTo).toBeGreaterThan(cam.zoomTo);
+    expect(nearer.zoomTo).toBeLessThanOrEqual(cam.zoomTo * 1.25);
+    expect(jointSafe(nearer, false, [tall], [])).toBe(nearer);
+    // Baş tepesi kişiye göre verilebilir: kutunun tepesindeki boşluk kesilebilir.
+    expect(jointSafe(cam, false, [low], [], () => 0.1).focusY).toBe(jointSafe(cam, false, [low], [], 0.1).focusY);
+  });
+
+  it("yakın çekimde de eklem kuralı: başı kadrajda olan ayaktaki kişi bilekten kesilmez; başı bilerek dışarıda kalan yakın çekime dokunulmaz", () => {
+    const man = { ...PL, x: 960, y: 1000, width: 300, height: 600 };
+    const top = () => 0.1;
+    // 1,8 zoom, ortalanmış kadraj 400–1000: ayakkabılar alt kenarda, payı yok.
+    const cam = { zoomFrom: 1.8, zoomTo: 1.8, panX: 0, focusX: 960, focusY: 700 };
+    const fixed = closeJointSafe(cam, [man], [], top);
+    expect(fixed).not.toBe(cam);
+    const bottom = fixed.focusY! + 540 / 1.8;
+    expect(man.y - bottom >= 0.27 * man.height || bottom >= man.y + 0.01 * 600).toBe(true);
+    // Kafa kadrajın üstünde (eller klavyede): kişi sayılmaz, kamera kalır.
+    expect(closeJointSafe({ ...cam, focusY: 850 }, [man], [], top)).toEqual({ ...cam, focusY: 850 });
   });
 
   it("fillWide'ın orta planı baldırdan kesmez: sahnede ayaklar kadraja girer", () => {
