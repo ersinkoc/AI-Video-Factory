@@ -93,7 +93,7 @@ export const WordTiming = z.object({
   text: z.string(),
   startMs: z.number().int().nonnegative(),
   endMs: z.number().int().nonnegative(),
-  /** Seslendirmedeki okunuşu yazılışından farklıysa ("C++" → "si plas plas"): ağız şekilleri ve vurgu bunu izler. */
+  /** Seslendirmedeki okunuşu yazılışından farklıysa ("C++" → "si pılas pılas"): ağız şekilleri ve vurgu bunu izler. */
   say: z.string().optional(),
 });
 export type WordTiming = z.infer<typeof WordTiming>;

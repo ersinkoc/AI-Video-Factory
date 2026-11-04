@@ -19,7 +19,7 @@ describe("telaffuz ajanı", () => {
     await expect(pronouncer({ language: "tr", text: "C++ ve Steve Jobs", known: ["C++", "Java"] }, { queryFn })).rejects.toThrow(AgentError);
     expect(await text()).toBe("Already handled, do not list: C++, Java\n\nNarration:\nC++ ve Steve Jobs");
     expect(params!.options.systemPrompt).toContain('language "tr"');
-    expect(params!.options.systemPrompt).toContain("si plas plas");
+    expect(params!.options.systemPrompt).toContain("si pılas pılas");
     await expect(pronouncer({ language: "en", text: "Gürel", known: [] }, { queryFn })).rejects.toThrow(AgentError);
     expect(await text()).toBe("Narration:\nGürel");
   });
@@ -28,6 +28,6 @@ describe("telaffuz ajanı", () => {
     const schema = toOutputSchema(PronounceOut) as { required: string[] };
     expect(schema.required).toEqual(["terms"]);
     expect(PronounceOut.safeParse({ terms: [{ written: "C++" }] }).success).toBe(false);
-    expect(PronounceOut.parse({ terms: [{ written: "C++", spoken: "si plas plas" }] }).terms).toHaveLength(1);
+    expect(PronounceOut.parse({ terms: [{ written: "C++", spoken: "si pılas pılas" }] }).terms).toHaveLength(1);
   });
 });

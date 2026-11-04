@@ -6,10 +6,10 @@ const tr = LEXICON.tr!;
 const timed = (text: string, step = 300) => text.split(/\s+/).map((t, k) => ({ text: t, startMs: k * step, endMs: k * step + step - 20 }));
 
 describe("seslendirmede yabancı terimlerin okunuşu", () => {
-  it("Türkçe seste C++ 'si plas plas' okunur; ek ve noktalama korunur, harf duyarsız, kelimenin tamamı", () => {
+  it("Türkçe seste C++ 'si pılas pılas' okunur; ek ve noktalama korunur, harf duyarsız, kelimenin tamamı", () => {
     const plan = sayPlan("1985'te C++'ın ilk sürümü çıktı, (C#) sonra geldi. JAVA değil Java'yı; JavaScript ayrı.", tr);
-    expect(plan.spoken).toBe("1985'te si plas plas'ın ilk sürümü çıktı, (si şarp) sonra geldi. cava değil cava'yı; cavaskript ayrı.");
-    expect(plan.used).toEqual({ "C++": "si plas plas", "C#": "si şarp", Java: "cava", JavaScript: "cavaskript" });
+    expect(plan.spoken).toBe("1985'te si pılas pılas'ın ilk sürümü çıktı, (si şarp) sonra geldi. cava değil cava'yı; cavaskript ayrı.");
+    expect(plan.used).toEqual({ "C++": "si pılas pılas", "C#": "si şarp", Java: "cava", JavaScript: "cavaskript" });
     // Kelimenin içinde geçen terim değişmez.
     expect(sayPlan("Javanese Applesauce", tr).spoken).toBe("Javanese Applesauce");
   });
@@ -49,7 +49,7 @@ describe("seslendirmede yabancı terimlerin okunuşu", () => {
       ],
       plan,
     );
-    expect(words[0]).toMatchObject({ text: "C++", startMs: 0, say: "si plas plas" });
+    expect(words[0]).toMatchObject({ text: "C++", startMs: 0, say: "si pılas pılas" });
     expect(words[1]).toMatchObject({ text: "güzel", endMs: 1500 });
     expect(words[0]!.endMs).toBe(words[1]!.startMs);
     // Sağlayıcının metni daha kısa (harfleri normalleştirdi): son kelime son zamana kadar uzar.

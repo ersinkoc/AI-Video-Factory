@@ -555,19 +555,19 @@ describe("seslendirme aşaması", () => {
     const script = { ...SCRIPT, scenes: [scene("s1", "C++ ile Steve Jobs geldi."), scene("s2", "Wozniak da geldi.")] };
     const id = await h.seed(voiced({ script, voiceProviderId: "tts:pinned", pronunciations: { Wozniak: "Vozniyak" } }));
     const state = await h.pipeline.run(id, { only: "voice" });
-    expect(h.gateway.generate.mock.calls.map((c) => c[0].text)).toEqual(["si plas plas ile Stiv Cobs geldi.", "Vozniyak da geldi."]);
+    expect(h.gateway.generate.mock.calls.map((c) => c[0].text)).toEqual(["si pılas pılas ile Stiv Cobs geldi.", "Vozniyak da geldi."]);
     expect(state.pronunciations).toEqual({ Wozniak: "Vozniyak", "Steve Jobs": "Stiv Cobs" });
     const s1 = state.voice!.s1!;
     expect(s1.text).toBe("C++ ile Steve Jobs geldi.");
-    expect(s1.spoken).toBe("si plas plas ile Stiv Cobs geldi.");
+    expect(s1.spoken).toBe("si pılas pılas ile Stiv Cobs geldi.");
     expect(s1.words.map((w) => [w.text, w.say])).toEqual([
-      ["C++", "si plas plas"],
+      ["C++", "si pılas pılas"],
       ["ile", undefined],
       ["Steve", "Stiv"],
       ["Jobs", "Cobs"],
       ["geldi.", undefined],
     ]);
-    expect(h.logs).toContain("  okunuş: C++ → si plas plas, Steve Jobs → Stiv Cobs, Wozniak → Vozniyak");
+    expect(h.logs).toContain("  okunuş: C++ → si pılas pılas, Steve Jobs → Stiv Cobs, Wozniak → Vozniyak");
     expect(callsOf("pronouncer")).toHaveLength(1);
   });
 

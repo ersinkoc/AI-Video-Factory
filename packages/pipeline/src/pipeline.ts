@@ -2357,13 +2357,13 @@ export class EpisodePipeline {
         );
       }
 
-      // Yabancı terimler TTS'e okunuşlarıyla gider ("C++" → "si plas plas"); altyazı yazılışı gösterir.
+      // Yabancı terimler TTS'e okunuşlarıyla gider ("C++" → "si pılas pılas"); altyazı yazılışı gösterir.
       const terms = await this.pronunciations(state, todo);
       const said: Record<string, string> = {};
       for (const scene of todo) {
         const run = this.runOptions(state, "voice", opts.signal, scene.id);
         run.policy = { ...run.policy, allow: [provider] };
-        const plan = sayPlan(scene.narration, terms);
+        const plan = sayPlan(scene.narration, terms, state.input.lang.split("-")[0]);
         Object.assign(said, plan.used);
         const res = await gateway.generate(requestFor(plan.spoken), run);
         state.voiceProviderId = res.providerId;

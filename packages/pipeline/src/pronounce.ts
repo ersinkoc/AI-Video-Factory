@@ -1,9 +1,10 @@
 import type { WordTiming } from "@ys/core";
+import { sayAbbreviation, sayNumber } from "./numbers.ts";
 
 /**
  * Seslendirmede yabancı terimlerin okunuşu (3 Kas, kullanıcı: Gemini TTS Türkçe anlatımın içindeki "C++"yı "si artı
  * artı" diye okudu). Ses motoru her kelimeyi anlatım dilinin yazım kurallarıyla okur: İngilizce ad, kısaltma ve simgeler
- * yanlış çıkar. TTS'e giden metinde bu terimler o dilin harfleriyle okunuşa çevrilir ("C++" → "si plas plas");
+ * yanlış çıkar. TTS'e giden metinde bu terimler o dilin harfleriyle okunuşa çevrilir ("C++" → "si pılas pılas");
  * altyazı özgün yazımı gösterir, ağız şekilleri (vizem) okunuşu izler. Yerleşik sözlük sık terimleri ücretsiz karşılar;
  * kalan adları bölüm başına ucuz bir ajan (pronouncer) ekler.
  */
@@ -14,7 +15,8 @@ import type { WordTiming } from "@ys/core";
  */
 export const LEXICON: Record<string, Record<string, string>> = {
   tr: {
-    "C++": "si plas plas",
+    // Kullanıcının söylediği gibi (4 Kas): Türkçede ünsüz öbeği araya ı alır.
+    "C++": "si pılas pılas",
     "C#": "si şarp",
     "F#": "ef şarp",
     ".NET": "dat net",
@@ -78,6 +80,10 @@ export const LEXICON: Record<string, Record<string, string>> = {
     USB: "yu es bi",
     "Wi-Fi": "vay fay",
     "Silicon Valley": "silikın veli",
+    "3D": "üç de",
+    "2D": "iki de",
+    "≈": "yaklaşık",
+    "~": "yaklaşık",
   },
 };
 
@@ -108,10 +114,12 @@ export interface SayPlan {
 
 /**
  * Metni TTS için okunuşa çevirir. terms: yazılış → okunuş (birden çok kelimelik ad da olur: "Steve Jobs"). En uzun
- * eşleşme önce; eşleşme kelimenin tamamıdır, büyük/küçük harf duyarsız.
+ * eşleşme önce; eşleşme kelimenin tamamıdır, büyük/küçük harf duyarsız. lang "tr" ise sözlükte olmayan sayılar
+ * Türkçe okunur (numbers.ts; "II. Mehmed", "1,5 milyon", "%75"); sözlük önce gelir (ad içindeki farklı okunan numara).
  */
-export function sayPlan(text: string, terms: Record<string, string>): SayPlan {
+export function sayPlan(text: string, terms: Record<string, string>, lang = ""): SayPlan {
   const tokens = text.split(/\s+/).filter(Boolean);
+  const parts = tokens.map(split);
   const keys = Object.entries(terms)
     .map(([written, spoken]) => ({ parts: written.split(/\s+/).filter(Boolean).map((w) => w.toLowerCase()), written, spoken: spoken.trim() }))
     .filter((k) => k.parts.length && k.spoken)
@@ -131,6 +139,12 @@ export function sayPlan(text: string, terms: Record<string, string>): SayPlan {
       }),
     );
     if (!hit) {
+      const num = lang === "tr" ? (sayNumber(parts, i) ?? sayAbbreviation(parts, i)) : undefined;
+      if (num) {
+        groups.push({ written: tokens.slice(i, i + num.take), spoken: num.spoken.split(/\s+/) });
+        i += num.take;
+        continue;
+      }
       groups.push({ written: [tokens[i]!], spoken: [tokens[i]!] });
       i++;
       continue;
@@ -150,7 +164,7 @@ export function sayPlan(text: string, terms: Record<string, string>): SayPlan {
  * Okunuş metninin kelime zamanlarından özgün kelimelerin zamanları. Sağlayıcının kelimeleri okunuş metnini harf harf
  * kapsar; kelime sınırları farklı olsa bile (sağlayıcı noktalamayı ayırabilir) her parçanın zamanı harf konumundan
  * bulunur. Değişen kelimeye okunuşu `say` olarak eklenir (ağız şekilleri onu izler). Okunuşu birden çok kelimeye
- * bölünen tek terim ("C++" → "si plas plas") tek kelime olur; kelime sayısı eşit çok kelimelik ad kelime kelime eşleşir.
+ * bölünen tek terim ("C++" → "si pılas pılas") tek kelime olur; kelime sayısı eşit çok kelimelik ad kelime kelime eşleşir.
  */
 export function restoreWords(words: readonly WordTiming[], plan: SayPlan): WordTiming[] {
   if (!words.length) return [];

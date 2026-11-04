@@ -110,6 +110,15 @@ Rules:
   );
 }
 
+/**
+ * Sayı ve adların yazımı (4 Kas, kullanıcı: "sayısal değerlerin Türkçe ifadesi komik olabiliyor", "C++ si artı artı
+ * değil"). Eskiden "sayıları yazıyla yaz" deniyordu: model "Intel 4004"ü "Dört bin dört", "GPT-2"yi "GPT iki" yazıyor,
+ * altyazı da öyle görünüyordu. Artık rakam dilin kuralıyla yazılır; seslendirme aşaması kodla okur (pipeline
+ * numbers.ts), adların okunuşunu sözlük ve telaffuz ajanı verir.
+ */
+export const NUMBERS_AND_NAMES =
+  "Write numbers, years, amounts, percentages and ordinals with digits in the narration language's own conventions (Turkish: 1453, 1,5 milyon, 3.000, %75, II. Mehmed, 19. yüzyıl, 1990'larda; never an English decimal point); the voice stage reads them aloud correctly and the subtitles show the digits. No ≈, ~ or × in the narration: write the word. Keep names of people, companies, products and programming languages in their original spelling (C++, JavaScript, Steve Jobs); never translate them or respell them the way they sound.";
+
 export function screenwriter(brief: EpisodeBrief, story: StoryOut, deps?: AgentDeps): Promise<AgentResult<ScriptOut>> {
   const wpm = wordsPerMinute(brief);
   const targetWords = Math.round((brief.targetSec / 60) * wpm);
@@ -125,7 +134,7 @@ Rules:
 - Total narration ≈ ${targetWords} words (${wpm} wpm for this voice/language). This is a hard length budget: stay within ±10%. Scenes 20–60 seconds each.
 - Open with the story's hook moment, not a greeting. End every scene with a forward pull (a question, a consequence, a "but") that the next scene answers. Use callbacks to earlier details.
 - No filler ("as we all know", "interestingly"), no repetition of the same fact, rhetorical questions at most once per scene, no calls to subscribe.
-- Narration must be speakable: no brackets, emojis, stage directions or URLs. Spell out numbers.
+- Narration must be speakable: no brackets, emojis, stage directions or URLs. ${NUMBERS_AND_NAMES}
 - visualIntent (English) lists 2–3 concrete visual moments for a simple flat illustration (who is there, what they do, which object matters). location is in English; reuse location names exactly.${lessonsBlock(brief.lessons)}`,
       prompt: `Story:\n${JSON.stringify(story, null, 2)}`,
     },
@@ -152,7 +161,7 @@ Check and fix:
 - Clarity: could a curious 15-year-old follow every step? Define jargon in passing with an image, not a lecture.
 - Pacing: cut repetition and filler; every scene must move the story; each scene ends with a forward pull.
 - Accuracy: remove or soften any claim that is not well established. Never add new facts you are unsure of.
-- Speakability in ${brief.lang}: short sentences, numbers spelled out, no tongue-twisters.
+- Speakability in ${brief.lang}: short sentences, no tongue-twisters. ${NUMBERS_AND_NAMES}
 - Length: keep total narration ≈ ${targetWords} words (±10%).
 Keep scene ids, beatIds and location names unchanged; you may rewrite narration, emotion and visualIntent. notes: the most important problems you fixed, in English, one line each, phrased as general rules a writer should follow next time.${lessonsBlock(brief.lessons)}`,
       prompt: `Story:\n${JSON.stringify(story, null, 2)}\n\nDraft script:\n${JSON.stringify(draft, null, 2)}`,
