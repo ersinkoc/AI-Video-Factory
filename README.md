@@ -170,6 +170,7 @@ Keys and switches live in `.env` (see `.env.example`). Notable ones:
 | `GEMINI_OMNI_VIDEO=1` | Enable Gemini Omni Flash video (the Veo replacement; not yet verified with a real run). |
 | `YS_UPDATE_CHECK=0` | Turn off the Studio's update check. |
 | `YS_RENDER_GL` | Chrome drawing backend for renders. Default `angle` (graphics card; about 40% faster, and needed for 3D figures). `swangle` is software GL for machines without a GPU. A GPU render that crashes is retried once with software GL. |
+| `YS_BROWSER_EXECUTABLE` | Path to a Chrome or Chrome for Testing binary that renders, stills and thumbnails use instead of the Chromium Remotion downloads. Empty uses Remotion's own. Needed where that Chromium hangs at start, as on macOS 26.5 (`browser has disconnected` / `Target closed`); the render error points to this variable then. |
 
 ## Versions and updates
 

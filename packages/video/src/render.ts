@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { makeCancelSignal, openBrowser, renderMedia, renderStill, selectComposition, type CancelSignal, type OpenGlRenderer } from "@remotion/renderer";
-import type { FigureSpec, Timeline } from "@ys/core";
+import { LocalizedError, msg, type FigureSpec, type Timeline } from "@ys/core";
 import { audioKey, chunkKeys, chunkRanges, renderCode } from "./chunks.ts";
 import { runMediaTool } from "./tools.ts";
 
@@ -69,6 +69,35 @@ export const SOFTWARE_GL: OpenGlRenderer = "swangle";
  */
 export function renderGl(env = process.env.YS_RENDER_GL): OpenGlRenderer {
   return GL_BACKENDS.find((g) => g === env) ?? "angle";
+}
+
+/**
+ * Render tarayıcısı (issue #2, 5 Kas: Remotion 4.0.539'un indirdiği chrome-headless-shell 157 macOS 26.5'te açılıyor ama
+ * hiçbir sayfa çizmeden askıda kalıyor, render "browser has disconnected" ile düşüyordu; aynı makinede Chrome for Testing
+ * 149 sorunsuz). `YS_BROWSER_EXECUTABLE` çalışan bir Chrome / Chrome for Testing yolunu gösterirse tarayıcıyı kendisi
+ * açan her Remotion çağrısı onu kullanır; boşsa Remotion'ın kendi tarayıcısı.
+ */
+export function browserExecutable(env = process.env.YS_BROWSER_EXECUTABLE): string | undefined {
+  return env?.trim() || undefined;
+}
+
+/** Tarayıcıyı kendisi açan çağrıya eklenecek alan (yol verilmemişse hiçbir şey: çağrı eskisi gibi). */
+const launch = () => {
+  const path = browserExecutable();
+  return path ? { browserExecutable: path } : {};
+};
+
+/** Tarayıcı açılamadı ya da bağlantısı koptu (sayfanın kendi hatası değil). */
+export const isBrowserFailure = (e: unknown) =>
+  e instanceof Error && /browser has disconnected|Target closed|Session closed|Failed to launch|Navigation failed/i.test(e.message);
+
+/**
+ * Tarayıcı hatası ve özel tarayıcı verilmemiş: hata, nedenini ve `YS_BROWSER_EXECUTABLE`'ı söyleyen mesajla sarılır
+ * (yazılım GL'e yeniden deneme bu durumda ipucu vermiyordu). Öteki hatalar olduğu gibi.
+ */
+export function withBrowserHint(e: unknown): unknown {
+  if (!isBrowserFailure(e) || browserExecutable()) return e;
+  return new LocalizedError(msg("err.render.browser", { error: (e as Error).message.split("\n")[0]! }), { cause: e });
 }
 
 /** Ekran kartı ya da tarayıcı çöktü: yazılım GL ile yeniden denemeye değer. */
@@ -199,10 +228,10 @@ export async function renderEpisode(opts: RenderOptions): Promise<string> {
       try {
         return await withTempDir(tempDir, () => renderOnce({ ...opts, concurrency }, gl));
       } catch (e) {
-        if (attempt >= 1) throw e;
+        if (attempt >= 1) throw withBrowserHint(e);
         if (isMemoryFailure(e)) concurrency = Math.max(1, Math.floor((concurrency ?? defaultConcurrency()) / 2));
         else if (gl !== SOFTWARE_GL && isGpuFailure(e)) gl = SOFTWARE_GL;
-        else if (!isTransientRenderFailure(e)) throw e;
+        else if (!isTransientRenderFailure(e)) throw withBrowserHint(e);
         // split en az bir parça döndürür; "?? ''" yalnız tip için (at() tipte undefined dönebilir).
         /* v8 ignore next */
         opts.onRetry?.((e as Error).message.split("\n").at(-1) ?? "");
@@ -217,7 +246,7 @@ async function renderOnce(opts: RenderOptions, gl: OpenGlRenderer): Promise<stri
   const serveUrl = await bundle({ entryPoint: ENTRY, publicDir });
   const inputProps = { timeline: opts.timeline };
   const chromiumOptions = { gl };
-  const composition = await selectComposition({ serveUrl, id: "Episode", inputProps, chromiumOptions });
+  const composition = await selectComposition({ serveUrl, id: "Episode", inputProps, chromiumOptions, ...launch() });
 
   // Parçalar ve ses izi içerik anahtarıyla önbellekte: anahtarı değişmeyen yeniden render edilmez (chunks.ts).
   const cache = cacheDirOf(opts.outputPath);
@@ -236,7 +265,7 @@ async function renderOnce(opts: RenderOptions, gl: OpenGlRenderer): Promise<stri
   report(0);
 
   if (todo.length || audioTodo) {
-    const browser = await openBrowser("chrome", { chromiumOptions });
+    const browser = await openBrowser("chrome", { chromiumOptions, ...launch() });
     const common = {
       serveUrl,
       inputProps,
@@ -432,7 +461,13 @@ export interface StillsOptions {
  * Bundle bir kez yapılır, kareler sırayla alınır (render'a göre çok hafif).
  */
 export function renderStills(opts: StillsOptions): Promise<Record<string, string>> {
-  return withRenderLock(() => stillsOnce(opts), opts.onWait);
+  return withRenderLock(
+    () =>
+      stillsOnce(opts).catch((e: unknown) => {
+        throw withBrowserHint(e);
+      }),
+    opts.onWait,
+  );
 }
 
 async function stillsOnce(opts: StillsOptions): Promise<Record<string, string>> {
@@ -440,7 +475,7 @@ async function stillsOnce(opts: StillsOptions): Promise<Record<string, string>> 
   const inputProps = { timeline: opts.timeline };
   // Tek tarayıcı bütün kareler için: önceden her kare ayrı Chrome açıyordu (30+ açılış); yükte biri zaman aşımına düşünce
   // tüm aşama düşüyordu.
-  const browser = await openBrowser("chrome", { chromiumOptions: { gl: renderGl() } });
+  const browser = await openBrowser("chrome", { chromiumOptions: { gl: renderGl() }, ...launch() });
   try {
     const composition = await selectComposition({ serveUrl, id: "Episode", inputProps, puppeteerInstance: browser, timeoutInMilliseconds: BROWSER_TIMEOUT_MS });
     const out: Record<string, string> = {};
@@ -485,7 +520,7 @@ export function renderThumbnail(opts: ThumbnailOptions): Promise<string> {
     const serveUrl = await bundle({ entryPoint: ENTRY, publicDir: resolve(opts.publicDir) });
     const inputProps = { timeline: opts.timeline, shotId: opts.shotId, side: opts.side, title: opts.title };
     const chromiumOptions = { gl: renderGl() };
-    const composition = await selectComposition({ serveUrl, id: "Thumbnail", inputProps, chromiumOptions, timeoutInMilliseconds: BROWSER_TIMEOUT_MS });
+    const composition = await selectComposition({ serveUrl, id: "Thumbnail", inputProps, chromiumOptions, timeoutInMilliseconds: BROWSER_TIMEOUT_MS, ...launch() });
     await renderStill({
       serveUrl,
       composition,
@@ -497,6 +532,7 @@ export function renderThumbnail(opts: ThumbnailOptions): Promise<string> {
       jpegQuality: 92,
       chromiumOptions,
       timeoutInMilliseconds: BROWSER_TIMEOUT_MS,
+      ...launch(),
     });
     return opts.output;
   }, opts.onWait);
@@ -516,7 +552,7 @@ export interface FigurePreviewOptions {
 export function renderFigurePreviews(opts: FigurePreviewOptions): Promise<Record<string, string> | undefined> {
   return ifRenderFree(async () => {
     const serveUrl = await bundle({ entryPoint: ENTRY });
-    const browser = await openBrowser("chrome", { chromiumOptions: { gl: renderGl() } });
+    const browser = await openBrowser("chrome", { chromiumOptions: { gl: renderGl() }, ...launch() });
     try {
       const out: Record<string, string> = {};
       for (const [name, figure] of Object.entries(opts.figures)) {

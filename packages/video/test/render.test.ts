@@ -42,7 +42,7 @@ const DIR = mkdtempSync(join(tmpdir(), "ys-render-"));
 const LOCK = join(DIR, "render.lock");
 process.env.YS_RENDER_LOCK = LOCK;
 const mod = await import("../src/render.ts");
-const { renderEpisode, renderStills, renderThumbnail, renderFigurePreviews, withRenderLock, ifRenderFree, isTransientRenderFailure, isGpuFailure, isMemoryFailure, renderGl, assemble, cacheDirOf, keyframesAt, runsOf, split, ENTRY } = mod;
+const { renderEpisode, renderStills, renderThumbnail, renderFigurePreviews, withRenderLock, ifRenderFree, isTransientRenderFailure, isGpuFailure, isMemoryFailure, isBrowserFailure, withBrowserHint, browserExecutable, renderGl, assemble, cacheDirOf, keyframesAt, runsOf, split, ENTRY } = mod;
 
 /** Sahne öneki olan çekimlerden zaman çizelgesi (30 fps); her sahne ayrı render parçası. */
 const make = (scenes: number, frames: number) =>
@@ -413,6 +413,61 @@ describe("çizim arka ucu", () => {
     }
     expect(isGpuFailure(new Error("composition bulunamadı"))).toBe(false);
     expect(isGpuFailure("GPU")).toBe(false);
+  });
+});
+
+describe("render tarayıcısı (YS_BROWSER_EXECUTABLE)", () => {
+  const CHROME = "/opt/chrome-for-testing/chrome";
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("yol verilmemişse ya da boşsa Remotion'ın tarayıcısı; verilmişse kırpılmış yol", () => {
+    expect(browserExecutable(undefined)).toBeUndefined();
+    expect(browserExecutable("  ")).toBeUndefined();
+    expect(browserExecutable(` ${CHROME} `)).toBe(CHROME);
+  });
+
+  it("verilen yol tarayıcıyı kendisi açan her çağrıya geçer: bölüm, kareler, küçük resim, figür önizlemesi", async () => {
+    vi.stubEnv("YS_BROWSER_EXECUTABLE", CHROME);
+    await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4") });
+    expect(remotion.selectComposition).toHaveBeenCalledWith(expect.objectContaining({ id: "Episode", browserExecutable: CHROME }));
+    expect(remotion.openBrowser).toHaveBeenCalledWith("chrome", { chromiumOptions: { gl: "angle" }, browserExecutable: CHROME });
+    // Açık tarayıcıyı kullanan çağrıya yol geçmez.
+    expect(remotion.renderMedia.mock.calls[0]![0]).not.toHaveProperty("browserExecutable");
+    vi.clearAllMocks();
+    remotion.openBrowser.mockResolvedValue(browser);
+    await renderStills({ timeline, publicDir: DIR, frames: { a: 0 }, outDir: mkdtempSync(join(DIR, "stills-")) });
+    expect(remotion.openBrowser).toHaveBeenCalledWith("chrome", { chromiumOptions: { gl: "angle" }, browserExecutable: CHROME });
+    remotion.selectComposition.mockResolvedValue({ id: "Thumbnail", durationInFrames: 101 });
+    await renderThumbnail({ timeline, publicDir: DIR, shotId: "s1", side: "right", title: "B", output: join(DIR, "t.jpg") });
+    expect(remotion.selectComposition).toHaveBeenLastCalledWith(expect.objectContaining({ id: "Thumbnail", browserExecutable: CHROME }));
+    expect(remotion.renderStill).toHaveBeenLastCalledWith(expect.objectContaining({ browserExecutable: CHROME }));
+    remotion.openBrowser.mockClear();
+    await renderFigurePreviews({ figures: { a: { skin: "#fff" } as never }, outDir: DIR });
+    expect(remotion.openBrowser).toHaveBeenCalledWith("chrome", { chromiumOptions: { gl: "angle" }, browserExecutable: CHROME });
+  });
+
+  it("tarayıcı açılamadı ya da koptu: hata YS_BROWSER_EXECUTABLE'ı söyler; yol verilmişse ya da başka hatada olduğu gibi", async () => {
+    vi.stubEnv("YS_BROWSER_EXECUTABLE", "");
+    const gone = new Error("Navigation failed because browser has disconnected!\n    at x");
+    remotion.openBrowser.mockRejectedValue(gone);
+    const err = (await renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4") }).catch((e: unknown) => e)) as Error;
+    expect(err.message).toContain("YS_BROWSER_EXECUTABLE");
+    expect(err.message).toContain("browser has disconnected!)");
+    expect(err.cause).toBe(gone);
+    // Yazılım GL'e yeniden deneme de düşerse ("Target closed") yine ipucu.
+    remotion.openBrowser.mockRejectedValue(new Error("Protocol error (Runtime.callFunctionOn): Target closed."));
+    await expect(renderEpisode({ timeline, publicDir: DIR, outputPath: out("a.mp4") })).rejects.toThrow("YS_BROWSER_EXECUTABLE");
+    expect(remotion.openBrowser).toHaveBeenLastCalledWith("chrome", { chromiumOptions: { gl: "swangle" } });
+    await expect(renderStills({ timeline, publicDir: DIR, frames: { a: 0 }, outDir: DIR })).rejects.toThrow("YS_BROWSER_EXECUTABLE");
+    expect(existsSync(LOCK)).toBe(false);
+    // Özel tarayıcı zaten verilmişse ipucu yok.
+    vi.stubEnv("YS_BROWSER_EXECUTABLE", CHROME);
+    expect(withBrowserHint(gone)).toBe(gone);
+    const other = new Error("composition bulunamadı");
+    vi.stubEnv("YS_BROWSER_EXECUTABLE", "");
+    expect(withBrowserHint(other)).toBe(other);
+    expect(isBrowserFailure("Target closed")).toBe(false);
+    for (const m of ["Failed to launch the browser process!", "Session closed. Most likely the page has been closed."]) expect(isBrowserFailure(new Error(m)), m).toBe(true);
   });
 });
 

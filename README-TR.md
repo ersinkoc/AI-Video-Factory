@@ -170,6 +170,7 @@ Anahtarlar ve ayarlar `.env` dosyasında durur (bkz. `.env.example`). Önemliler
 | `GEMINI_OMNI_VIDEO=1` | Gemini Omni Flash videoyu açar (Veo'nun yerine; henüz gerçek çağrıyla doğrulanmadı). |
 | `YS_UPDATE_CHECK=0` | Stüdyo'nun güncelleme kontrolünü kapatır. |
 | `YS_RENDER_GL` | Render'da Chrome'un çizim arka ucu. Varsayılan `angle` (ekran kartı; yaklaşık %40 daha hızlı, 3D figürler için gerekli). `swangle`, ekran kartı olmayan makineler için yazılım GL'dir. Ekran kartıyla çöken render bir kez yazılım GL ile yeniden denenir. |
+| `YS_BROWSER_EXECUTABLE` | Render, kare ve küçük resim için Remotion'ın indirdiği Chromium yerine kullanılacak Chrome ya da Chrome for Testing yolu. Boşsa Remotion'ınki. O Chromium'un açılışta askıda kaldığı sistemlerde gerekir (macOS 26.5: `browser has disconnected` / `Target closed`); render hatası bu durumda bu değişkeni işaret eder. |
 
 ## Sürümler ve güncelleme
 

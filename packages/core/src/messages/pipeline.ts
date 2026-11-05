@@ -313,6 +313,10 @@ export const PIPELINE_MESSAGES = {
     tr: "Bu bölüm zaten çalışıyor (süreç {pid}, {startedAt}); bitmesini bekle ya da iptal et",
     en: "This episode is already running (process {pid}, {startedAt}); wait for it to finish or cancel it",
   },
+  "err.render.browser": {
+    tr: "Render tarayıcısı açılamadı ya da bağlantısı koptu ({error}). Remotion'ın indirdiği Chromium bu sistemde çalışmıyor olabilir: çalışan bir Chrome ya da Chrome for Testing yolunu YS_BROWSER_EXECUTABLE ile verin.",
+    en: "The render browser could not start or disconnected ({error}). The Chromium that Remotion downloaded may not work on this system: point YS_BROWSER_EXECUTABLE at a working Chrome or Chrome for Testing.",
+  },
   "err.media.probe": { tr: "ffprobe süre okuyamadı: {output}", en: "ffprobe could not read the duration: {output}" },
   "err.media.missing": {
     tr: "{tool} bulunamadı: FFmpeg'i kur ve PATH'e ekle; Stüdyo'yu yeni açılmış bir terminalden başlat",
