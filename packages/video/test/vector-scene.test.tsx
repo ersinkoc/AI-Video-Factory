@@ -40,7 +40,7 @@ const { BURST } = await import("../src/staging.ts");
 const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, STARTLE, exclaimOf, opensMouth, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, MOOD_REST, MOOD_POSE, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, STARTLE, exclaimOf, opensMouth, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -1212,6 +1212,42 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(talker("arm-r").rotate).not.toBe(-30);
     cleanup();
     expect(find((sd) => restPoseOf(sd) === "relaxed")).toBeDefined();
+  });
+
+  it("ifadenin bedeni: endişeli eller önde kenetli ovuşturur, omuzlar kalkık; kızgın kollar kavuşmuş; üzgün çökük; jest yapan ya da konuşan değil", () => {
+    expect(restPoseOf("x", "worried")).toBe("clasped");
+    expect(restPoseOf("x", "angry")).toBe("crossed");
+    expect(restPoseOf("x", "sad")).toBe("slumped");
+    expect(MOOD_REST.happy).toBeUndefined();
+    // Kızgın: arms_crossed'in kolları.
+    const crossed = heroAt(150, { expression: "angry" }).get;
+    const arms = heroAt(150, { anims: [{ type: "arms_crossed" }] }).get;
+    for (const part of ["forearm-l", "forearm-r", "hand-l", "hand-r"]) expect(crossed(part).rotate).toBeCloseTo(arms(part).rotate, 6);
+    cleanup();
+    // Endişeli: eller göbeğin önünde kavuşur, bilekler ters yönde döner, omuzlar kalkar.
+    const worried = heroAt(140, { expression: "worried" }).get;
+    for (const [side, x] of [["l", 194], ["r", 206]] as const) {
+      const [hx, hy] = tip(RIG.pivots[`arm-${side}`], ARM.upper, ARM.reach, worried(`arm-${side}`).rotate, worried(`forearm-${side}`).rotate);
+      expect(hx).toBeCloseTo(x, 0);
+      expect(hy).toBeCloseTo(470, 0);
+    }
+    const wring = Math.sin((140 / 30) * MOOD_POSE.wringHz * 2 * Math.PI) * MOOD_POSE.wring;
+    expect(Math.abs(wring)).toBeGreaterThan(2);
+    expect(worried("hand-l").rotate).toBeCloseTo(wring, 2);
+    expect(worried("hand-r").rotate).toBeCloseTo(-wring, 2);
+    expect(worried("arm-l").ty).toBe(-MOOD_POSE.shoulders);
+    cleanup();
+    // Üzgün: gövde kısalır, baş iner; kendiliğinden el hareketi yok (kollar ifadenin düşüşünde kalır).
+    const neutral = heroAt(150).get;
+    cleanup();
+    const sad = heroAt(150, { expression: "sad" }).get;
+    expect(sad("torso").sy / neutral("torso").sy).toBeCloseTo(MOOD_POSE.slump, 6);
+    expect(sad("head").ty).toBeGreaterThan(neutral("head").ty + MOOD_POSE.head);
+    cleanup();
+    // Konuşan endişeli kişi elleriyle anlatır (kenetli değil).
+    const talking = heroAt(150, { expression: "worried", anims: [{ type: "talk" }] }).get;
+    expect(talking("hand-l").rotate).not.toBe(wring);
+    cleanup();
   });
 
   it("ayakta duruş: taşıyan bacak içe, gevşek bacak dışa ve dizi bükük; üst gövde taşıyan bacağa, baş öbür yana; gevşek dirsek bükük", () => {

@@ -658,7 +658,7 @@ function rigPose(
   // kollar yanda aynı pozda duruyordu (inceleme: "stiff lineup"). Jest yapan, konuşan, bir şey tutan, oturan, yürüyen
   // ya da yandan görünen için yok; pozdaki kişi kendiliğinden el hareketi yapmaz.
   const rest: RestPose =
-    sitting || side || attention.holding || anims.some((a) => ARM_GESTURES.includes(a.type) || a.type === "talk" || a.type === "walk") ? "relaxed" : restPoseOf(seed);
+    sitting || side || attention.holding || anims.some((a) => ARM_GESTURES.includes(a.type) || a.type === "talk" || a.type === "walk") ? "relaxed" : restPoseOf(seed, expression);
   // Kolların serbestliği (0–1): yürüyüş ve kol jesti girdikçe azalır, bitince yavaşça geri gelir. Eskiden açık/kapalı bir
   // koşuldu: yürüyüş durunca ya da jestin penceresi kapanınca yarıdaki kendiliğinden el hareketi tek karede tam güçle
   // beliriyordu (3 Kas denetimi: çekimlerin %30'unda ön kol bir karede 25–70° sıçrıyordu).
@@ -778,6 +778,21 @@ function rigPose(
       part(`forearm-${hand}`).rotate = ik.forearm;
       part(`hand-${hand}`).rotate = 0;
     }
+    if (expression === "worried") {
+      // Endişe: eller birbirini ovuşturur (bilekler ters yönde), omuzlar kalkık.
+      const wring = Math.sin(t * MOOD_POSE.wringHz * 2 * Math.PI) * MOOD_POSE.wring;
+      part("hand-l").rotate = wring;
+      part("hand-r").rotate = -wring;
+      part("arm-l").ty -= MOOD_POSE.shoulders;
+      part("arm-r").ty -= MOOD_POSE.shoulders;
+    }
+  } else if (rest === "crossed") {
+    // Öfke: kollar göğsün altında kavuşmuş (arms_crossed'in pozu).
+    for (const [k, field, v] of CROSSED) part(k)[field] = v;
+  } else if (rest === "slumped") {
+    // Üzüntü: üst gövde çöker (kalçadan kısalır), baş düşer, kollar sarkık kalır; kendiliğinden el hareketi yok.
+    part("torso").sy *= MOOD_POSE.slump;
+    part("head").ty += MOOD_POSE.head;
   }
 
   // --- Claude'un istediği jestler: hazırlık + taşmayla girer (gestureWeight), ön kol üst kolu geriden izler.
@@ -1263,13 +1278,25 @@ const SIT_THIGH = 0.35;
 export const STANCE = { inward: 1.5, out: 4, knee: 8, torso: 2.2, head: 3, elbow: 15, every: 9, spread: 5, shift: 0.9 } as const;
 
 /** Dinleyenin çekim boyunca dinlenme pozu. */
-export type RestPose = "relaxed" | "hip" | "clasped";
+export type RestPose = "relaxed" | "hip" | "clasped" | "crossed" | "slumped";
+
+/**
+ * İfadenin bedeni (5 Kas: endişeli, üzgün, kızgın kişi kolunda jest yokken tohumdan rastgele bir dinleme pozunda, çoğu kez
+ * kollar serbest ve ara ara anlatır gibi el hareketiyle duruyordu; geniş çekimde yüz küçükken duygu hiç okunmuyordu):
+ * jest, konuşma, yürüyüş, oturma ya da elde nesne yoksa endişeli eller önde kenetli ve ovuşturarak, omuzlar kalkık; kızgın
+ * kollar kavuşmuş; üzgün çökük (kendiliğinden el hareketi yapmaz).
+ */
+export const MOOD_REST: Partial<Record<VectorExpression, RestPose>> = { worried: "clasped", angry: "crossed", sad: "slumped" };
+/** wring: ovuşturan bileklerin genliği (°) ve sıklığı (Hz); shoulders: endişede omuz kalkışı (px); slump: üzüntüde gövdenin kısalması, head: başın inişi (px). */
+export const MOOD_POSE = { wring: 9, wringHz: 1.1, shoulders: 4, slump: 0.965, head: 5 } as const;
 
 /** Dinlenme pozu oranları (serbest, bel, kavuşmuş) ve kavuşan ellerin yüksekliği (iskelet y: göbek). */
 const REST = { hip: 0.25, clasped: 0.3, clasp: 470 } as const;
 
-/** Karakterin (çekim + katman tohumu) dinlenme pozu. */
-export function restPoseOf(seed: string): RestPose {
+/** Karakterin (çekim + katman tohumu) dinlenme pozu; ifadenin bedeni varsa o (MOOD_REST). */
+export function restPoseOf(seed: string, expression?: VectorExpression): RestPose {
+  const mood = expression && MOOD_REST[expression];
+  if (mood) return mood;
   const x = random(`${seed}-rest`);
   return x < REST.hip ? "hip" : x < REST.hip + REST.clasped ? "clasped" : "relaxed";
 }
