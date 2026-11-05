@@ -914,11 +914,13 @@ describe("anlatılan eylem", () => {
     agents();
     // Baş sallama eklenen plan yüzü kadrajdan taşırıyormuş gibi: eklenmez.
     lint.shot.mockImplementation((v) => (JSON.stringify(v.vector).includes('"nod"') ? [{ code: "face_cut", shotId: v.shotId, detail: "x", replan: true }] : []));
-    const id = await keyframeReady(h, { qa: false }, { shots });
+    // Duygu yüz ifadesidir: denetimden bağımsız uygulanır.
+    const id = await keyframeReady(h, { qa: false }, { shots: [...shots, shot("s1-sh4", 3000, "Rider waits, worried.", [])] });
     const state = await h.pipeline.run(id, { only: "keyframes" });
     // Genel anlatma jesti aynı aralıkta yazmaya döner.
-    expect(animsOf(state)).toEqual([[["typing", 0.2, 0.9]], [["talk", 0, 1]], []]);
-    expect(h.logs).toContain("  1 çekimde açıklamada anlatılan eylem kişiye jest olarak verildi");
+    expect(animsOf(state)).toEqual([[["typing", 0.2, 0.9]], [["talk", 0, 1]], [], []]);
+    expect(state.shots!.map((s) => s.vector!.layers[0]!.expression)).toEqual([undefined, undefined, undefined, "worried"]);
+    expect(h.logs).toContain("  2 çekimde açıklamada anlatılan eylem ya da duygu kişiye jest ya da yüz ifadesi olarak verildi");
     expect(state.done.keyframes).toBeDefined();
   });
 

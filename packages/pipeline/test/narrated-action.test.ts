@@ -1,6 +1,6 @@
 import { VectorShot } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { addsNoDefect, NARRATED, narratedActions, withNarratedActions } from "../src/narrated-action.ts";
+import { addsNoDefect, NARRATED, narratedActions, narratedMoods, withNarratedActions, withNarratedMoods } from "../src/narrated-action.ts";
 
 const CAST = [
   { id: "c1", name: "Charles Babbage", kind: "person" },
@@ -90,6 +90,61 @@ describe("anlatılan eylemin öznesi", () => {
     expect(who("The clock is reading four.", "c1")).toEqual({});
     expect(who("Babbage pores over the letter.", "c1")).toEqual({ c1: "reading" });
     expect(who("Babbage points to the gear.", "c1")).toEqual({ c1: "point" });
+  });
+});
+
+describe("anlatılan tepkiler", () => {
+  it("tepki fiilleri var olan jestlere: omuz silkme, sevinç, alkış, el sallama, irkilme, kol kavuşturma, eller belde, gösterme, düşünme", () => {
+    expect(who("Babbage shrugs.", "c1")).toEqual({ c1: "shrug" });
+    expect(who("Clement cheers as the engine runs.", "c2")).toEqual({ c2: "cheer" });
+    expect(who("Babbage pumps his fist.", "c1")).toEqual({ c1: "cheer" });
+    expect(who("Babbage claps.", "c1")).toEqual({ c1: "clap" });
+    expect(who("Babbage waves to the crowd.", "c1")).toEqual({ c1: "wave" });
+    expect(who("Babbage recoils.", "c1")).toEqual({ c1: "surprised" });
+    expect(who("Babbage steps back from the boiler.", "c1")).toEqual({ c1: "surprised" });
+    expect(who("Babbage holds up the gear.", "c1")).toEqual({ c1: "show" });
+    expect(who("Clement presents the plan.", "c2")).toEqual({ c2: "show" });
+    expect(who("Babbage ponders the design.", "c1")).toEqual({ c1: "think" });
+    // Duruş öbekleri: "stands with" atlanır, iyelik ad değil öbeğin parçası.
+    expect(who("Babbage stands with arms crossed.", "c1")).toEqual({ c1: "arms_crossed" });
+    expect(who("Clement crosses his arms.", "c2")).toEqual({ c2: "arms_crossed" });
+    expect(who("Babbage puts his hands on his hips.", "c1")).toEqual({ c1: "hands_on_hips" });
+    expect(who("Clement stands with hands on hips.", "c2")).toEqual({ c2: "hands_on_hips" });
+    // Ad olarak: dalgalar, düşünen makine.
+    expect(who("Babbage watches the waves of light.", "c1")).toEqual({});
+    expect(who("Babbage beside a thinking machine.", "c1")).toEqual({});
+  });
+});
+
+describe("anlatılan duygu", () => {
+  const moods = (description: string, ...assets: string[]) => {
+    const s = spec(...assets.map((a) => layer(a)));
+    return Object.fromEntries([...narratedMoods(description, s, CAST)].map(([i, m]) => [assets[i], m]));
+  };
+
+  it("duygu sözcüğü önündeki ya da ardındaki kişiye; bağ fiili atlanır; kişi başına ilki", () => {
+    expect(moods("Babbage looks worried.", "c1", "c2")).toEqual({ c1: "worried" });
+    expect(moods("A worried Babbage and a proud Clement.", "c1", "c2")).toEqual({ c1: "worried", c2: "happy" });
+    expect(moods("Babbage, angry, slams the desk.", "c1")).toEqual({ c1: "angry" });
+    expect(moods("Babbage looks puzzled, then thoughtful.", "c1")).toEqual({ c1: "thinking" });
+    expect(moods("Clement shouts at the machine.", "c2")).toEqual({ c2: "angry" });
+    // Çekimde olmayan kişi.
+    expect(moods("Clement looks worried.", "c1")).toEqual({});
+  });
+
+  it("cümlede kimse anılmıyorsa tek kişilik çekimin kişisi; adı geçen birinin yanındaki adsız kişi değil; yadsınan duygu yok", () => {
+    expect(moods("Close on a sad face.", "c1")).toEqual({ c1: "sad" });
+    expect(moods("Close on a sad face.", "c1", "c2")).toEqual({});
+    expect(moods("Babbage smiles at the worried Mayor.", "c1")).toEqual({ c1: "happy" });
+    expect(moods("Babbage is no longer smiling.", "c1")).toEqual({});
+    expect(moods("Babbage isn't worried.", "c1")).toEqual({});
+  });
+
+  it("ifade açıklamanın duygusu olur; aynıysa ya da duygu yoksa plan değişmez", () => {
+    const s = spec(layer("c1", [], { expression: "happy" }), layer("c2"));
+    expect(withNarratedMoods(s, "Babbage looks worried.", CAST)!.layers.map((l) => l.expression)).toEqual(["worried", undefined]);
+    expect(withNarratedMoods(s, "Babbage smiles.", CAST)).toBeUndefined();
+    expect(withNarratedMoods(s, "Babbage waits.", CAST)).toBeUndefined();
   });
 });
 

@@ -40,7 +40,7 @@ const { BURST } = await import("../src/staging.ts");
 const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -1709,6 +1709,35 @@ describe("vektör sahne: konuşma balonu", () => {
     const f = shotFrame(held, { shotId: "s1", frame: 150, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false });
     const [at] = [f.inset!.at];
     expect(overlap(f.bubbles[0]!.box, { x: at[0] - CALLOUT.r, y: at[1] - CALLOUT.r, w: 2 * CALLOUT.r, h: 2 * CALLOUT.r })).toBe(0);
+  });
+
+  it("geniş çekim duvardaki nesneyi de kenarda kesmez: kamera onu da kadraja alır", () => {
+    // 5 Kas: kadrajda tutulanlar yalnız kişiler ve yerde ya da elde duran nesnelerdi; duvardaki takvim, saat, pano
+    // inceleme anında kenarda kesik kalıyordu (mevcut çekimlerde 38).
+    const chart = asset("chart", "prop", '<svg viewBox="0 0 100 100"><rect id="chart" width="100" height="100" fill="#3366ff"/></svg>', 100, 100, { realHeight: 0.6 });
+    const m = shotModel(
+      VectorShot.parse({
+        layers: [
+          { asset: "hero", x: 700, depth: 0.5 },
+          { asset: "ada", x: 1300, depth: 0.5, anims: [{ type: "walk", start: 0.1, end: 0.6, toX: 1100 }] },
+          { asset: "chart", x: 1790, y: 420 },
+        ],
+        camera: { zoomFrom: 1.2, zoomTo: 1.4, focusX: 960, focusY: 540 },
+      }),
+      { ...ASSETS, chart },
+      "outline",
+      1920,
+      1080,
+      false,
+      6,
+    );
+    const pl = m.placed.find((p) => p.index === 2)!;
+    expect(m.keep.map((p) => p.index)).toContain(2);
+    for (const k of [0, 1]) {
+      const v = viewAt(m.cam, k, m.centre);
+      expect(v.x0 + v.w).toBeGreaterThanOrEqual(pl.x + pl.width / 2 - 1);
+      expect(v.y0).toBeLessThanOrEqual(pl.y - pl.height + 1);
+    }
   });
 
   it("büyütme balonu çekim boyunca yerinde durur: kamera yaklaşırken ve biri yürüyerek gelirken köşe değiştirmez", () => {

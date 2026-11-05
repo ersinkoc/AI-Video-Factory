@@ -3043,11 +3043,14 @@ export function shotModel(
       })()
     : undefined;
   const moving = (i: number) => movingLayer(spec, i);
-  // Geniş çekimde kadrajda kalacaklar: karakterler ve sahnedeki küçük nesneler; sahneye giren (yürüyen, kayan) ve set eşyası hariç.
+  // Geniş çekimde kadrajda kalacaklar: karakterler ve sahnedeki küçük nesneler (yerde, elde, masada, duvarda ya da havada);
+  // sahneye giren (yürüyen, kayan) ve set eşyası hariç. 5 Kas: duvar ve hava nesneleri sayılmıyordu; mevcut çekimlerde 38'i
+  // (takvim, saat, pano, tabela, web sayfası) inceleme anında kadraj kenarında kesikti, notu olanların %64'ünde inceleme de
+  // "kesik" diyordu.
   const keep = framing.filter((pl) => {
     const layer = spec.layers[pl.index]!;
     if (moving(pl.index)) return false;
-    return safe[layer.asset]!.kind === "character" || ((pl.grounded || pl.heldBy !== undefined) && pl.width < W * 0.4);
+    return safe[layer.asset]!.kind === "character" || pl.width < W * 0.4;
   });
   const { cam, centre, subject } = ((): { cam: VectorShot["camera"]; centre: boolean; subject?: number } => {
     const isPerson = (pl: PlacedLayer) => safe[spec.layers[pl.index]!.asset]!.kind === "character";

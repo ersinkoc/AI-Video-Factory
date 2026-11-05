@@ -190,8 +190,8 @@ export const PIPELINE_MESSAGES = {
     en: "⚠ animation check could not run, continuing without it: {error}",
   },
   "log.shots.actions": {
-    tr: "  {n} çekimde açıklamada anlatılan eylem kişiye jest olarak verildi",
-    en: "  {n} shots got the action their description narrates as a gesture",
+    tr: "  {n} çekimde açıklamada anlatılan eylem ya da duygu kişiye jest ya da yüz ifadesi olarak verildi",
+    en: "  {n} shots got the action or emotion their description narrates as a gesture or facial expression",
   },
   "log.shots.actionsFailed": {
     tr: "⚠ anlatılan eylemler jestlere çevrilemedi, plan olduğu gibi sürüyor: {error}",

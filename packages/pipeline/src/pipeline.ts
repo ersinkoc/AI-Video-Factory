@@ -133,7 +133,7 @@ import { buildTimeline, clipSeconds, resolveShotTimes, sceneOffsets, toSrt } fro
 import { assignReverseViews, reverseCandidates, varyShotSizes } from "./variety.ts";
 import { withKey } from "./key-prop.ts";
 import { nameTags } from "./name-tags.ts";
-import { addsNoDefect, withNarratedActions } from "./narrated-action.ts";
+import { addsNoDefect, withNarratedActions, withNarratedMoods } from "./narrated-action.ts";
 import { looksLikeObject } from "./cast-kind.ts";
 import type { EpisodeReview } from "./state.ts";
 
@@ -1672,8 +1672,11 @@ export class EpisodePipeline {
       let n = 0;
       for (const v of timeline.visuals.filter((x) => x.vector)) {
         const shot = state.shots!.find((s) => s.id === v.shotId)!;
-        const next = withNarratedActions(v.vector!, shot.description, state.cast!.characters, v.durationInFrames / timeline.fps);
-        if (!next || !addsNoDefect(lint(v), lint({ ...v, vector: next }))) continue;
+        const acted = withNarratedActions(v.vector!, shot.description, state.cast!.characters, v.durationInFrames / timeline.fps);
+        // Duygu yüz ifadesidir, sahnelemeyi değiştirmez: eylem denetimden geçmese de uygulanır.
+        const base = acted && addsNoDefect(lint(v), lint({ ...v, vector: acted })) ? acted : v.vector!;
+        const next = withNarratedMoods(base, shot.description, state.cast!.characters) ?? (base === v.vector ? undefined : base);
+        if (!next) continue;
         shot.vector = next;
         n++;
       }
