@@ -2180,8 +2180,9 @@ function Layer({
   const face = useMemo(() => {
     if (!rect || !layer.screen) return undefined;
     const box = screenBox(asset.svg, rect, w, h);
-    return { box, svg: screenSvg(layer.screen, box.w, box.h, { fill: rect.fill, rx: rect.rx * box.k, person, prefix: `${prefix}s-` }) };
-  }, [rect, layer.screen, asset.svg, w, h, person, prefix]);
+    // Yazı karede okunur boyda kalsın: ekran kameranın en büyük yaklaşmasıyla görünür (zoom).
+    return { box, svg: screenSvg(layer.screen, box.w, box.h, { fill: rect.fill, rx: rect.rx * box.k, person, prefix: `${prefix}s-`, scale: zoom }) };
+  }, [rect, layer.screen, asset.svg, w, h, person, prefix, zoom]);
   const { tr, pose } = motion;
   // 3D figür: SVG yerine three.js kuklası (yürürken kendisi yana döner). WebGL açılamazsa SVG pozuyla birlikte yedek
   // olarak gösterilir.

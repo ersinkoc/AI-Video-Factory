@@ -1,6 +1,6 @@
 import { VectorAsset, VectorScreen } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { luminance, SCREEN_LINES, screenBox, screenFor, screenOf, screenSvg } from "../src/screen.ts";
+import { luminance, SCREEN_LINES, SCREEN_READ, screenBox, screenFor, screenOf, screenSvg } from "../src/screen.ts";
 
 // Monitör: kasa (dış dikdörtgen), ekran (içinde, koyu), altta ayak.
 const MONITOR = `<svg viewBox="0 0 200 180"><rect x="0" y="0" width="200" height="140" rx="10" fill="#ddd"/><rect x="20" y="15" width="160" height="105" rx="6" fill="#1b2430"/><rect x="40" y="30" width="20" height="10" fill="#fff"/><rect x="80" y="140" width="40" height="40" fill="#999"/></svg>`;
@@ -56,7 +56,8 @@ describe("ekranın bulunması", () => {
 describe("ekranın içeriği", () => {
   const o = { prefix: "p-" };
   it("kod: koyu zemin, satır numarası, dize/sayı/yorum/anahtar sözcük renkleri, girinti korunur; başlık dosya sekmesi", () => {
-    const svg = screenSvg(parse({ kind: "code", title: "app.py", lines: ['def f(x):', '    return "a" + 42 # yorum', "x = 'b'"] }), 400, 300, o);
+    // Kamera iki kat yaklaşık: satır kesilmeden küçülür.
+    const svg = screenSvg(parse({ kind: "code", title: "app.py", lines: ['def f(x):', '    return "a" + 42 # yorum', "x = 'b'"] }), 400, 300, { ...o, scale: 2 });
     expect(svg).toContain('fill="#1e2130"');
     expect(svg).toContain(">app.py<");
     expect(svg).toContain('<tspan fill="#c792ea">def</tspan>');
@@ -96,14 +97,47 @@ describe("ekranın içeriği", () => {
     expect(screenSvg(parse({ lines: ["Not"] }), 400, 250, o)).toContain('fill="#f5f3ee"/>');
   });
 
-  it("uzun satır önce küçülür, sonra kesilir; en çok SCREEN_LINES satır; yazı kaçışlanır; köşeler ekranın yuvarlamasıyla", () => {
+  it("uzun satır sözcük sınırından sarılır; sarılamayan önce okunur boya kadar küçülür, sonra okunur boyda kesilir", () => {
+    const size = (s: string) => Number(/<text[^>]*font-size="([\d.]+)"[^>]*text-anchor/.exec(s)![1]);
+    const rows = (s: string) => [...s.matchAll(/text-anchor="middle"[^>]*>([^<]*)</g)].map((m) => m[1]);
     const short = screenSvg(parse({ lines: ["kısa"] }), 400, 200, o);
     const long = screenSvg(parse({ lines: ["biraz daha uzun bir satır"] }), 400, 200, o);
-    const size = (s: string) => Number(/<text[^>]*font-size="([\d.]+)"[^>]*text-anchor/.exec(s)![1]);
-    expect(size(long)).toBeLessThan(size(short));
+    expect(rows(long)).toEqual(["biraz daha uzun bir", "satır"]);
+    expect(size(long)).toBe(size(short));
+    // Tek sözcük sarılamaz: okunur boyun (SCREEN_READ) üstünde sığdığı boya küçülür, kesilmez.
+    const word = screenSvg(parse({ lines: ["x".repeat(30)] }), 400, 200, o);
+    expect(size(word)).toBeLessThan(size(short));
+    expect(size(word)).toBeGreaterThanOrEqual(SCREEN_READ * 0.95);
+    expect(word).not.toContain("…");
+    // Sığması için okunmaz boy gerekirse okunur boyda kesilir.
     const huge = screenSvg(parse({ lines: ["x".repeat(300)] }), 400, 200, o);
     expect(huge).toContain("…</text>");
-    const many = screenSvg(parse({ lines: Array.from({ length: 9 }, (_, k) => `satır ${k}`) }), 400, 200, o);
+    expect(size(huge)).toBe(SCREEN_READ);
+    // Kamera yaklaştıkça (scale) ekran px'inde daha küçük yazı da karede okunur: kesmeden küçülür.
+    expect(screenSvg(parse({ lines: ["x".repeat(50)] }), 400, 200, o)).toContain("…");
+    expect(screenSvg(parse({ lines: ["x".repeat(50)] }), 400, 200, { ...o, scale: 2 })).not.toContain("…");
+    // Yalnız boşluktan oluşan uzun satır boş kalır.
+    expect(rows(screenSvg(parse({ lines: [" ".repeat(80)] }), 400, 200, o))).toEqual([""]);
+  });
+
+  it("satırlar okunur boyda sığmıyorsa azalır: sohbette en yeni mesajlar (sıraları korunur), kodda ilk satırlar", () => {
+    const chat = screenSvg(parse({ kind: "chat", lines: ["m1", "m2", "m3", "m4", "m5", "m6"] }), 300, 200, o);
+    expect([...chat.matchAll(/>(m\d)</g)].map((m) => m[1])).toEqual(["m4", "m5", "m6"]);
+    // m4 dördüncü mesaj: sağda (yeşil), m5 solda; sırayla.
+    expect(chat.match(/fill="#d6f5d1"/g)).toHaveLength(2);
+    expect(chat.match(/fill="#ffffff" stroke/g)).toHaveLength(1);
+    const six = ["a = 1", "b = 2", "c = 3", "d = 4", "e = 5", "f = 6"];
+    const lettersOf = (s: string) => [...s.matchAll(/preserve">([a-f]) /g)].map((m) => m[1]);
+    expect(lettersOf(screenSvg(parse({ kind: "code", title: "x.py", lines: six }), 400, 230, o))).toEqual(["a", "b", "c", "d", "e"]);
+    // Karede okunur boya hiç varamayan ekranda satır atılmaz: en büyük boyda sığmayan altı satır bir adım küçülür.
+    expect(lettersOf(screenSvg(parse({ kind: "code", lines: six }), 300, 120, o))).toEqual(["a", "b", "c", "d", "e", "f"]);
+    // Sarılınca sığmayan başlık okunur boya varamıyorsa kesilmez, tek satıra küçülür.
+    const sign = screenSvg(parse({ title: "Amjad Masad özür diledi", lines: ["x"] }), 200, 80, o);
+    expect(sign).toContain('font-weight="800" text-anchor="middle" font-family="Inter, \'Noto Sans\', \'Segoe UI\', sans-serif">Amjad Masad özür diledi<');
+  });
+
+  it("en çok SCREEN_LINES satır; yazı kaçışlanır; köşeler ekranın yuvarlamasıyla", () => {
+    const many = screenSvg(parse({ lines: Array.from({ length: 9 }, (_, k) => `satır ${k}`) }), 400, 400, o);
     expect(many.match(/>satır \d</g)).toHaveLength(SCREEN_LINES);
     expect(screenSvg(parse({ title: 'a < b & "c"', lines: [] }), 400, 200, o)).toContain("a &lt; b &amp; &quot;c&quot;");
     expect(screenSvg(parse({ lines: [] }), 400, 200, { ...o, rx: 500 })).toContain('rx="50.0"');

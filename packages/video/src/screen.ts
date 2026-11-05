@@ -153,8 +153,14 @@ export function luminance(color: string): number {
   return (0.2126 * rgb[0]! + 0.7152 * rgb[1]! + 0.0722 * rgb[2]!) / 255;
 }
 
-/** Uzun satırda yazı önce bu kata kadar küçülür, sonra kesilir. */
+/** Uzun başlık (tek satır) önce bu kata kadar küçülür, sonra kesilir. */
 export const SCREEN_SHRINK = 0.55;
+
+/**
+ * Ekran yazısının karedeki en küçük boyu (1080p px; 5 Kas inceleme: 58 çekimin 26'sında "ekran yazısı minicik, kesik":
+ * gerçek boydaki dizüstünde 4–6 satırın her biri birkaç px kalıyordu). Ekran küçükse satır azaltılır, kalanlar büyür.
+ */
+export const SCREEN_READ = 22;
 
 /** Satırların hepsinin sığdığı ortak yazı boyu: en çok size, en az size × SCREEN_SHRINK (karakter genişliği ~ boyun char katı). */
 function shared(texts: string[], width: number, size: number, char: number): number {
@@ -162,11 +168,75 @@ function shared(texts: string[], width: number, size: number, char: number): num
   return Math.max(size * SCREEN_SHRINK, Math.min(size, width / (longest * char)));
 }
 
-/** Satır genişliğe sığmıyorsa sonu "…" ile kesilir (karakter genişliği yaklaşık: yazı boyunun char katı). */
+/**
+ * Satır genişliğe sığmıyorsa sonu "…" ile kesilir (karakter genişliği yaklaşık: yazı boyunun char katı). Pay: boy tam
+ * sığacak gibi hesaplandığında 19,9999 karakter 19'a yuvarlanıp son harf kesiliyordu ("veritabani: kayi…").
+ */
 function fit(text: string, width: number, size: number, char: number): string {
-  const max = Math.max(1, Math.floor(width / (size * char)));
+  const max = Math.max(1, Math.floor(width / (size * char) + 1e-6));
   return text.length <= max ? text : `${text.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
 }
+
+/** Satırı sözcük sınırından en çok iki satıra böler; ikinciye de sığmayan (ya da tek uzun sözcük) "…" ile kesilir. */
+function wrap(text: string, width: number, size: number, char: number): string[] {
+  const cap = Math.max(1, Math.floor(width / (size * char) + 1e-6));
+  if (text.length <= cap) return [text];
+  const words = text.split(/\s+/).filter(Boolean);
+  let first = words[0] ?? "";
+  let k = 1;
+  while (k < words.length && first.length + 1 + words[k]!.length <= cap) first += ` ${words[k++]}`;
+  const rest = words.slice(k).join(" ");
+  return rest ? [fit(first, width, size, char), fit(rest, width, size, char)] : [fit(first, width, size, char)];
+}
+
+/** Bir bloğun yerleşimi: yazı boyu ve her satırın (sarılmış) parçaları. */
+interface Block {
+  size: number;
+  rows: string[][];
+}
+
+/**
+ * Satırları w × h kutuya en büyük boyla yerleştirir (en çok max): her satır sarılır (wrap; kodda sarılmaz, kesilir),
+ * satır yüksekliği boyun pitch katı, satır başına ek extra × boy (balon kenarı). Önce bütün satırlar kesilmeden denenir;
+ * kesilmeden ancak okunur sınırın (min) altında sığıyorsa okunur sınırda, uzun satırın sonu kesilerek (en çok yazı o boyda
+ * görünür); o da sığmıyorsa satır azaltılır: keep "first" ilk satırlar kalır, "last" sonuncular (sohbette en yeni
+ * mesajlar). Satır atmak içeriği kaybettirir: yalnız okunurluk için.
+ */
+function block(lines: string[], o: { w: number; h: number; max: number; char: number; pitch: number; min: number; keep: "first" | "last"; extra?: number; code?: boolean }): Block {
+  const rowsOf = (line: string, size: number) => (o.code ? [fit(line, o.w, size, o.char)] : wrap(line, o.w, size, o.char));
+  // start'tan STEP adımlarla küçülerek sığan en büyük boy (whole: kesilmeden); taban max × 0,3, orada sığmasa da durur.
+  const sized = (kept: string[], whole: boolean, start: number) => {
+    let size = start;
+    for (;;) {
+      const rows = kept.map((l) => rowsOf(l, size));
+      const tall = rows.reduce((n, r) => n + (r.length * o.pitch + (o.extra ?? 0)) * size, 0);
+      // Kodda satır olduğu gibi (girinti), sarılan yazıda sözcükleri kaybolmadan kalmalı.
+      const cut = whole && rows.some((r, k) => (o.code ? r[0] !== kept[k] : r.join(" ") !== kept[k]!.split(/\s+/).filter(Boolean).join(" ")));
+      const fits = tall <= o.h && !cut;
+      if (fits || size <= o.max * 0.3) return { size, rows, fits };
+      size *= STEP;
+    }
+  };
+  // Ekran karede okunur boya hiç varamıyorsa sınır ekranın en büyük boyu; bir küçülme adımı pay (6 satırlık kod en büyük
+  // boyda sığmayınca bir adım küçülür, satır atılmaz).
+  const readable = Math.min(o.min, o.max);
+  const pick = (kept: string[]) => {
+    const whole = sized(kept, true, o.max);
+    if (whole.fits && whole.size >= readable * STEP) return whole;
+    const cut = sized(kept, false, readable);
+    return cut.fits && cut.size === readable ? cut : undefined;
+  };
+  for (let n = lines.length; n > 1; n--) {
+    const got = pick(o.keep === "last" ? lines.slice(-n) : lines.slice(0, n));
+    if (got) return got;
+  }
+  // Tek satır (ya da hiç): okunur boyda sığmıyorsa (karede çok küçük ekran) kesilmeden sığan en büyük boyda.
+  const one = o.keep === "last" ? lines.slice(-1) : lines.slice(0, 1);
+  return pick(one) ?? sized(one, true, o.max);
+}
+
+/** Yazı boyunun küçülme adımı. */
+const STEP = 0.94;
 
 /** Kod satırının renklendirilmesi: dize, sayı, yorum, anahtar sözcük. */
 const KEYWORDS = new Set(
@@ -201,8 +271,15 @@ export interface ScreenPerson {
  * renkli eş aralıklı, terminal yeşil, web sayfası tarayıcı çubuğuyla, arama kutusu ve sonuçlar, sohbet balonları, düz
  * yazı tahtanın ya da ekranın kendi renginde). Kişi verilirse başı ve omuzları ekranı doldurur, başlık alt bantta.
  */
-export function screenSvg(screen: VectorScreen, w: number, h: number, o: { fill?: string | undefined; rx?: number; person?: ScreenPerson | undefined; prefix: string }): string {
+export function screenSvg(
+  screen: VectorScreen,
+  w: number,
+  h: number,
+  o: { fill?: string | undefined; rx?: number; person?: ScreenPerson | undefined; prefix: string; /** Ekranın karedeki ölçeği (karede px / içerik px; kameranın yaklaşması). */ scale?: number },
+): string {
   const lines = screen.lines.slice(0, SCREEN_LINES);
+  // Karede SCREEN_READ px'ten küçük yazı okunmuyor: içerik px'inde en küçük boy.
+  const min = SCREEN_READ / (o.scale ?? 1);
   const pad = Math.min(w, h) * 0.07;
   const rx = Math.min(o.rx ?? 0, Math.min(w, h) / 4);
   const out: string[] = [];
@@ -233,14 +310,12 @@ export function screenSvg(screen: VectorScreen, w: number, h: number, o: { fill?
       text(pad, size * 1.3, size, esc(fit(screen.title, w - 2 * pad, size, 0.6)), ` fill="#aab" font-family="${MONO}"`);
       top = size * 1.9 + pad * 0.7;
     }
-    const pitch = Math.min((h - top - pad) / (Math.max(lines.length, 4) * 1.45), h * 0.1);
-    const gutter = kind === "code" ? pitch * 2.2 : 0;
-    const size = shared(lines, w - 2 * pad - gutter, pitch, 0.6);
-    lines.forEach((line, k) => {
-      const y = top + pitch * 1.45 * k + pitch;
-      if (kind === "code") text(pad, y, size * 0.85, String(k + 1), ` fill="${COLORS.gutter}" font-family="${MONO}"`);
-      const body = fit(line, w - 2 * pad - gutter, size, 0.6);
-      text(pad + gutter, y, size, kind === "code" ? codeLine(body) : esc(body), ` fill="${kind === "code" ? COLORS.text : "#7cfc7c"}" font-family="${MONO}" xml:space="preserve"`);
+    const gutter = kind === "code" ? h * 0.1 * 2.2 : 0;
+    const body = block(lines, { w: w - 2 * pad - gutter, h: h - top - pad, max: h * 0.1, char: 0.6, pitch: 1.45, min, keep: "first", code: true });
+    body.rows.forEach(([line], k) => {
+      const y = top + body.size * 1.45 * k + body.size;
+      if (kind === "code") text(pad, y, body.size * 0.85, String(k + 1), ` fill="${COLORS.gutter}" font-family="${MONO}"`);
+      text(pad + gutter, y, body.size, kind === "code" ? codeLine(line!) : esc(line!), ` fill="${kind === "code" ? COLORS.text : "#7cfc7c"}" font-family="${MONO}" xml:space="preserve"`);
     });
   } else if (kind === "chat") {
     out.push(`<rect width="${w}" height="${h}" fill="#eef1f5"/>`);
@@ -251,16 +326,18 @@ export function screenSvg(screen: VectorScreen, w: number, h: number, o: { fill?
       text(pad, size * 1.35, size, esc(fit(screen.title, w - 2 * pad, size, 0.56)), ` fill="#fff" font-weight="700" font-family="${SANS}"`);
       top = size * 2 + pad * 0.6;
     }
-    const slot = (h - top - pad * 0.5) / Math.max(lines.length, 3);
-    const size = shared(lines, w * 0.7, Math.min(slot * 0.42, h * 0.085), 0.55);
-    lines.forEach((line, k) => {
-      const right = k % 2 === 1;
-      const body = fit(line, w * 0.7 - size, size, 0.55);
-      const bw = Math.min(w * 0.72, body.length * size * 0.55 + size * 1.2);
+    // Balon: satır başına 1,2 boy, kenar payı 0,9 boy, aralık 0,4 boy.
+    const body = block(lines, { w: w * 0.72 - h * 0.1 * 1.2, h: h - top - pad * 0.5, max: h * 0.1, char: 0.55, pitch: 1.2, extra: 1.3, min, keep: "last" });
+    const size = body.size;
+    let y = top;
+    body.rows.forEach((rows, k) => {
+      const right = (lines.length - body.rows.length + k) % 2 === 1;
+      const bw = Math.min(w * 0.72, Math.max(...rows.map((r) => r.length)) * size * 0.55 + size * 1.2);
+      const bh = rows.length * size * 1.2 + size * 0.9;
       const x = right ? w - pad - bw : pad;
-      const y = top + slot * k;
-      out.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${(slot * 0.8).toFixed(1)}" rx="${(slot * 0.3).toFixed(1)}" fill="${right ? "#d6f5d1" : "#ffffff"}" stroke="#c9cfd8" stroke-width="${(size * 0.06).toFixed(2)}"/>`);
-      text(x + size * 0.6, y + slot * 0.4 + size * 0.36, size, esc(body), ` fill="#1d1a24" font-family="${SANS}"`);
+      out.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="${(size * 0.6).toFixed(1)}" fill="${right ? "#d6f5d1" : "#ffffff"}" stroke="#c9cfd8" stroke-width="${(size * 0.06).toFixed(2)}"/>`);
+      rows.forEach((row, r) => text(x + size * 0.6, y + size * (0.45 + 1.2 * r) + size * 0.8, size, esc(row), ` fill="#1d1a24" font-family="${SANS}"`));
+      y += bh + size * 0.4;
     });
   } else if (kind === "web" || kind === "search") {
     out.push(`<rect width="${w}" height="${h}" fill="#ffffff"/>`);
@@ -283,26 +360,37 @@ export function screenSvg(screen: VectorScreen, w: number, h: number, o: { fill?
       text(pad, top + h * 0.085, size, esc(fit(screen.title, w - 2 * pad, size, 0.58)), ` fill="#1d1a24" font-weight="700" font-family="${SANS}"`);
       top += h * 0.15;
     }
-    const pitch = Math.min((h - top - pad * 0.5) / (Math.max(lines.length, 3) * 1.5), h * 0.075);
-    const size = shared(lines, w - 2 * pad, pitch, 0.55);
-    lines.forEach((line, k) =>
-      text(pad, top + pitch * 1.5 * k + pitch, size, esc(fit(line, w - 2 * pad, size, 0.55)), ` fill="${kind === "search" ? "#1a0dab" : "#3d4250"}" font-family="${SANS}"`),
-    );
+    const body = block(lines, { w: w - 2 * pad, h: h - top - pad * 0.5, max: h * 0.075, char: 0.55, pitch: 1.3, extra: 0.3, min, keep: "first" });
+    let y = top + body.size;
+    for (const rows of body.rows) {
+      for (const row of rows) {
+        text(pad, y, body.size, esc(row), ` fill="${kind === "search" ? "#1a0dab" : "#3d4250"}" font-family="${SANS}"`);
+        y += body.size * 1.3;
+      }
+      y += body.size * 0.3;
+    }
   } else {
     // Düz yazı: ekranın (tahtanın) kendi renginde; koyu zeminde açık, açık zeminde koyu mürekkep.
     const bg = o.fill ?? "#f5f3ee";
     const ink = luminance(bg) < 0.5 ? "#f5f3ee" : "#1d1a24";
     out.push(`<rect width="${w}" height="${h}" fill="${esc(bg)}"/>`);
-    const rows = lines.length + (screen.title ? 1.6 : 0);
-    const pitch = Math.min((h - 2 * pad) / (Math.max(rows, 2.5) * 1.3), h * 0.16);
-    let y = pad + pitch;
-    if (screen.title) {
-      const big = shared([screen.title], w - 2 * pad, pitch * 1.35, 0.58);
-      text(w / 2, y + pitch * 0.27, big, esc(fit(screen.title, w - 2 * pad, big, 0.58)), ` fill="${ink}" font-weight="800" text-anchor="middle" font-family="${SANS}"`);
-      y += pitch * 1.95;
-    }
-    const size = shared(lines, w - 2 * pad, pitch, 0.55);
-    lines.forEach((line, k) => text(w / 2, y + pitch * 1.3 * k, size, esc(fit(line, w - 2 * pad, size, 0.55)), ` fill="${ink}" text-anchor="middle" font-family="${SANS}"`));
+    const inner = h - 2 * pad;
+    const head = screen.title ? block([screen.title], { w: w - 2 * pad, h: lines.length ? inner * 0.45 : inner, max: h * 0.22, char: 0.58, pitch: 1.2, min, keep: "first" }) : undefined;
+    const headH = head ? head.rows[0]!.length * head.size * 1.2 + head.size * 0.35 : 0;
+    const body = block(lines, { w: w - 2 * pad, h: inner - headH, max: head ? head.size * 0.8 : h * 0.16, char: 0.55, pitch: 1.3, min, keep: "first" });
+    const bodyH = body.rows.reduce((n, r) => n + r.length, 0) * body.size * 1.3;
+    let y = pad + (inner - headH - bodyH) / 2;
+    if (head)
+      for (const row of head.rows[0]!) {
+        y += head.size * 1.2;
+        text(w / 2, y - head.size * 0.25, head.size, esc(row), ` fill="${ink}" font-weight="800" text-anchor="middle" font-family="${SANS}"`);
+      }
+    y += head ? head.size * 0.35 : 0;
+    for (const rows of body.rows)
+      for (const row of rows) {
+        y += body.size * 1.3;
+        text(w / 2, y - body.size * 0.3, body.size, esc(row), ` fill="${ink}" text-anchor="middle" font-family="${SANS}"`);
+      }
   }
   // Cam: sol üstten hafif parlama; köşeler ekranın kendi yuvarlamasıyla kırpılır.
   const defs = `<defs><linearGradient id="${o.prefix}glare" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.14"/><stop offset="0.45" stop-color="#fff" stop-opacity="0"/></linearGradient><clipPath id="${o.prefix}clip"><rect width="${w}" height="${h}" rx="${rx.toFixed(1)}"/></clipPath></defs>`;
