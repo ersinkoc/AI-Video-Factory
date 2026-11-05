@@ -209,6 +209,8 @@ describe("görsel denetçiler", () => {
     expect(c.images).toEqual(["Ag=="]);
     const b = await capture((d) => assetGate({ kind: "background", name: "Station", description: "wooden", guess, drawing: img(2) }, d));
     expect(b.system).toContain("The asset is an intentionally EMPTY room shell");
+    // 5 Kas, Amazon: ufka uzanan çöl yolunda yandan çizilmiş araba yolu enlemesine kesip park etmiş gibi duruyordu.
+    expect(b.system).toContain("one receding toward the horizon or a vanishing point is a defect");
   });
 
   it("prop fiziği ajanı adı ve tarifi gönderir", async () => {
@@ -232,6 +234,7 @@ describe("vektör ajanları", () => {
   it("planlayıcı referans varsa görselleri ekler ve türün adını yazar", async () => {
     const a = await capture((d) => assetPlanner({ kind: "background", name: "Station", description: "wooden", references: [img(7)] }, style, d));
     expect(a.system).toContain("The 1 attached image(s) are real references");
+    expect(a.system).toContain("runs straight across the frame from left to right on the ground, never toward the horizon");
     expect(a.prompt).toBe("Location: Station\nwooden");
     expect(a.images).toEqual(["Bw=="]);
     const b = await capture((d) => assetPlanner({ kind: "prop", name: "Saddle", description: "leather" }, style, d));
@@ -267,6 +270,7 @@ describe("vektör ajanları", () => {
       vectorDesigner({ kind: "background", name: "Ofis", description: "small office", view: "reverse", front: "<svg>oda</svg>", floorY: 700.4, references: [img(5)] }, style, d),
     );
     expect(a.system).toContain("The EMPTY SHELL of the place");
+    expect(a.system).toContain("runs horizontally across the full width as a flat band below floorY");
     expect(a.prompt).toContain("Draw the REVERSE ANGLE");
     expect(a.prompt).toContain("the wall–floor line at y = 700 (return it as floorY)");
     expect(a.prompt).toContain("<front_svg>\n<svg>oda</svg>\n</front_svg>");

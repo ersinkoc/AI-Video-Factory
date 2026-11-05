@@ -153,6 +153,10 @@ export const PIPELINE_MESSAGES = {
   },
   "log.preview.done": { tr: "  önizleme: {n} çekim karesi", en: "  preview: {n} shot frames" },
   "log.preview.failed": { tr: "  önizleme kareleri çıkarılamadı ({error})", en: "  preview frames could not be extracted ({error})" },
+  "log.draft.unreviewed": {
+    tr: "  ⚠ taslak karelerin hiçbiri denetlenemedi, taslak denetimi atlandı: {error}",
+    en: "  ⚠ none of the draft frames could be reviewed, draft review skipped: {error}",
+  },
   "log.draft.failed": {
     tr: "  ⚠ taslak kareler çıkarılamadı, taslak denetimi atlandı: {reason}",
     en: "  ⚠ draft frames could not be extracted, draft review skipped: {reason}",
@@ -287,6 +291,7 @@ export const PIPELINE_MESSAGES = {
   "err.episode.notFound": { tr: "Bölüm bulunamadı: {id}", en: "Episode not found: {id}" },
   "err.store.missing": { tr: "Depoda yok: {key}", en: "Not in storage: {key}" },
   "err.missing": { tr: "{what} yok", en: "{what} missing" },
+  "err.review.unreviewed": { tr: "Hiçbir kare incelenemedi: {error}", en: "No frame could be reviewed: {error}" },
   "err.preview.needConcept": { tr: "Önce casting ve konsept aşamaları çalışmalı", en: "The cast and concept stages must run first" },
   "err.preview.vector": {
     tr: "Vektör modunda deneme karesi yok; varlıklar zaten önizleniyor",

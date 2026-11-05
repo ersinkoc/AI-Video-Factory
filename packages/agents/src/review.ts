@@ -188,7 +188,7 @@ export function assetGate(
     input.kind === "character"
       ? "a person (puppet character); check a believable human figure: one head, two arms, two legs, hands at the ends of arms, face features in place, nothing floating or detached. Its arms, forearms, hands and legs are rotated at the shoulders, elbows, wrists, hips and knees in every gesture, so judge them strictly (limbs): what looks acceptable in a still pose looks broken when it moves"
       : input.kind === "background"
-        ? "an intentionally EMPTY room shell or place backdrop (furniture is added separately, so emptiness is fine); check that the space reads as the intended kind of place, shapes are coherent and nothing is broken or garbled"
+        ? "an intentionally EMPTY room shell or place backdrop (furniture is added separately, so emptiness is fine); check that the space reads as the intended kind of place, shapes are coherent and nothing is broken or garbled; a road, railway, runway, river or path must run across the frame from side to side: one receding toward the horizon or a vanishing point is a defect (side-view vehicles look parked across it)"
         : "an object, animal or vehicle; check it has the correct parts in the correct number and arrangement (legs, wheels, handles…) and a silhouette that reads at a glance";
   return runStructured(
     {

@@ -1077,7 +1077,7 @@ describe("timeline, render ve inceleme", () => {
     expect(items.find((i) => i.shotId === "s1-sh1")!.intent).toBe('shot 0 | narration: "bir"');
   });
 
-  it("inceleme grubu başarısızsa atlanır; kare çıkmayan çekimler denetlenmez", async () => {
+  it("inceleme grubu başarısızsa atlanır; hiçbir grup incelenemezse aşama açık kalır; kare çıkmayan çekimler denetlenmez", async () => {
     const h = harness();
     const id = await ready(h);
     await h.pipeline.run(id, { only: "timeline" });
@@ -1086,15 +1086,25 @@ describe("timeline, render ve inceleme", () => {
     expect(callsOf("sceneCritic")).toHaveLength(0);
     expect(h.logs).toContain("  0 kare, ortalama 0.0/10; sorunlar: yok");
 
-    onAgent("sceneCritic", () => {
-      throw new Error("critic yok");
+    // Altı karelik grup düşer, tek karelik incelenir: eksik inceleme yine yazılır.
+    onAgent("sceneCritic", (items: { shotId: string }[]) => {
+      if (items.length === 6) throw new Error("critic yok");
+      return { shots: items.map((i) => ({ shotId: i.shotId, score: 7, issues: [] })), lessons: [] };
     });
-    await h.pipeline.run(id, { only: "review" });
+    const partial = await h.pipeline.run(id, { only: "review" });
     expect(h.logs).toContain("  inceleme grubu atlandı: critic yok");
+    expect(Object.keys(partial.review!.shots)).toHaveLength(1);
+    // 5 Kas, Amazon: kullanım sınırı (429) bütün grupları düşürmüş, aşama "0 kare, sorun yok" diye kapanmıştı.
+    onAgent("sceneCritic", () => {
+      throw new Error("API hatası 429: limit");
+    });
+    await expect(h.pipeline.run(id, { only: "review" })).rejects.toThrow("Hiçbir kare incelenemedi: API hatası 429: limit");
+    // Önceki inceleme olduğu gibi durur.
+    expect(Object.keys((await h.pipeline.load(id)).review!.shots)).toHaveLength(1);
     onAgent("sceneCritic", () => {
       throw "düz";
     });
-    await h.pipeline.run(id, { only: "review" });
+    await expect(h.pipeline.run(id, { only: "review" })).rejects.toThrow("Hiçbir kare incelenemedi: düz");
     expect(h.logs).toContain("  inceleme grubu atlandı: düz");
   });
 });

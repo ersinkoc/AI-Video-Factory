@@ -777,6 +777,21 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     expect(state.shots).toEqual([]);
   });
 
+  it("hiçbir taslak kare denetlenemezse kayıt bırakılmaz, sahneler yeniden planlanmaz; kareler yine yazılır", async () => {
+    const h = harness();
+    agents();
+    onAgent("sceneCritic", () => {
+      throw new Error("API hatası 429: limit");
+    });
+    const old = { at: "t", lessons: [], avg: 9, revisedScenes: [], shots: { "s1-sh1": { score: 9, issues: [] } } };
+    const id = await keyframeReady(h, {}, { vectorProps: {}, draftReview: old });
+    const state = await h.pipeline.run(id, { only: "keyframes" });
+    expect(h.logs).toContain("  ⚠ taslak karelerin hiçbiri denetlenemedi, taslak denetimi atlandı: API hatası 429: limit");
+    expect(state.draftReview).toBeUndefined();
+    expect(Object.keys(state.stills!).sort()).toEqual(["s1-sh1", "s1-sh2"]);
+    expect(callsOf("vectorDirector")).toHaveLength(0);
+  });
+
   it("eleştirmen kare döndürmezse ortalama 0", async () => {
     const h = harness();
     agents();

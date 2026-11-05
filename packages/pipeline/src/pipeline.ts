@@ -1388,7 +1388,9 @@ export class EpisodePipeline {
 
   /**
    * Timeline'dan çekim kareleri çıkarır ve ucuz görsel modele denetletir. Render sonrası inceleme ile render
-   * öncesi taslak kontrolü aynı yolu kullanır.
+   * öncesi taslak kontrolü aynı yolu kullanır. Başarısız grup atlanır; hiçbir grup incelenemediyse (unreviewed: ilk
+   * hata) inceleme yapılmamış sayılır. 5 Kas, Amazon: kullanım sınırına (429) takılan bütün gruplar atlanmış, aşama
+   * "0 kare, ortalama 0.0/10; sorunlar: yok" diye kapanmıştı; bölüm hiç incelenmeden temiz görünüyordu.
    */
   private async critiqueShots(
     state: EpisodeState,
@@ -1396,7 +1398,7 @@ export class EpisodePipeline {
     timeline: Timeline,
     dir: string,
     known: string[],
-  ): Promise<{ files: Record<string, string>; review: EpisodeReview }> {
+  ): Promise<{ files: Record<string, string>; review: EpisodeReview; unreviewed?: Text }> {
     /* v8 ignore next -- iki çağıran da (taslak denetimi, inceleme) çekimleri önceden denetler */
     const shots = state.shots ?? [];
     const files = await this.renderShotStills(state, timeline, dir);
@@ -1413,6 +1415,8 @@ export class EpisodePipeline {
     const review: EpisodeReview = { at: new Date().toISOString(), shots: {}, lessons: [] };
     const batches: (typeof shots)[] = [];
     for (let i = 0; i < shots.length; i += 6) batches.push(shots.slice(i, i + 6));
+    let reviewed = 0;
+    const errors: unknown[] = [];
     await mapLimit(batches, this.deps.concurrency ?? 3, async (batch) => {
       const items = await Promise.all(
         batch
@@ -1432,12 +1436,14 @@ export class EpisodePipeline {
           review.shots[s.shotId] = { score: s.score, issues };
         }
         review.lessons.push(...out.lessons);
+        reviewed++;
       } catch (e) {
         // İnceleme videoyu bozmaz; başarısız grup atlanır.
+        errors.push(e);
         this.log(msg("log.review.batchSkipped", { error: errorText(e) }));
       }
     });
-    return { files, review };
+    return { files, review, unreviewed: !reviewed && errors.length ? errorText(errors[0]) : undefined };
   }
 
   /**
@@ -1534,11 +1540,17 @@ export class EpisodePipeline {
       this.log(msg("log.draft.failed", { reason: firstLine(e) }));
       return;
     }
-    const { files, review } = critique;
+    const { files, review, unreviewed } = critique;
     // Taslak kareler Çekimler sekmesinde hemen görünür (render beklenmez).
     state.stills = {};
     await this.storeStills(state, files);
     await this.save(state);
+    // Hiçbir kare denetlenemedi: "sorunsuz taslak" kaydı bırakılmaz (eskisi önceki plana ait), sahneler yeniden planlanmaz.
+    if (unreviewed) {
+      delete state.draftReview;
+      this.log(msg("log.draft.unreviewed", { error: unreviewed }));
+      return;
+    }
 
     // Kodun yaptığı fizik düzeltmeleri de yönetmene söylenir (bir dahaki planda kendisi doğru versin).
     const fixes = new Map<string, string[]>();
@@ -2905,7 +2917,10 @@ export class EpisodePipeline {
       const dir = resolve(this.deps.workDir, state.id);
       const book = await loadLessons(this.deps.store);
       // Render klasörünün public/ dizini hazır; kareler yereldir.
-      const { files, review } = await this.critiqueShots(state, "review", timeline, dir, book.lessons.map((l) => l.rule));
+      const { files, review, unreviewed } = await this.critiqueShots(state, "review", timeline, dir, book.lessons.map((l) => l.rule));
+      // Hiçbir kare incelenemedi (kullanım sınırı vb.): aşama açık kalır, sınır kalkınca yeniden çalıştırılır; önceki
+      // inceleme ve kareler olduğu gibi durur.
+      if (unreviewed) throw new LocalizedError(msg("err.review.unreviewed", { error: unreviewed }));
       state.stills = {};
       await this.storeStills(state, files);
       state.review = review;
