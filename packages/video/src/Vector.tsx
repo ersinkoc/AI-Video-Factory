@@ -40,7 +40,7 @@ import { useMemo, type CSSProperties, type ReactElement } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
 import { screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
-import { cameraDrift, depthOfField, lensScale, screenGlow } from "./lens.ts";
+import { cameraDrift, depthOfField, lensScale, motionBlur, screenGlow } from "./lens.ts";
 import { keyLight, lightOf } from "./light.ts";
 import { visualVector } from "./entrance.ts";
 import { Ambience } from "./Ambience.tsx";
@@ -1830,6 +1830,29 @@ export interface Motion {
   front?: "arm-l" | "arm-r";
   /** Anatomi sınırına kırpılan eklemler (anatomy.ts): olmamalı, denetim (lint) bildirir. */
   strains?: Strain[];
+  /** Katmanın bir önceki kareden bu yana yer değiştirmesi (sahne px) ve ölçek değişimi: hareket bulanıklığı (lens.ts). */
+  shift?: { x: number; y: number; scale: number };
+}
+
+/** Katmanın fiziğe uydurulmuş animasyonları (motion.ts): motionOf ve kare başına yer değiştirme aynı listeden hesaplar. */
+function animsOf(layer: VectorLayer, asset: VectorAsset, placed: PlacedLayer, dur: number): VectorAnim[] {
+  return paceWalks(
+    physicalAnims(layer.anims, { kind: asset.kind, grounded: placed.grounded, held: placed.heldBy !== undefined, sitting: placed.sitting }),
+    placed.x,
+    STAGE.pxPerMeter * placed.scale,
+    dur,
+    asset.kind === "character",
+  );
+}
+
+/** Katmanın bir önceki kareden (dt sn önce) bu yana yer değiştirmesi: yalnız katman dönüşümü (kayarak giriş, büyüme, titreme, yürüme). */
+export function layerShift(layer: VectorLayer, asset: VectorAsset, placed: PlacedLayer, p: number, t: number, prefix: string, dur: number, dt: number): { x: number; y: number; scale: number } {
+  const anims = animsOf(layer, asset, placed, dur);
+  const base = { x: placed.x, y: placed.y };
+  const size = { dur, height: placed.height };
+  const now = layerTransform(anims, p, t, prefix, base, size);
+  const before = layerTransform(anims, p - dt / Math.max(dur, dt), t - dt, prefix, base, size);
+  return { x: now.x - before.x, y: now.y - before.y, scale: now.scale - before.scale };
 }
 
 /**
@@ -1849,13 +1872,7 @@ function motionOf(
   voice?: Voice,
 ): Motion {
   const pxPerMeter = STAGE.pxPerMeter * placed.scale;
-  const anims = paceWalks(
-    physicalAnims(layer.anims, { kind: asset.kind, grounded: placed.grounded, held: placed.heldBy !== undefined, sitting: placed.sitting }),
-    placed.x,
-    pxPerMeter,
-    dur,
-    asset.kind === "character",
-  );
+  const anims = animsOf(layer, asset, placed, dur);
   const tr = layerTransform(anims, p, t, prefix, { x: placed.x, y: placed.y }, { dur, height: placed.height });
   const walks = (asset.kind === "character" && !placed.sitting) || anims.some((a) => a.type === "walk");
   const gait = walks ? gaitOf(anims, p, t, placed.x, pxPerMeter, dur) : STILL;
@@ -2064,6 +2081,7 @@ function Layer({
   zoom = 1,
   person,
   blur = 0,
+  streak,
 }: {
   layer: VectorLayer;
   asset: VectorAsset;
@@ -2079,6 +2097,8 @@ function Layer({
   person?: ScreenPerson;
   /** Alan derinliği (lens.ts): katmanın bulanıklığı, kameranın içindeki px. */
   blur?: number;
+  /** Hareket bulanıklığı (lens.ts motionBlur): yatay/dikey iz ve büyüme bulanıklığı, kameranın içindeki px. */
+  streak?: { x: number; y: number; r: number };
 }) {
   const { width: w, height: h } = placed;
   // Ekranın bu çekimdeki içeriği çizimin kendi ekranının üstüne (screen.ts); ekranı bulunamayan nesnede çizilmez.
@@ -2134,6 +2154,9 @@ function Layer({
         .join("")
     : "";
 
+  // Alan derinliği ile büyüme bulanıklığı tek Gauss'ta birleşir; yönlü iz katmanın kendi SVG filtresinde.
+  const soft = Math.hypot(blur, streak?.r ?? 0);
+  const trail = streak && (streak.x || streak.y) ? streak : undefined;
   const style: CSSProperties = {
     position: "absolute",
     left: placed.x - w / 2,
@@ -2143,12 +2166,19 @@ function Layer({
     opacity: layer.opacity * tr.opacity,
     transform: `translate(${tr.x}px, ${tr.y}px) rotate(${layer.rotate + tr.rotate}deg) scale(${tr.scale * motion.squash * (motion.flip ? -1 : 1)}, ${tr.scale})`,
     transformOrigin: "50% 100%",
-    filter: [sketch ? "url(#ys-sketch)" : "", blur ? `blur(${blur.toFixed(2)}px)` : ""].join(" ").trim() || undefined,
+    filter: [sketch ? "url(#ys-sketch)" : "", trail ? `url(#${prefix}mb)` : "", soft ? `blur(${soft.toFixed(2)}px)` : ""].filter(Boolean).join(" ") || undefined,
   };
   const glow = face && screenGlow(asset, layer.screen?.kind, face.box.w, face.box.h);
   const drawn = <div style={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: svg }} />;
   return (
     <div style={style}>
+      {trail && (
+        <svg width={0} height={0} style={{ position: "absolute" }}>
+          <filter id={`${prefix}mb`} x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation={`${trail.x.toFixed(2)} ${trail.y.toFixed(2)}`} />
+          </filter>
+        </svg>
+      )}
       {rigCss && <style>{rigCss + speakCss}</style>}
       {plan && <style>{drawCss(plan, draw!)}</style>}
       {figure ? (
@@ -2540,6 +2570,7 @@ function Callout({
   accent,
   screen,
   person,
+  from,
 }: {
   asset: VectorAsset;
   target: readonly [number, number];
@@ -2549,8 +2580,10 @@ function Callout({
   accent: string;
   screen?: VectorScreen;
   person?: ScreenPerson;
+  /** Nesnenin girişinin bittiği an (çekim kesri): balon ondan önce açılmaz. */
+  from?: number;
 }) {
-  const s = calloutScale(p);
+  const s = calloutScale(p, from);
   if (s === 0) return null;
   const { r } = CALLOUT;
   // Çizim balonun içindeki kare kutuda (kenarlardan %13 içeride).
@@ -2807,7 +2840,7 @@ export interface ShotFrame {
   motions: Map<number, Motion>;
   texts: ReturnType<typeof layoutTexts>;
   drawnAt: Map<number, PlacedLayer>;
-  inset?: { asset: VectorAsset; target: [number, number]; at: [number, number]; screen?: VectorScreen; person?: ScreenPerson };
+  inset?: { asset: VectorAsset; target: [number, number]; at: [number, number]; screen?: VectorScreen; person?: ScreenPerson; from?: number };
   /** Makro ek çekim: nesnenin o anki kutusu (ekran px) ve ilerleme (0–1: arka planın bulanıklığı). */
   macroView?: { asset: VectorAsset; box: Box; q: number; screen?: VectorScreen; person?: ScreenPerson };
 }
@@ -2837,7 +2870,9 @@ export function shotFrame(
               (o) => isWritable(spec.layers[o.index]!.asset, safe[spec.layers[o.index]!.asset]),
             )
           : {};
-      return [pl.index, motionOf(layer, asset, pl, p, t, `${shotId}-${pl.index}-`, dur, focus, safe[sideAssetId(layer.asset)], voice)] as const;
+      const prefix = `${shotId}-${pl.index}-`;
+      const motion = motionOf(layer, asset, pl, p, t, prefix, dur, focus, safe[sideAssetId(layer.asset)], voice);
+      return [pl.index, { ...motion, shift: layerShift(layer, asset, pl, p, t, prefix, dur, 1 / fps) }] as const;
     }),
   );
   // Kişi etiketi yazı katmanında (kamera dışında) çizilir ama kişiye aittir: yönetmenin noktasına en yakın kafaya
@@ -2935,7 +2970,12 @@ export function shotFrame(
     const layer = spec.layers[index]!;
     // Ekranlı nesnenin balonu da çekimin ekran içeriğini gösterir.
     const person = screenPersonOf(safe, layer.screen?.person);
-    return { asset: safe[layer.asset]!, target, at: spot, ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}) };
+    // Balon nesne (üstünde durduğu yüzey, onu tutan) sahneye girdikten sonra açılır: sahne parça parça kurulurken (4 Kas)
+    // NVIDIA s2-sh1'de çip masayla birlikte çekimin %31'inde belirirken balonu %10'da açılıp boş yeri gösteriyordu.
+    const entered = [index, layer.on, layer.heldBy]
+      .flatMap((i) => (i === undefined ? [] : spec.layers[i]!.anims))
+      .reduce((end, a) => (ENTRANCE_ANIMS.has(a.type) ? Math.max(end, a.end) : end), 0);
+    return { asset: safe[layer.asset]!, target, at: spot, ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}), ...(entered ? { from: entered } : {}) };
   })();
   return { p, t, k, dur, motions, texts, drawnAt, ...(inset ? { inset } : {}), ...(close ? { macroView: close } : {}) };
 }
@@ -2986,7 +3026,7 @@ function ShotStage({
   }) {
   // Sinematografi (lens.ts): kamera yaklaştıkça netlik özneye çekilir, önü ve arkası derinliğine göre bulanıklaşır;
   // kamera hafifçe nefes alır. Bulanıklık ekran px'i, kameranın içindeki öğeye ölçeğe bölünerek yazılır.
-  const dof = depthOfField({ spec, safe, placed, cam, bg, subject, macro, crowd }, k);
+  const dof = depthOfField({ spec, safe, placed, cam, bg, subject, macro, crowd }, k, p);
   const local = (px: number) => px / lensScale(cam, k);
   const bgBlur = dof ? local(dof.bg) : 0;
   const crowdBlur = dof?.crowd ? local(dof.crowd) : 0;
@@ -3069,6 +3109,8 @@ function ShotStage({
                 zoom={Math.max(cam.zoomFrom, cam.zoomTo)}
                 person={screenPersonOf(safe, layer.screen?.person)}
                 blur={local(dof?.layers.get(pl.index) ?? 0)}
+                // Kişiler hareket bulanıklığı almaz: bacakları kendi adımıyla oynar, bütün gövdenin izi yüzü siliyordu.
+                streak={asset.kind === "character" ? undefined : motionBlur(motions.get(pl.index)!.shift, pl.height, lensScale(cam, k))}
               />,
             ];
           })}

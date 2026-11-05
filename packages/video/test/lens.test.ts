@@ -1,6 +1,6 @@
 import { VectorShot, type PlacedLayer, type VectorAsset } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { cameraDrift, depthOfField, focusLayer, LENS, lensScale, screenGlow, type LensModel } from "../src/lens.ts";
+import { cameraDrift, depthOfField, focusLayer, LENS, lensScale, MOTION, motionBlur, screenGlow, type LensModel } from "../src/lens.ts";
 
 const pl = (index: number, x: number, z: number, extra: Partial<PlacedLayer> = {}): PlacedLayer => ({ index, x, y: 900, height: 500, width: 200, scale: 1, z, sitting: false, grounded: true, fixes: [], ...extra });
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}): VectorAsset => ({ id, kind, svg: "<svg/>", width: 100, height: 100, meta });
@@ -115,8 +115,34 @@ describe("sinematografi: kim bulanıklaşır", () => {
     expect(depthOfField(model([{ asset: "cup", x: 960 }], [pl(0, 960, 0, { grounded: false })], { subject: 0 }), 1)!.bg).toBe(0);
   });
 
+  it("netlik özne sahneye girdikten sonra ona çekilir (rack focus); öznenin yüzeyi ya da tutanı girerken de beklenir", () => {
+    const enter = (anims: object[], extra: object = {}) => layers.map((l, i) => (i === 0 ? { ...l, anims, ...extra } : l));
+    const pop = [{ type: "pop", start: 0.2, end: 0.3 }];
+    expect(depthOfField(model(enter(pop), placed), 1, 0.25)).toBeUndefined();
+    const half = depthOfField(model(enter(pop), placed), 1, 0.3 + LENS.rack / 2)!;
+    const full = depthOfField(model(enter(pop), placed), 1, 0.9)!;
+    expect(half.bg).toBeCloseTo(full.bg / 2, 6);
+    // Sürekli animasyon (konuşma) giriş sayılmaz; p verilmezse çekim sonu.
+    expect(depthOfField(model(enter([{ type: "talk" }]), placed), 1, 0)).toBeDefined();
+    expect(depthOfField(model(enter(pop), placed), 1)!.bg).toBe(full.bg);
+  });
+
   it("figüranlar kendi sıralarının derinliğinde bulanıklaşır", () => {
     expect(depthOfField(model(layers, placed, { crowd: { z: 20 } }), 1)!.crowd).toBe(LENS.person);
+  });
+});
+
+describe("sinematografi: katmanın hareket bulanıklığı", () => {
+  it("kare başına yer değiştirme yönünde iz, büyüme genel bulanıklık; tavanlı; yavaşta yok; kameranın içindeki px", () => {
+    expect(motionBlur(undefined, 500, 1)).toBeUndefined();
+    // Normal yürüyüş (~7 px/kare): σ 1,75 ekran px < min.
+    expect(motionBlur({ x: 7, y: 0, scale: 0 }, 500, 1)).toBeUndefined();
+    // Kayarak giriş: 40 px/kare → σ 10; yakın çekimde (ölçek 2) ekranda 20, kameranın içinde yine 10.
+    expect(motionBlur({ x: -40, y: 0, scale: 0 }, 500, 1)).toEqual({ x: 10, y: 0, r: 0 });
+    expect(motionBlur({ x: -40, y: 0, scale: 0 }, 500, 2)).toEqual({ x: 10, y: 0, r: 0 });
+    expect(motionBlur({ x: 0, y: 400, scale: 0 }, 500, 1)).toEqual({ x: 0, y: MOTION.max, r: 0 });
+    // Patlayarak beliren: ölçek kare başına 0,1 → kenar 25 px → σ 6,25.
+    expect(motionBlur({ x: 0, y: 0, scale: 0.1 }, 500, 1)).toEqual({ x: 0, y: 0, r: 6.25 });
   });
 });
 

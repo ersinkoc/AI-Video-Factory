@@ -99,9 +99,9 @@ export function calloutSpot(target: readonly [number, number], avoid: Box[]): [n
   return best;
 }
 
-/** Belirme ölçeği (0–1, küçük bir taşmayla): yaylanarak açılır. */
-export function calloutScale(p: number): number {
-  const q = Math.min(1, Math.max(0, (p - CALLOUT.appear) / CALLOUT.grow));
+/** Belirme ölçeği (0–1, küçük bir taşmayla): from'dan (en erken appear) sonra yaylanarak açılır. */
+export function calloutScale(p: number, from: number = CALLOUT.appear): number {
+  const q = Math.min(1, Math.max(0, (p - Math.max(CALLOUT.appear, from)) / CALLOUT.grow));
   const c = 1.70158;
   return q === 0 ? 0 : 1 + (c + 1) * (q - 1) ** 3 + c * (q - 1) ** 2;
 }

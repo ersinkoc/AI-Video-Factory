@@ -30,6 +30,8 @@ export const LENS = {
   people: 1.7,
   peopleFull: 2.1,
   bg: 4,
+  /** Özne sahneye girdikten sonra netliğin ona çekilme süresi (çekim kesri; rack focus). */
+  rack: 0.08,
   /** Bundan az bulanıklık çizilmez (görünmez, filtre maliyeti boşa). */
   min: 0.4,
   drift: { amp: 2.4, fx: 0.11, fy: 0.17, second: 0.5, overscan: 0.003 },
@@ -80,7 +82,11 @@ export interface DepthOfField {
 /** Kameranın bu karedeki ölçeği (k: kamera hareketinin yumuşatılmış ilerlemesi). */
 export const lensScale = (cam: VectorShot["camera"], k: number) => cam.zoomFrom + (cam.zoomTo - cam.zoomFrom) * k;
 
-export function depthOfField(model: LensModel, k: number): DepthOfField | undefined {
+/** Katmanın giriş animasyonları: netlik özne girmeden ona çekilmez. */
+const ENTERS = new Set(["fade_in", "pop", "slide_in", "draw_on"]);
+
+/** p: çekimin ilerlemesi (0–1); özne girerken netlik ona çekilir. */
+export function depthOfField(model: LensModel, k: number, p = 1): DepthOfField | undefined {
   const { spec, safe, placed, cam, bg } = model;
   if (model.macro !== undefined || bg?.meta.exact || spec.math) return undefined;
   const scale = lensScale(cam, k);
@@ -88,6 +94,14 @@ export function depthOfField(model: LensModel, k: number): DepthOfField | undefi
   const personRamp = clamp01((scale - LENS.people) / (LENS.peopleFull - LENS.people));
   const f = s > 0 ? focusLayer(model) : undefined;
   if (f === undefined) return undefined;
+  // Netlik özne (altındaki yüzey, onu tutan) sahneye girdikten sonra ona çekilir: sahne parça parça kurulurken boş duvar
+  // bulanık beklemesin (NVIDIA s2-sh1: çip çekimin %36'sında belirene kadar bulanık, boş bir duvar görünüyordu).
+  const focus = spec.layers[f]!;
+  const entered = [f, focus.on, focus.heldBy]
+    .flatMap((i) => (i === undefined ? [] : spec.layers[i]!.anims))
+    .reduce((end, a) => (ENTERS.has(a.type) ? Math.max(end, a.end) : end), 0);
+  const pull = entered ? clamp01((p - entered) / LENS.rack) : 1;
+  if (pull <= 0) return undefined;
   // Havada duran nesne (tutulmayan, yüzeyde ya da yerde olmayan: sunulan bir kart, beliren bir logo) sahnenin bir
   // yerinde değil, en yakın kişinin önünde gösterilir: netlik o kişinin düzlemindedir (NVIDIA s5-sh7: duvar derinliğindeki
   // GeForce kartına netlenince kartı sunan kurucular bulanıklaşıyordu).
@@ -97,11 +111,10 @@ export function depthOfField(model: LensModel, k: number): DepthOfField | undefi
   const host = free ? people.reduce<PlacedLayer | undefined>((a, p) => (!a || Math.abs(p.x - at.x) < Math.abs(a.x - at.x) ? p : a), undefined) : undefined;
   const zf = (host ?? at).z;
   const blur = (z: number, cap: number) => {
-    const b = s * Math.min(cap, Math.max(0, Math.abs(z - zf) - LENS.band) * LENS.perDepth);
+    const b = s * pull * Math.min(cap, Math.max(0, Math.abs(z - zf) - LENS.band) * LENS.perDepth);
     return b >= LENS.min ? b : 0;
   };
   // Netlikle birlikte kalanlar.
-  const focus = spec.layers[f]!;
   const sharp = new Set<number>([f]);
   for (const i of [focus.heldBy, focus.on, spec.key, spec.callout]) if (i !== undefined) sharp.add(i);
   spec.layers.forEach((l, i) => {
@@ -137,6 +150,27 @@ export function cameraDrift(seed: string, t: number): string {
   const dx = amp * wave(fx, a);
   const dy = amp * 0.6 * wave(fy, b);
   return `translate(${W / 2}px, ${H / 2}px) scale(${1 + overscan}) translate(${(dx - W / 2).toFixed(2)}px, ${(dy - H / 2).toFixed(2)}px)`;
+}
+
+/**
+ * Katmanın hareket bulanıklığı: kare başına yer değiştirmenin (ekranda) shutter'ı iz olur (180° obtüratör), σ izin sigma'sı,
+ * en çok max px. Yatay ve dikey ayrı (SVG feGaussianBlur "σx σy"), büyüyüp küçülen katman kenarının yer değiştirmesiyle genel
+ * bulanıklık alır. min px'in altında çizilmez: normal hızda yürüyen kişi (kare başına ~7 px, σ ~1,7) net kalır; kayarak
+ * giren nesne (ilk karelerde kare başına 200 px'i aşar), patlayarak beliren ve titreyen bulanıklaşır.
+ */
+export const MOTION = { shutter: 0.5, sigma: 0.5, min: 2, max: 24 } as const;
+
+/** Katmanın bu karedeki hareket bulanıklığı (kameranın içindeki px: ekran değeri ölçeğe bölünür); hareketsizse undefined. */
+export function motionBlur(shift: { x: number; y: number; scale: number } | undefined, height: number, scale: number): { x: number; y: number; r: number } | undefined {
+  if (!shift) return undefined;
+  const sigma = (px: number) => {
+    const screen = Math.min(MOTION.max, MOTION.shutter * Math.abs(px) * scale * MOTION.sigma);
+    return screen >= MOTION.min ? screen / scale : 0;
+  };
+  const x = sigma(shift.x);
+  const y = sigma(shift.y);
+  const r = sigma((shift.scale * height) / 2);
+  return x || y || r ? { x, y, r } : undefined;
 }
 
 /** Işık saçan ekranlar (monitör, televizyon, telefon...): içerikleri çevresine hafif parlar; kara tahta parlamaz. */

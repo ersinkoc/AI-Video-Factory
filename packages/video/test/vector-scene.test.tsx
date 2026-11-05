@@ -2949,7 +2949,7 @@ describe("vektör sahne: kaşlar", () => {
 describe("vektör sahne: sinematografi (alan derinliği, kameranın nefesi, ekran parıltısı)", () => {
   const close = { zoomFrom: 2.2, zoomTo: 2.2, panX: 0, focusX: 700, focusY: 500 };
   // Katman indeksiyle (iki karakterin parça kimlikleri aynı).
-  const filterOf = (c: HTMLElement, i: number) => (c.querySelector(`[id^="s1-${i}-"]`)!.closest("svg")!.parentElement!.parentElement as HTMLElement).style.filter;
+  const filterOf = (c: HTMLElement, i: number) => (c.querySelector(`[id^="s1-${i}-"]:not(filter)`)!.closest("svg")!.parentElement!.parentElement as HTMLElement).style.filter;
   const cameraDiv = (c: HTMLElement) => [...c.querySelectorAll("div")].find((d) => d.style.transformOrigin === "0 0" || d.style.transformOrigin === "0px 0px") as HTMLElement;
 
   it("yakın çekimde özne net; arkadaki kişi ve duvar bulanık, duvar kenarı açılmasın diye büyütülür; geniş çekimde hepsi net", () => {
@@ -2996,6 +2996,27 @@ describe("vektör sahne: sinematografi (alan derinliği, kameranın nefesi, ekra
     cleanup();
     // Arka plansız sahnede de yok.
     expect(scene({ layers: [{ asset: "hero", x: 700 }] }).querySelector("[data-light]")).toBeNull();
+  });
+
+  it("hızlı giren nesne hareket yönünde iz bırakır (kendi SVG filtresi), patlayarak beliren genel bulanık; kişi ve duran nesne bulanıklaşmaz", () => {
+    const slide = { layers: [{ asset: "box", x: 900, depth: 0.3, anims: [{ type: "slide_in", from: "left", start: 0, end: 0.2 }] }, { asset: "hero", x: 1300, depth: 0.3, anims: [{ type: "slide_in", from: "right", start: 0, end: 0.2 }] }] };
+    const c = scene(slide, { frame: 4 });
+    expect(filterOf(c, 0)).toBe("url(#s1-0-mb)");
+    expect(c.querySelector("filter#s1-0-mb feGaussianBlur")!.getAttribute("stdDeviation")).toMatch(/^[\d.]+ 0\.00$/);
+    expect(filterOf(c, 1)).toBe("");
+    cleanup();
+    expect(filterOf(scene(slide, { frame: 200 }), 0)).toBe("");
+    cleanup();
+    const pop = scene({ layers: [{ asset: "box", x: 900, depth: 0.3, anims: [{ type: "pop", start: 0, end: 0.1 }] }] }, { frame: 3 });
+    expect(filterOf(pop, 0)).toMatch(/^blur\([\d.]+px\)$/);
+    expect(pop.querySelector("filter")).toBeNull();
+  });
+
+  it("balon nesnesi (ve altındaki yüzey) sahneye girdikten sonra açılır", () => {
+    const late = { layers: [{ asset: "hero", x: 1300, depth: 0.5, anims: [{ type: "explain" }] }, { asset: "cup", x: 0, heldBy: 0, anims: [{ type: "pop", start: 0.4, end: 0.5 }] }, { asset: "panorama", x: 960, y: 1080, height: 1080 }] };
+    expect(scene(late, { frame: 120 }).querySelector("[data-callout]")).toBeNull();
+    cleanup();
+    expect(scene(late, { frame: 200 }).querySelector('[data-callout="cup"]')).not.toBeNull();
   });
 
   it("ışık saçan ekran içeriğiyle parlar, köşesi ekranınki; ışık saçmayan pano parlamaz", () => {

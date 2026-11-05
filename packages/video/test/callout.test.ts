@@ -86,5 +86,9 @@ describe("büyütme balonu: yer ve açılış", () => {
     expect(calloutScale(CALLOUT.appear)).toBe(0);
     expect(calloutScale(CALLOUT.appear + CALLOUT.grow * 0.7)).toBeGreaterThan(1);
     expect(calloutScale(1)).toBeCloseTo(1);
+    // Nesnesi sahneye geç giriyorsa balon onun girişinden sonra açılır; appear'dan önce hiç açılmaz.
+    expect(calloutScale(0.3, 0.35)).toBe(0);
+    expect(calloutScale(0.35 + CALLOUT.grow, 0.35)).toBeCloseTo(1);
+    expect(calloutScale(CALLOUT.appear, 0)).toBe(0);
   });
 });
