@@ -2,6 +2,56 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.4.0 (2026-11-05)
+
+- Renders can use a chosen Chrome (YS_BROWSER_EXECUTABLE); a browser that hangs at start says so
+- A startled person raises the guarding hand toward the person they look at
+- A worried listener wrings their hands, an angry one crosses their arms, a sad one slumps
+- Worried, sad and angry faces frown with a coded mouth; brows drawn in one path split
+- A startled person recoils with a guarding hand, and reactions open the mouth
+- Review frames are taken when a gesture is fully raised, not while it rises or falls
+- A still prop is never left as a thin strip at the side of the frame
+- Narrated reactions and emotions reach the pose and face; wall props stay in frame
+- An unreviewable episode no longer passes as clean; roads run across the stage
+- Set pieces never stand with an edge through or beside a head
+- The magnifier inset stays put for the whole shot and keeps off people
+- Studio jobs survive a Studio restart; a render stuck on a frame retries
+- Rooms get period set dressing, watercolour figures a paper base, fog has depth
+- People behind a counter rise into view and clear the sign's pole
+- Macro inserts are bigger and stand on a strip of their surface
+- Characters speak and think in code-drawn bubbles
+- Screen text wraps and stays readable in the frame
+- Hands turn at the wrist so the thumb stays on top of a sideways arm
+- The nose moves with the eyes and the neck sits behind the collar
+- The info card keeps clear of faces and name tags; macro blur is measured on screen
+- Fast-moving objects get motion blur; callouts and focus wait for their object
+- Scene transitions get motion blur while they move fast
+- Light falls into each room from its window side
+- The camera behaves like a lens: depth of field, breathing, glowing screens
+- Episodes can be deleted from the Studio, unfinished or finished
+- A close-up aimed at a tiny object becomes a macro insert
+- Two people talking stand 1.1 m apart instead of 1.5 m
+- Screens and boards show what each shot is about
+- Ready-made SVGs without a viewBox are scaled to their box
+- A close-up moving in on an object keeps the people the director framed
+- Scenes change with a wipe, slide, iris or zoom, and build up piece by piece
+- Hands stay in their own space, and the gate rejects broken arms and hands
+- Standing people are not cut between ankle and mid-thigh, in close-ups too
+- A person does the action the shot's description narrates
+- Review frames are taken when the planned gestures are visible
+- A real person is named where they first appear in the episode
+- The camera moves in on the object a shot is about until it reads
+- Frame review judges each episode in its own style; lessons never override a style's palette
+- Wide shots move in closer: a tall machine beside the people may lose a little of its base
+- Characters turn to the person they are with instead of staring at the camera
+- Crowd sounds: extras applaud, cheer, murmur, chant and march in time with the picture
+- Writing on a board: the writer stands at its edge and the pen writes inside it
+- Extras: crowd scenes get anonymous people drawn by code behind the cast
+- Desk work happens at a real desk: workers go behind it, hands reach its real height
+- Reverse angle: a busy room gets its opposite side drawn once, consecutive shots cut between the two
+- Render cache: only scenes that changed are rendered again, a crashed render resumes
+- Close-ups magnify a subject the camera cannot make readable; props in the air get a readable size
+
 ## v0.3.2 (2026-11-04)
 
 - Say acronyms that are words as words: COBOL is 'kobol'
