@@ -29,23 +29,30 @@ describe("inceleme karesinin anı", () => {
     expect(at({ layers: [{ asset: "ghost", x: 500, depth: 0.3, anims: [{ type: "point", start: 0.1, end: 0.4 }] }] })).toBe(STILL.at);
   });
 
-  it("jest %80'den önce bitiyorsa kare, kol yerine oturduktan sonraki ve bitişten hemen önceki en geç anda", () => {
-    // İşaret 1–5 sn: 1,6 sn ile 4,7 sn arası görünür; %80'e en yakın uç 0,47.
-    expect(at({ layers: [hero([{ type: "point", start: 0.1, end: 0.5 }])] })).toBeCloseTo(0.47);
-    // Kısa baş sallama (4–4,5 sn) ızgara adımının arasına düşmez: penceresinin ucu aday.
-    expect(at({ layers: [hero([{ type: "nod", start: 0.4, end: 0.45 }])] })).toBeCloseTo(0.425);
-    // İki kişinin jesti: ikisinin de göründüğü an (sevinç 3,6–5,7 sn; el sallama 3,5 sn'ye kısalır, 4,6–7,2 sn) tekinkinden
+  it("jest %80'den önce bitiyorsa kare, kol tam kalktıktan sonraki ve inmeye başlamadan önceki en geç anda", () => {
+    // Anlatma 1–5 sn: kol 0,6 sn'de kalkar (ön kol 0,08 sn geriden), 0,6 sn'de iner; 1,68–4,4 sn arası tam görünür.
+    expect(at({ layers: [hero([{ type: "explain", start: 0.1, end: 0.5 }])] })).toBeCloseTo(0.44, 3);
+    // Tam ağırlığa yetişemeyen kısa baş sallama (4–4,5 sn): zirvesi, ızgara adımının arasına düşse de aday.
+    expect(at({ layers: [hero([{ type: "nod", start: 0.4, end: 0.45 }])] })).toBeCloseTo(0.4285, 3);
+    // İki kişinin jesti: ikisinin de tam göründüğü an (sevinç ve el sallama 3,5 sn'ye kısalır: 4,1–5,5 ve 5,1–6,5 sn) tekinkinden
     // önce gelir; onların içinde %80'e en yakın uç.
-    const two = at({ layers: [hero([{ type: "cheer", start: 0.3, end: 0.6 }]), { ...hero([{ type: "wave", start: 0.4, end: 0.95 }], { x: 1300 }), asset: "pal" }] });
-    expect(two).toBeCloseTo(0.57);
+    const two = at({ layers: [hero([{ type: "cheer", start: 0.3, end: 0.7 }]), { ...hero([{ type: "wave", start: 0.4, end: 0.95 }], { x: 1300 }), asset: "pal" }] });
+    expect(two).toBeCloseTo(0.55, 3);
+  });
+
+  it("kol jesti tek karede baş jestinden önce gelir; yürüyüş adımlar oturduktan sonra", () => {
+    // Omuz silkme 3,6–5,4 sn tam; onay 7,5–9,1 sn: %80'e yakın olsa da baş hareketi karede okunmaz.
+    expect(at({ layers: [hero([{ type: "shrug", start: 0.3, end: 0.6 }, { type: "nod", start: 0.7, end: 0.95 }])] })).toBeCloseTo(0.5433, 3);
+    // Yürüyüş 1–5 sn: başından 0,6 sn sonra, bitişinden 0,3 sn önceye kadar.
+    expect(at({ layers: [hero([{ type: "walk", start: 0.1, end: 0.5 }])] })).toBeCloseTo(0.47);
   });
 
   it("yazı açılmadan, giriş bitmeden ve çıkış başladıktan sonra kare alınmaz", () => {
     // Nesne 0–6 sn arasında çizilerek beliriyor: o bitmeden kare yok; jest daha önce bittiyse %80 kalır.
     expect(at({ layers: [hero([{ type: "point", start: 0.1, end: 0.5 }]), { asset: "cup", x: 1200, depth: 0.3, anims: [{ type: "draw_on", start: 0, end: 0.6 }] }] })).toBe(STILL.at);
-    // 64 harflik daktilo 4 sn sürer: işaret açılmış yazıyla birlikte görünür (0,4'ten sonra).
-    const typed = at({ layers: [hero([{ type: "point", start: 0.1, end: 0.5 }])], texts: [{ text: "x".repeat(64), style: "title", x: 0, y: 0, anims: [{ type: "typewriter", start: 0, end: 1 }] }] });
-    expect(typed).toBeCloseTo(0.47);
+    // 64 harflik daktilo 4 sn sürer: anlatma açılmış yazıyla birlikte görünür (0,4'ten sonra; 5,4 sn'ye kadar tam).
+    const typed = at({ layers: [hero([{ type: "explain", start: 0.1, end: 0.6 }])], texts: [{ text: "x".repeat(64), style: "title", x: 0, y: 0, anims: [{ type: "typewriter", start: 0, end: 1 }] }] });
+    expect(typed).toBeCloseTo(0.54, 3);
     // Kişi 7. sn'de kararıyor: kare ondan önce, %80'e en yakın.
     expect(at({ layers: [hero([{ type: "explain", start: 0, end: 1 }, { type: "fade_out", start: 0.7, end: 1 }])] })).toBeCloseTo(0.7);
     // Giriş çıkıştan sonra bitiyorsa (çelişkili plan) %80.
