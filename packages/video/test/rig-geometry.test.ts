@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { faceOf, transformOf } from "../src/rigGeometry.ts";
+import { faceOf, neckOf, noseOf, noseShift, transformOf, withNose } from "../src/rigGeometry.ts";
 
 const face = (inner: string, viewBox = "0 0 400 800") => faceOf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">${inner}</svg>`);
 
@@ -119,5 +119,92 @@ describe("çizimin yüz geometrisi", () => {
     expect(at("translate()")).toEqual([1, 0, 0, 1, 0, 0]);
     expect(at("scale()")).toEqual([1, 0, 0, 1, 0, 0]);
     expect(at("rotate()")).toEqual([1, 0, 0, 1, 0, 0]);
+  });
+});
+
+describe("burun", () => {
+  // Gözler 172–188 ve 212–228 (y 152–168), ağız y 205; burun 192–200 (y 158–187), sol gözün iç köşesine 4 px.
+  const NOSE = '<path d="M196 158 L192 185 L200 187"/>';
+  const draw = (nose: string, eyes = '<circle cx="180" cy="160" r="8"/><circle cx="220" cy="160" r="8"/>', mouth = '<path d="M185 205 L215 205"/>') =>
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 800"><defs><circle cx="196" cy="170" r="3"/></defs><g id="body"><rect x="120" y="300" width="160" height="220"/></g><g id="head"><circle cx="200" cy="170" r="80"/><g id="brows"><rect x="194" y="150" width="12" height="4"/></g><g id="eyes">${eyes}</g>${nose}<g id="mouth">${mouth}</g></g></svg>`;
+
+  it("başta, göz, kaş ve ağız dışında, gözlerin arasında kalan küçük şekiller; gözlerin burna değmeden kayabileceği boşluk", () => {
+    const svg = draw(NOSE);
+    const nose = noseOf(svg)!;
+    expect(nose.box).toEqual({ x: 192, y: 158, w: 8, h: 29 });
+    // Sağa kayan sol göz 4 px'te değer (1 px pay), sola kayan sağ göz 12 px'te.
+    expect(nose.room).toEqual({ r: 3, l: 11 });
+    expect(svg.slice(nose.from, nose.to)).toBe(NOSE);
+    expect(withNose(svg, nose)).toContain(`<g id="nose">${NOSE}</g>`);
+  });
+
+  it("burun birkaç ardışık şekil olabilir (burun delikleri); arada başka öğe varsa gruplanamaz", () => {
+    const two = `${NOSE} <circle cx="204" cy="186" r="2"/>`;
+    const nose = noseOf(draw(two))!;
+    expect(nose.box).toEqual({ x: 192, y: 158, w: 14, h: 30 });
+    expect(draw(two).slice(nose.from, nose.to)).toBe(two);
+    expect(noseOf(draw(`${NOSE}<g id="blush"><rect x="150" y="180" width="8" height="4"/></g><circle cx="204" cy="186" r="2"/>`))).toBeUndefined();
+  });
+
+  it("gözlerin altında başlayan burun gözlere değmez; gözlüğün köprüsüyle örtüşen burun gözlerle birlikte kayar", () => {
+    expect(noseOf(draw('<path d="M196 175 L192 190"/>'))!.room).toEqual({ r: Infinity, l: Infinity });
+    expect(noseOf(draw('<path d="M186 158 L190 185"/>'))!.room.r).toBe(0);
+  });
+
+  it("burun yoksa, kapanış etiketli şekilse, çizimde zaten bir burun grubu varsa ya da gözler veya ağız ölçülemiyorsa yok", () => {
+    expect(noseOf(draw(""))).toBeUndefined();
+    expect(noseOf(draw('<path d="M196 158 L192 185 L200 187"></path>'))).toBeUndefined();
+    expect(noseOf(draw(`<g id="nose">${NOSE}</g>`))).toBeUndefined();
+    expect(noseOf(draw(NOSE, ""))).toBeUndefined();
+    expect(noseOf(draw(NOSE, undefined, ""))).toBeUndefined();
+    // Tek göz: iki yana ayrılamaz.
+    expect(noseOf(draw(NOSE, '<circle cx="200" cy="160" r="8"/>'))).toBeUndefined();
+  });
+
+  it("viewBox'tan iskelet tuvaline çevrilir; grup dönüşümleri sayılır, iskelet parçasınınki ve ölçülemeyen şekiller sayılmaz", () => {
+    const svg = `<svg viewBox="0 0 200 400"><g/><desc/><text>x</text><g id="head" transform="translate(999,0)"><g transform="translate(10,0)"><g id="eyes"><circle cx="80" cy="80" r="4"/><circle cx="100" cy="80" r="4"/></g><path d=""/><path id="n" d="M88 79 L86 92 L90 93"/><g id="mouth"><path d="M82 102 L98 102"/></g></g></g></svg>`;
+    const nose = noseOf(svg)!;
+    // Yarım ölçekli çizim iki kat büyür; sarmalayan grubun kaydırması (10) sayılır, başınki sayılmaz.
+    expect(nose.box).toEqual({ x: 192, y: 158, w: 8, h: 28 });
+    expect(noseOf(svg.replace(' viewBox="0 0 200 400"', ""))).toBeDefined();
+  });
+
+  it("burun gözlerle kayar: boşluk kadar yerinde, aşınca aşan kadar", () => {
+    const room = { r: 3, l: 11 };
+    expect(noseShift(2, room)).toBe(0);
+    expect(noseShift(-10, room)).toBe(0);
+    expect(noseShift(11, room)).toBe(8);
+    expect(noseShift(-14, room)).toBe(-3);
+    expect(noseShift(40, { r: Infinity, l: Infinity })).toBe(0);
+  });
+});
+
+describe("boyun", () => {
+  // Yüz 140–260 × 110–230 (çene 230); boyun 185–215 × 210–290, yüzden önce çizilmiş.
+  const NECK = '<rect x="185" y="210" width="30" height="80"/>';
+  const draw = (neck: string, face = '<circle cx="200" cy="170" r="60"/>', mouth = '<path d="M185 205 L215 205"/>') =>
+    `<svg viewBox="0 0 400 800"><g id="body"><rect x="140" y="270" width="120" height="250"/></g><g id="head">${neck}<ellipse cx="140" cy="170" rx="8" ry="12"/>${face}<g id="eyes"><circle cx="180" cy="160" r="6"/></g><g id="mouth">${mouth}</g></g></svg>`;
+
+  it("başın doğrudan içinde, yüzden önce çizilen, ortada, dar ve çenenin altına uzanan ardışık şekiller", () => {
+    const svg = draw(NECK);
+    const neck = neckOf(svg)!;
+    expect(svg.slice(neck.from, neck.to)).toBe(NECK);
+    // Gölgesiyle birlikte (ardışık); kulak (yanda) boyun sayılmaz.
+    const shaded = `${NECK} <rect x="203" y="215" width="12" height="70"/>`;
+    const two = neckOf(draw(shaded))!;
+    expect(draw(shaded).slice(two.from, two.to)).toBe(shaded);
+    // Ağzı içine alan daha küçük şekil (sakal) yüz sayılmaz: yüz en büyüğü.
+    const bearded = draw(NECK, '<circle cx="200" cy="170" r="60"/><ellipse cx="200" cy="205" rx="25" ry="10"/>');
+    expect(bearded.slice(neckOf(bearded)!.from, neckOf(bearded)!.to)).toBe(NECK);
+  });
+
+  it("yüzün üstüne çizilen, iç içe grupta duran, kapanış etiketli, arası bölünen ya da ağzı ve yüzü olmayan çizimde yok", () => {
+    expect(neckOf(draw("", `<circle cx="200" cy="170" r="60"/>${NECK}`))).toBeUndefined();
+    expect(neckOf(draw(`<g transform="translate(0,4)">${NECK}</g>`))).toBeUndefined();
+    expect(neckOf(draw('<rect x="185" y="210" width="30" height="80"></rect>'))).toBeUndefined();
+    expect(neckOf(draw(`${NECK}<g id="x"><rect x="150" y="150" width="4" height="4"/></g><rect x="203" y="215" width="12" height="70"/>`))).toBeUndefined();
+    expect(neckOf(draw(NECK, undefined, ""))).toBeUndefined();
+    expect(neckOf(draw(NECK, '<circle cx="200" cy="120" r="20"/>'))).toBeUndefined();
+    expect(neckOf(draw(""))).toBeUndefined();
   });
 });

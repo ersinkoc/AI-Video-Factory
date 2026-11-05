@@ -40,7 +40,7 @@ const { BURST } = await import("../src/staging.ts");
 const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -116,6 +116,10 @@ const ASSETS = {
   }),
   "toy~side": asset("toy~side", "character", `<svg viewBox="0 0 400 800">${PARTS.map((p) => `<g id="${p}"><rect width="10" height="10" fill="#0000aa"/></g>`).join("")}</svg>`, 400, 800),
   // Yüzü ölçülebilen karakter: konuşurken ağzı koddan çizilir (mouthShape).
+  // Burnu sol gözün iç köşesine yakın (rigGeometry noseOf) ve gözlerin altında başlayan iki çizim.
+  nosy: asset("nosy", "character", `<svg viewBox="0 0 400 800">${PARTS.filter((p) => !["head", "eyes", "mouth"].includes(p)).map((p) => `<g id="${p}"><rect width="10" height="10" fill="#335577"/></g>`).join("")}<g id="head"><circle cx="200" cy="170" r="80"/><g id="eyes"><circle cx="180" cy="160" r="8"/><circle cx="220" cy="160" r="8"/></g><path d="M196 158 L192 185 L200 187"/><g id="mouth"><path d="M185 205 L215 205"/></g></g></svg>`, 400, 800),
+  necky: asset("necky", "character", `<svg viewBox="0 0 400 800">${PARTS.filter((p) => !["head", "eyes", "mouth"].includes(p)).map((p) => `<g id="${p}"><rect width="10" height="10" fill="#335577"/></g>`).join("")}<g id="head"><rect x="185" y="210" width="30" height="80"/><circle cx="200" cy="170" r="60"/><g id="eyes"><circle cx="180" cy="160" r="6"/></g><g id="mouth"><path d="M185 205 L215 205"/></g></g></svg>`, 400, 800),
+  lownose: asset("lownose", "character", `<svg viewBox="0 0 400 800">${PARTS.filter((p) => !["head", "eyes", "mouth"].includes(p)).map((p) => `<g id="${p}"><rect width="10" height="10" fill="#335577"/></g>`).join("")}<g id="head"><circle cx="200" cy="170" r="80"/><g id="eyes"><circle cx="180" cy="160" r="8"/><circle cx="220" cy="160" r="8"/></g><path d="M196 175 L192 190"/><g id="mouth"><path d="M185 205 L215 205"/></g></g></svg>`, 400, 800),
   talker: asset(
     "talker",
     "character",
@@ -1349,6 +1353,12 @@ describe("vektör sahne: dikkat (işaret ve bakış)", () => {
     const g = (id: string, inner = "") => `<g id="p-${id}">${inner}</g>`;
     const svg = `<svg>${g("leg-l", g("shin-l"))}${g("body")}${g("arm-l", g("forearm-l"))}${g("arm-r")}<g id="p-x"/>${g("head", g("eyes"))}</svg>`;
     expect(wrapTorso(svg, "p-")).toBe(`<svg>${g("leg-l", g("shin-l"))}<g id="p-torso">${g("body")}${g("arm-l", g("forearm-l"))}${g("arm-r")}<g id="p-x"/>${g("head", g("eyes"))}</g></svg>`);
+    // Gövdenin önüne alınan boyun (neckBehind) üst gövdeyle birlikte sarılır.
+    const withNeck = `<svg>${g("leg-l", g("shin-l"))}${g("neck")}${g("body")}${g("arm-l", g("forearm-l"))}${g("arm-r")}${g("head", g("eyes"))}</svg>`;
+    expect(wrapTorso(withNeck, "p-")).toBe(`<svg>${g("leg-l", g("shin-l"))}<g id="p-torso">${g("neck")}${g("body")}${g("arm-l", g("forearm-l"))}${g("arm-r")}${g("head", g("eyes"))}</g></svg>`);
+    // Başka bir grubun içindeki boyun kardeş değil: sarılan aralığa girmez.
+    const nested = `<svg><g>${g("neck")}</g>${g("body")}${g("arm-l")}${g("arm-r")}${g("head")}</svg>`;
+    expect(wrapTorso(nested, "p-")).toBe(`<svg><g>${g("neck")}</g><g id="p-torso">${g("body")}${g("arm-l")}${g("arm-r")}${g("head")}</g></svg>`);
     for (const bad of [
       `<svg>${g("body")}${g("arm-l")}${g("arm-r")}<g></g></g></svg>`,
       `<svg>${g("body", g("head"))}${g("arm-l")}${g("arm-r")}</svg>`,
@@ -1477,6 +1487,59 @@ describe("vektör sahne: yan görünüş", () => {
   it("oturan karakter yan görünüşe dönmez", () => {
     const c = scene({ layers: [{ asset: "chair", x: 600, depth: 0 }, { asset: "walker", x: 600, on: 0, anims: [{ type: "walk", toX: 1500 }] }] }, { frame: 25 });
     expect(layerBox(c, "body").innerHTML).not.toContain("#0000aa");
+  });
+});
+
+describe("vektör sahne: boyun", () => {
+  const NECK = '<rect x="185" y="210" width="30" height="80"/>';
+  const svg = (body: string, head: string) => `<svg>${body}${head}</svg>`;
+  const BODY = '<g id="body"><rect x="140" y="270" width="120" height="250"/></g>';
+  const HEAD = `<g id="head">${NECK}<circle cx="200" cy="170" r="60"/></g>`;
+
+  it("boyun gövdenin hemen önüne, kendi grubuna taşınır (yaka boynun altını örter); baş ve gövde kardeş değilse dokunulmaz", () => {
+    const from = svg(BODY, HEAD).indexOf(NECK);
+    const span = { from, to: from + NECK.length };
+    expect(neckBehind(svg(BODY, HEAD), span)).toBe(`<svg><g id="neck">${NECK}</g>${BODY}<g id="head"><circle cx="200" cy="170" r="60"/></g></svg>`);
+    // Baş gövdeden önce, gövde başka bir grubun içinde, boyun başın dışında ya da gövde yok.
+    const before = `<svg>${HEAD}${BODY}</svg>`;
+    const at = before.indexOf(NECK);
+    expect(neckBehind(before, { from: at, to: at + NECK.length })).toBe(before);
+    const nested = `<svg><g>${BODY}</g>${HEAD}</svg>`;
+    const n = nested.indexOf(NECK);
+    expect(neckBehind(nested, { from: n, to: n + NECK.length })).toBe(nested);
+    expect(neckBehind(svg(BODY, HEAD), { from: 5, to: 10 })).toBe(svg(BODY, HEAD));
+    expect(neckBehind(`<svg>${HEAD}</svg>`, { from: 20, to: 30 })).toBe(`<svg>${HEAD}</svg>`);
+    expect(neckBehind(`<svg>${BODY}</svg>`, { from: 20, to: 30 })).toBe(`<svg>${BODY}</svg>`);
+    expect(neckBehind(svg(BODY, HEAD), { from, to: svg(BODY, HEAD).length })).toBe(svg(BODY, HEAD));
+  });
+
+  it("render'da boyun gövdeden önce çizilir ve başla aynı dönüşümü alır", () => {
+    const c = scene({ layers: [{ asset: "necky", x: 700, depth: 0.3 }] }, { frame: 30 });
+    const html = c.innerHTML;
+    expect(html.indexOf('id="s1-0-neck"')).toBeGreaterThan(-1);
+    expect(html.indexOf('id="s1-0-neck"')).toBeLessThan(html.indexOf('id="s1-0-body"'));
+    // Boynun kuralı başınkiyle aynı.
+    expect(pose(html, "neck")).toEqual(pose(html, "head"));
+    cleanup();
+  });
+});
+
+describe("vektör sahne: burun", () => {
+  it("karşısındakine dönen kişinin gözleri burnun yanındaki boşluğu aşınca burun da kayar; burnu gözlerin altındaysa kaymaz", () => {
+    const css = (asset: string) => {
+      const c = scene({ layers: [{ asset, x: 700, depth: 0.3 }, { asset: "hero", x: 1250, depth: 0.3 }] }, { frame: 60 });
+      const r = { group: c.querySelector('[id="s1-0-nose"]') !== null, rule: /#s1-0-nose\{transform:translate\((-?[\d.]+)px/.exec(c.innerHTML)?.[1] };
+      cleanup();
+      return r;
+    };
+    // Sağdaki kişiye dönük: gözler ~11 px sağa, burun boşluğu (3 px) aşan kadar.
+    const nosy = css("nosy");
+    expect(nosy.group).toBe(true);
+    expect(Number(nosy.rule)).toBeGreaterThan(4);
+    const low = css("lownose");
+    expect(low).toEqual({ group: true, rule: undefined });
+    // Burnu bulunamayan çizimde grup yok.
+    expect(css("hero").group).toBe(false);
   });
 });
 

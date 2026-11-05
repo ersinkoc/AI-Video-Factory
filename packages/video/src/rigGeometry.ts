@@ -124,6 +124,142 @@ function paintOf(a: Record<string, string>, key: "stroke" | "fill"): string | un
   return v && /^(#[0-9a-f]{3,8}|rgba?\([\d.,\s%]+\)|[a-z]+)$/i.test(v) && !/^(none|transparent|currentcolor|inherit)$/i.test(v) ? v : undefined;
 }
 
+/** Çizimin şekilleri: iskelet tuvalindeki sınırları, içinde bulunduğu grupların kimlikleri, metindeki yeri ve sırası. */
+interface Shape {
+  b: Bounds;
+  ids: string[];
+  /** Hemen içinde bulunduğu grubun kimliği (adsız grupta undefined). */
+  parent?: string;
+  at: number;
+  len: number;
+  self: boolean;
+}
+
+function shapesOf(svg: string, rig: { width: number; height: number }): Shape[] {
+  const g = geometry();
+  const box = nums(/viewBox\s*=\s*"([^"]*)"/.exec(svg)?.[1]);
+  const [vx, vy, vw, vh] = box.length === 4 ? box : [0, 0, rig.width, rig.height];
+  const k = Math.min(rig.width / vw!, rig.height / vh!);
+  const root = new g.Matrix().translate((rig.width - vw! * k) / 2, (rig.height - vh! * k) / 2).scale(k).translate(-vx!, -vy!);
+  const stack: { matrix: paper.Matrix; ids: string[]; id?: string }[] = [{ matrix: root, ids: [] }];
+  const out: Shape[] = [];
+  let skip = 0;
+  for (const m of svg.matchAll(/<(\/?)([a-zA-Z][\w:-]*)([^>]*?)(\/?)>/g)) {
+    const [, close, name, raw, self] = m;
+    if (SKIP.test(name!)) {
+      if (close) skip = Math.max(0, skip - 1);
+      else if (!self) skip++;
+      continue;
+    }
+    if (skip) continue;
+    if (close) {
+      if (name === "g" || name === "svg") stack.length = Math.max(1, stack.length - 1);
+      continue;
+    }
+    const a = attrsOf(raw!);
+    const top = stack.at(-1)!;
+    if (name === "g" || name === "svg") {
+      if (self) continue;
+      const matrix = name === "svg" || (a.id && POSED.has(a.id)) ? top.matrix : top.matrix.appended(transformOf(a.transform));
+      stack.push({ matrix, ids: a.id ? [...top.ids, a.id] : top.ids, ...(a.id ? { id: a.id } : {}) });
+      continue;
+    }
+    if (!SHAPE.test(name!)) continue;
+    const b = shapeBounds(name!, a, top.matrix);
+    if (b) out.push({ b, ids: a.id ? [...top.ids, a.id] : top.ids, ...(top.id ? { parent: top.id } : {}), at: m.index!, len: m[0].length, self: Boolean(self) });
+  }
+  return out;
+}
+
+const union = (shapes: Shape[]) => shapes.reduce<Bounds | undefined>((u, s) => unionBounds(u, s.b), undefined);
+
+/** Şekiller ardışık kardeş mi (aralarında yalnız boşluk): tek grupta toplanabilir. */
+const siblings = (svg: string, parts: Shape[]) => parts.every((s, i) => i === 0 || !svg.slice(parts[i - 1]!.at + parts[i - 1]!.len, s.at).trim());
+
+/** Çizimin burnu: metindeki yeri ve gözlerin ona değmeden yana kayabileceği boşluk (iskelet px). */
+export interface Nose {
+  box: Bounds;
+  /** Gözler sağa (r) ya da sola (l) en çok bu kadar kayınca bir göz burna değer; dikeyde örtüşmüyorsa Infinity. */
+  room: { l: number; r: number };
+  /** Burnun şekillerinin metindeki ilk karakteri ve bitişi (ardışık kardeşler). */
+  from: number;
+  to: number;
+}
+
+/**
+ * Burun (5 Kas, kullanıcı: "gözler ve burun birbirine giriyor, çok sahnede"): tasarımcı burnu ayrı bir grup olarak
+ * çizmiyor (133 çizimin hiçbirinde "nose" kimliği yok); başın içinde, göz, kaş ve ağız gruplarının dışında kalan, iki
+ * gözün arasında ve altında, ağzın üstünde biten küçük şekillerdir (124 çizimde bulundu, 12'si gözle denetlendi).
+ * Bakış ve konuşulana dönüş gözleri kaydırırken burun yerinde kalıyordu; çizimlerin çoğunda burnun üstü bir gözün iç
+ * köşesine 0–4 px. Şekiller ardışık kardeş olmalı (araya başka öğe girmeden tek grupta toplanabilsin); değilse undefined.
+ */
+export function noseOf(svg: string, rig: { width: number; height: number } = { width: 400, height: 800 }): Nose | undefined {
+  if (/\sid\s*=\s*["']nose["']/.test(svg)) return undefined;
+  const shapes = shapesOf(svg, rig);
+  const within = (id: string) => shapes.filter((s) => s.ids.includes(id));
+  const eyes = union(within("eyes"));
+  const mouth = union(within("mouth"));
+  if (!eyes || !mouth) return undefined;
+  const mid = eyes.x + eyes.w / 2;
+  const left = union(within("eyes").filter((s) => s.b.x + s.b.w / 2 < mid));
+  const right = union(within("eyes").filter((s) => s.b.x + s.b.w / 2 >= mid));
+  if (!left || !right) return undefined;
+  const lo = left.x + left.w * 0.4;
+  const hi = right.x + right.w * 0.6;
+  const parts = shapes.filter((s) => {
+    if (!s.ids.includes("head") || ["eyes", "brows", "mouth"].some((id) => s.ids.includes(id))) return false;
+    const cx = s.b.x + s.b.w / 2;
+    return cx > lo && cx < hi && s.b.y >= eyes.y - eyes.h / 2 && s.b.y + s.b.h <= mouth.y + mouth.h / 2 && s.b.w < eyes.w / 2 && s.b.h < (mouth.y + mouth.h - eyes.y) * 1.1;
+  });
+  if (!parts.length || !parts.every((s) => s.self)) return undefined;
+  if (!siblings(svg, parts)) return undefined;
+  const box = union(parts)!;
+  const touches = (e: Bounds) => Math.min(e.y + e.h, box.y + box.h) > Math.max(e.y, box.y);
+  // Bir piksel pay: göz burna değmeden durur.
+  const gap = (v: number) => Math.max(0, v - 1);
+  return {
+    box,
+    room: { r: touches(left) ? gap(box.x - left.x - left.w) : Infinity, l: touches(right) ? gap(right.x - box.x - box.w) : Infinity },
+    from: parts[0]!.at,
+    to: parts.at(-1)!.at + parts.at(-1)!.len,
+  };
+}
+
+/** Burnun şekilleri tek grupta (`<g id="nose">`): poz onu gözlerle birlikte kaydırabilsin. */
+export function withNose(svg: string, nose: Pick<Nose, "from" | "to">): string {
+  return `${svg.slice(0, nose.from)}<g id="nose">${svg.slice(nose.from, nose.to)}</g>${svg.slice(nose.to)}`;
+}
+
+/**
+ * Burnun bu karedeki kayması: gözler burnun yanındaki boşluk kadar serbest kayar (bakış, göz gezdirme); aşınca burun
+ * da aşan kadar gider (yüz o yana dönmüş gibi; gözlüğün köprüsü burunda kalır).
+ */
+export function noseShift(eyes: number, room: Nose["room"]): number {
+  return eyes - Math.min(room.r, Math.max(-room.l, eyes));
+}
+
+/**
+ * Boyun (5 Kas, kullanıcı: "boyun nedense elbiselerin üstüne çıkıyor"): tasarımcı boynu baş grubunun içinde, baş dönünce
+ * onunla dönsün diye çiziyor; baş gövdeden sonra çizildiği için boynun altı yakanın, gömleğin üstüne biniyordu (133
+ * çizimin 115'inde boyun gövdenin üstüne 8–38 px iniyordu). Boyun, başın doğrudan içinde yüzden önce çizilen (yüzün
+ * arkasında kalan), ortada, dar ve çenenin altına uzanan ardışık şekillerdir (119 çizimde bulundu, hepsi gözle
+ * denetlendi). Yüz: başın ağzı içine alan en büyük şekli. Bulunamazsa undefined.
+ */
+export function neckOf(svg: string, rig: { width: number; height: number } = { width: 400, height: 800 }): { from: number; to: number } | undefined {
+  const shapes = shapesOf(svg, rig);
+  const mouth = union(shapes.filter((s) => s.ids.includes("mouth")));
+  if (!mouth) return undefined;
+  const head = shapes.filter((s) => s.ids.includes("head") && !["eyes", "brows", "mouth"].some((id) => s.ids.includes(id)));
+  const covers = (b: Bounds) => b.x <= mouth.x && b.x + b.w >= mouth.x + mouth.w && b.y <= mouth.y && b.y + b.h >= mouth.y + mouth.h;
+  const face = head.filter((s) => covers(s.b)).sort((a, b) => b.b.w * b.b.h - a.b.w * a.b.h)[0];
+  if (!face) return undefined;
+  const { x, y, w, h } = face.b;
+  const chin = y + h;
+  const parts = head.filter((s) => s.at < face.at && s.b.y < chin && s.b.y + s.b.h > chin + 4 && Math.abs(s.b.x + s.b.w / 2 - (x + w / 2)) < w * 0.2 && s.b.w < w * 0.6);
+  if (!parts.length || !parts.every((s) => s.self && s.parent === "head") || !siblings(svg, parts)) return undefined;
+  return { from: parts[0]!.at, to: parts.at(-1)!.at + parts.at(-1)!.len };
+}
+
 /** Çizimin baş, ağız ve göz grupları ile çenesi (iskelet tuvali koordinatında). */
 export function faceOf(svg: string, rig: { width: number; height: number } = { width: 400, height: 800 }): Face {
   const g = geometry();

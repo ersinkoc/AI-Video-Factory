@@ -55,7 +55,7 @@ import { splitBrows, type BrowPart, type SplitBrows } from "./browShape.ts";
 import { bend, reach, type Reach } from "./ik.ts";
 import { revealWindow } from "./kinetic-timing.ts";
 import { lipLine, mouthIds, withMouths, type SpeakingMouth } from "./mouthShape.ts";
-import { faceOf, type Bounds, type Face } from "./rigGeometry.ts";
+import { faceOf, neckOf, noseOf, noseShift, withNose, type Bounds, type Face, type Nose } from "./rigGeometry.ts";
 import { visemeAt, visemeCues, type Viseme } from "./visemes.ts";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
@@ -228,8 +228,8 @@ function layerTransform(
   return tr;
 }
 
-/** İskelet parçası ya da üst gövde (gövde + kollar + baş; kalçadan, `wrapTorso`). */
-type PosePart = RigPart | "torso" | BrowPart;
+/** İskelet parçası, üst gövde (gövde + kollar + baş; kalçadan, `wrapTorso`) ya da burun (`noseFor`; gözlerle kayar). */
+type PosePart = RigPart | "torso" | BrowPart | "nose";
 
 interface PartPose {
   rotate: number;
@@ -416,6 +416,25 @@ export function browsFor(asset: VectorAsset): SplitBrows | undefined {
   let b = brows.get(asset);
   if (b === undefined) brows.set(asset, (b = splitBrows(asset.svg) ?? null));
   return b ?? undefined;
+}
+
+const drawn = new WeakMap<VectorAsset, { svg: string; room?: Nose["room"] }>();
+
+/**
+ * Render'ın çizimi (varlık başına bir kez): kaşlar sol ve sağa ayrılmış (browsFor), burun ayrı grupta (rigGeometry
+ * noseOf; gözlerle kayar), boyun gövdenin arkasında (neckOf, neckBehind). room: gözlerin burna değmeden kayabileceği
+ * boşluk; burnu bulunamayan çizimde yok (burun kaymaz).
+ */
+export function faceSvgFor(asset: VectorAsset): { svg: string; room?: Nose["room"] } {
+  let f = drawn.get(asset);
+  if (!f) {
+    const base = browsFor(asset)?.svg ?? asset.svg;
+    const nose = noseOf(base);
+    const nosed = nose ? withNose(base, nose) : base;
+    const neck = neckOf(nosed);
+    drawn.set(asset, (f = { svg: neck ? neckBehind(nosed, neck) : nosed, ...(nose ? { room: nose.room } : {}) }));
+  }
+  return f;
 }
 
 /** İskelet parçalarının bu karedeki pozu: sürekli canlılık + Claude'un istediği jestler. */
@@ -1935,6 +1954,11 @@ function motionOf(
   else attention.facing = facing;
   // Son poz anatomiye kırpılır (anatomy.ts): jestler ve karışımları sınırı aşmamalı; aşan denetimde görünür.
   const { pose, strains } = anatomical(rigPose(anims, p, t, prefix, placed.sitting, layer.expression, gait, layer.flip, attention, dur), false);
+  // Burun gözlerle kayar: gözler burnun yanındaki boşluğu aşınca (bakış, konuşulana dönüş, baş sallama) aşan kadar.
+  const room = figure ? undefined : faceSvgFor(asset).room;
+  // Gözlerin pozu her karede kurulur (göz kırpma, bakış).
+  const eyes = pose.eyes!.tx;
+  if (room && noseShift(eyes, room)) pose.nose = { rotate: 0, sx: 1, sy: 1, tx: noseShift(eyes, room), ty: 0 };
   // Konuşma yarıdan fazla girmişken ses varsa şekil koddan çizilir; sessizlikte (X) çizimin kendi ağzı görünür.
   const viseme = voice?.viseme;
   const talking = face.mouth && viseme && viseme !== "X" && anims.some((a) => a.type === "talk" && gestureWeight(p, a, dur) >= 0.5);
@@ -2001,13 +2025,30 @@ export function wrapTorso(svg: string, prefix: string): string {
   const spans = groupSpans(svg);
   const parts = TORSO_PARTS.map((p) => spans.get(prefix + p));
   if (parts.some((p) => !p || p.depth !== parts[0]!.depth)) return svg;
-  const start = Math.min(...parts.map((p) => p!.start));
+  // Gövdenin önüne alınan boyun (neckBehind) da üst gövdeyle eğilir.
+  const neck = spans.get(prefix + "neck");
+  const start = Math.min(...parts.map((p) => p!.start), ...(neck?.depth === parts[0]!.depth ? [neck.start] : []));
   const end = Math.max(...parts.map((p) => p!.end));
   for (const leg of ["leg-l", "leg-r"]) {
     const l = spans.get(prefix + leg);
     if (l && l.start >= start && l.end <= end) return svg;
   }
   return `${svg.slice(0, start)}<g id="${prefix}torso">${svg.slice(start, end)}</g>${svg.slice(end)}`;
+}
+
+/**
+ * Boyun giysinin arkasında: başın içindeki boyun şekilleri (rigGeometry neckOf) gövde grubunun hemen önüne, kendi
+ * grubuna taşınır; başla aynı CSS dönüşümünü alır (kardeş, aynı dönme noktası), baş eğilip sallanınca birlikte döner.
+ * Yaka ve gömlek boynun altını örter; gövdede boşluk olan yerde (V yaka) boyun görünmeye devam eder. Baş ve gövde aynı
+ * ebeveynde değilse, gövde baştan sonra çiziliyorsa ya da boyun başın içinde değilse çizime dokunulmaz.
+ */
+export function neckBehind(svg: string, neck: { from: number; to: number }): string {
+  const spans = groupSpans(svg);
+  const head = spans.get("head");
+  const body = spans.get("body");
+  if (!head || !body || body.parent !== head.parent || body.start > head.start || neck.from < head.start || neck.to > head.end) return svg;
+  const rest = svg.slice(0, neck.from) + svg.slice(neck.to);
+  return `${rest.slice(0, body.start)}<g id="neck">${svg.slice(neck.from, neck.to)}</g>${rest.slice(body.start)}`;
 }
 
 /** Elin (avucun ortasının) tuvaldeki yeri: sağ el (elde tutulan nesne onu izler) ya da sol el (denetim). */
@@ -2115,7 +2156,8 @@ function Layer({
   // Kaşlar sol ve sağa ayrılır: ifadenin eğimi her kaşı kendi ortasında döndürür (3D figürün kaşları kendisinde).
   const look = motion.side ?? asset;
   const split = figure ? undefined : browsFor(look);
-  const prefixed = prefixSvgIds(fitSvg(split?.svg ?? look.svg, "meet"), prefix);
+  // Kaşları ayrılmış, burnu gruplanmış, boynu gövdenin arkasına alınmış çizim (3D figürün yedeği çizimin kendisi).
+  const prefixed = prefixSvgIds(fitSvg(figure ? look.svg : faceSvgFor(look).svg, "meet"), prefix);
   // Düşünen el yüzün önünde (yandan yürürken front yok: yan çizimde kol jesti uygulanmaz).
   const raw = motion.front ? armInFront(prefixed, prefix, motion.front) : prefixed;
   const shaped = pose?.torso ? wrapTorso(raw, prefix) : raw;
@@ -2143,13 +2185,15 @@ function Layer({
           // Kaş kendi ortasında döner; ayrılamayan çizimde kaşın tek parçası yok (kural yazılmaz).
           const brow = k.startsWith("brow-") ? split?.centres[k as BrowPart] : undefined;
           if (k.startsWith("brow-") && !brow) return "";
-          const [px, py] = brow ?? (k === "torso" ? pivots.body : pivots[k as RigPart]);
+          const [px, py] = brow ?? (k === "torso" ? pivots.body : k === "nose" ? pivots.eyes : pivots[k as RigPart]);
           // Kısalan üst kol (kameraya uzanan) ön kolu bozmaz: ön kol üst kolun ölçeğini dirsekte geri alır, yalnız
           // dirsek omza yaklaşır (ön kol üst kola göre döndüğü için kendi ölçeğiyle geri almak onu eğerdi).
           const up = k.startsWith("forearm-") ? pose[`arm-${k.slice(-1)}` as RigPart] : undefined;
           const undo = up && (up.sx !== 1 || up.sy !== 1) ? `scale(${(1 / up.sx).toFixed(4)}, ${(1 / up.sy).toFixed(4)}) ` : "";
           const transform = `${undo}translate(${v.tx.toFixed(2)}px, ${v.ty.toFixed(2)}px) rotate(${v.rotate.toFixed(2)}deg) scale(${v.sx.toFixed(3)}, ${v.sy.toFixed(3)})`;
-          return `#${prefix}${k}{transform:${transform};transform-origin:${px}px ${py}px;transform-box:view-box}`;
+          const rule = `{transform:${transform};transform-origin:${px}px ${py}px;transform-box:view-box}`;
+          // Gövdenin arkasına alınan boyun başla aynı dönüşümü alır (neckBehind: başın kardeşi).
+          return `#${prefix}${k}${rule}${k === "head" ? `#${prefix}neck${rule}` : ""}`;
         })
         .join("")
     : "";
