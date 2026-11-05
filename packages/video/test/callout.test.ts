@@ -1,6 +1,6 @@
 import { VectorShot, type PlacedLayer } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { CALLOUT, calloutScale, calloutSpot, calloutTarget, overlap } from "../src/callout.ts";
+import { CALLOUT, calloutBlocked, calloutCost, calloutScale, calloutSpot, calloutTarget, overlap } from "../src/callout.ts";
 
 const pl = (index: number, height: number, extra: Partial<PlacedLayer> = {}): PlacedLayer => ({ index, x: 960, y: 800, height, width: height, scale: 1, z: 0, sitting: false, grounded: true, fixes: [], ...extra });
 const shot = (extra: object = {}) => VectorShot.parse({ layers: [{ asset: "a", x: 0 }, { asset: "b", x: 0 }, { asset: "c", x: 0 }], ...extra });
@@ -79,6 +79,21 @@ describe("büyütme balonu: yer ve açılış", () => {
     // Nesnenin hemen yanındaki adaylar seçilmez: balon onu örterdi.
     const spot = calloutSpot([1520, 400], []);
     expect(Math.hypot(spot[0] - 1520, spot[1] - 400)).toBeGreaterThan(CALLOUT.r + 60);
+    // Orada bir kişinin göğsü var: gövde yarı ağırlıkla sayılır; üstteki aday da göğsün üst kenarına değdiğinden balon
+    // ortaya yakın üst adaya gider.
+    const chest = { x: 1440, y: 480, w: 160, h: 200 };
+    expect(calloutSpot([1500, 800], [], [chest])).toEqual([1340, 290]);
+    expect(calloutCost([1520, 560], [1500, 800], [], [chest])).toBeCloseTo(calloutCost([1520, 560], [1500, 800], []) + CALLOUT.body * 160 * 200);
+  });
+
+  it("yakın çekimde bir yüze değen ya da bir kişinin gövdesinin dörtte birinden çoğunu örten yerde balon açılmaz", () => {
+    const face = { x: 1500, y: 300, w: 80, h: 80 };
+    expect(calloutBlocked([1520, 330], [face], [], true)).toBe(true);
+    // Geniş çekimde yüze değmek bedeldir, engel değil.
+    expect(calloutBlocked([1520, 330], [face], [], false)).toBe(false);
+    // Gövdenin yarısı balonun altında; köşesine değmek engel değil.
+    expect(calloutBlocked([1520, 560], [], [{ x: 1500, y: 600, w: 100, h: 300 }], false)).toBe(true);
+    expect(calloutBlocked([1520, 560], [], [{ x: 1680, y: 720, w: 100, h: 100 }], false)).toBe(false);
   });
 
   it("çekimin başında kapalı, yaylanarak açılır (biraz taşar), sonra tam boy", () => {

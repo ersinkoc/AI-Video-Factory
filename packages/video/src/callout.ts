@@ -21,6 +21,10 @@ export const CALLOUT = {
   /** Belirme: çekimin bu oranında başlar, bu sürede (oran) tamamlanır. */
   appear: 0.1,
   grow: 0.08,
+  /** Kişinin üst gövdesinden örtülen alanın bedeldeki payı (yüz, yazı ve nesne 1). */
+  body: 0.5,
+  /** Seçilen yer bir kişinin üst gövdesinin bundan fazlasını örtecekse balon açılmaz (kişiyi örtmektense balonsuz). */
+  bodyMax: 0.25,
 } as const;
 
 const W = 1920;
@@ -69,34 +73,51 @@ export function overlap(a: Box, b: Box): number {
   return w > 0 && h > 0 ? w * h : 0;
 }
 
+/** Balonun aday merkezleri: üst yarıda, kenarlardan içeride (dikey videoda kırpılan kenarlar dahil); altyazı bandına inmez. */
+export const CALLOUT_SPOTS: readonly (readonly [number, number])[] = [
+  [W - 400, 330],
+  [400, 330],
+  [W - 400, 560],
+  [400, 560],
+  [W / 2 + 380, 290],
+  [W / 2 - 380, 290],
+];
+
 /**
- * Balonun merkezi: üst yarıda, kenarlardan içeride (dikey videoda kırpılan kenarlar dahil) aday noktalar arasından
- * yüzleri, yazıları ve nesnenin kendisini en az örten; eşitlikte nesneye yakın olan. Altyazı bandına inmez.
+ * Bir adayın bir andaki bedeli: örttüğü yüz, yazı ve nesne alanı, kişilerin üst gövdesinden örttüğü alanın body'si
+ * (5 Kas: balon kişilerin gövdesini örtüyordu, yalnız yüzleri sayılıyordu), nesnenin üstüne biniyorsa ağır ceza (onu
+ * saklar) ve nesneye uzaklığın iki katı.
  */
-export function calloutSpot(target: readonly [number, number], avoid: Box[]): [number, number] {
+export function calloutCost(c: readonly [number, number], target: readonly [number, number], avoid: Box[], bodies: Box[] = []): number {
   const { r } = CALLOUT;
-  const candidates: [number, number][] = [
-    [W - 400, 330],
-    [400, 330],
-    [W - 400, 560],
-    [400, 560],
-    [W / 2 + 380, 290],
-    [W / 2 - 380, 290],
-  ];
-  let best = candidates[0]!;
+  const box = { x: c[0] - r, y: c[1] - r, w: 2 * r, h: 2 * r };
+  const covered = avoid.reduce((n, a) => n + overlap(box, a), 0) + CALLOUT.body * bodies.reduce((n, a) => n + overlap(box, a), 0);
+  const dist = Math.hypot(c[0] - target[0], c[1] - target[1]);
+  return covered + (dist < r + 60 ? 1e7 : 0) + dist * 2;
+}
+
+/**
+ * Seçilen yerde balon açılamaz mı: yakın çekimde (close) bir yüze değiyor ya da bir kişinin üst gövdesinin bodyMax'ından
+ * çoğunu örtüyor (kişiyi örtmektense balonsuz).
+ */
+export function calloutBlocked(c: readonly [number, number], faces: Box[], bodies: Box[], close: boolean): boolean {
+  const { r } = CALLOUT;
+  const box = { x: c[0] - r, y: c[1] - r, w: 2 * r, h: 2 * r };
+  return (close && faces.some((f) => overlap(box, f) > 0)) || bodies.some((b) => overlap(box, b) > CALLOUT.bodyMax * b.w * b.h);
+}
+
+/** Balonun merkezi: bedeli en düşük aday; eşitlikte listede önce gelen. */
+export function calloutSpot(target: readonly [number, number], avoid: Box[], bodies: Box[] = []): [number, number] {
+  let best = CALLOUT_SPOTS[0]!;
   let score = Infinity;
-  for (const c of candidates) {
-    const box = { x: c[0] - r, y: c[1] - r, w: 2 * r, h: 2 * r };
-    const covered = avoid.reduce((n, a) => n + overlap(box, a), 0);
-    const dist = Math.hypot(c[0] - target[0], c[1] - target[1]);
-    // Nesnenin üstüne binen balon onu saklar: ağır ceza.
-    const s = covered + (dist < r + 60 ? 1e7 : 0) + dist * 2;
+  for (const c of CALLOUT_SPOTS) {
+    const s = calloutCost(c, target, avoid, bodies);
     if (s < score) {
       score = s;
       best = c;
     }
   }
-  return best;
+  return [best[0], best[1]];
 }
 
 /** Belirme ölçeği (0–1, küçük bir taşmayla): from'dan (en erken appear) sonra yaylanarak açılır. */

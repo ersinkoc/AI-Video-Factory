@@ -1711,6 +1711,36 @@ describe("vektör sahne: konuşma balonu", () => {
     expect(overlap(f.bubbles[0]!.box, { x: at[0] - CALLOUT.r, y: at[1] - CALLOUT.r, w: 2 * CALLOUT.r, h: 2 * CALLOUT.r })).toBe(0);
   });
 
+  it("büyütme balonu çekim boyunca yerinde durur: kamera yaklaşırken ve biri yürüyerek gelirken köşe değiştirmez", () => {
+    // 5 Kas: yer kare kare seçildiğinde bu kurulumların ikisinde balon sağ üstten sol alta (ya da tersi) atlıyordu.
+    // Elde 12 cm'lik rozet: kamera yaklaşınca da kare yüksekliğinin %10'undan küçük kalır, balon açılır.
+    const pin = asset("pin", "prop", '<svg viewBox="0 0 100 100"><rect id="pin" width="100" height="100" fill="#00ff00"/></svg>', 100, 100, { realHeight: 0.12 });
+    for (const [hx, ax, to] of [
+      [600, 1750, 1100],
+      [1250, 250, 800],
+    ]) {
+      const m = shotModel(
+        VectorShot.parse({
+          layers: [
+            { asset: "hero", x: hx, depth: 0.5 },
+            { asset: "pin", x: 0, heldBy: 0 },
+            { asset: "ada", x: ax, depth: 0.5, anims: [{ type: "walk", start: 0.15, end: 0.85, toX: to }] },
+            { asset: "panorama", x: 960, y: 1080, height: 1080 },
+          ],
+          camera: { zoomFrom: 1, zoomTo: 1.2, focusX: 960, focusY: 540 },
+        }),
+        { ...ASSETS, pin },
+        "outline",
+        1920,
+        1080,
+        false,
+        10,
+      );
+      const at = [45, 90, 150, 210, 290].map((frame) => shotFrame(m, { shotId: "s1", frame, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).inset!.at.join(","));
+      expect(new Set(at).size).toBe(1);
+    }
+  });
+
   it("boş balon nesnesi atılır ve denetim sahneyi yeniden planlatır", () => {
     const c = scene({ layers: [{ asset: "hero", x: 600, depth: 0.3 }, { asset: "speech", x: 1100, y: 500, height: 220 }] }, { frame: 150 });
     expect(c.innerHTML).not.toContain("speech-icon");
@@ -1904,6 +1934,8 @@ describe("vektör sahne: büyütme balonu ve atmosfer katmanı", () => {
     expect(two.m.subject).toBe(3);
     expect(small(two.m)).toBe(true);
     expect(two.f.inset).toBeUndefined();
+    // Karar çekim başına bir kez: sonraki karede de açılmaz (önbellekten).
+    expect(shotFrame(two.m, { shotId: "s1", frame: 140, fps: 30, durationInFrames: 150, width: 1920, height: 1080, insets: true, overlay: false }).inset).toBeUndefined();
     // Kişi yakın çekiminde özne nesne yok.
     expect(frame([{ asset: "walker", x: 960, depth: 0.3 }], 960).m.subject).toBeUndefined();
   });

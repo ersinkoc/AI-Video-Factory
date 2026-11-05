@@ -48,7 +48,7 @@ import { visualVector } from "./entrance.ts";
 import { Ambience } from "./Ambience.tsx";
 import { Crowd, crowdFigures, crowdZ, type CrowdFigure } from "./crowd.tsx";
 import { armBeats, BEAT, pulseAt, speechBeats, strokeAt } from "./beats.ts";
-import { CALLOUT, calloutScale, calloutSpot, calloutTarget, overlap, type Box } from "./callout.ts";
+import { CALLOUT, CALLOUT_SPOTS, calloutBlocked, calloutCost, calloutScale, calloutTarget, overlap, type Box } from "./callout.ts";
 import { Figure3D } from "./Figure3D.tsx";
 import { clapClosed, GESTURE_RHYTHM, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
@@ -3287,6 +3287,78 @@ function bubbleSides(model: ShotModel, shotId: string, dur: number, fps: number,
 }
 
 /** Bu karede açık balonlar: yanı çekim boyunca sabit, yeri konuşanın o anki yüzüne göre; yüzü kadrajda olmayanınki yok. */
+/** Katmanların bir andaki yeri: elde tutulan nesne tutan karakterin elini izler (avucun ortasından tutulur). */
+function drawnAtOf({ spec, placed }: ShotModel, motions: Map<number, Motion>): Map<number, PlacedLayer> {
+  return new Map(
+    placed.map((pl) => {
+      const holder = pl.heldBy === undefined ? undefined : placed.find((h) => h.index === pl.heldBy);
+      if (!holder) return [pl.index, pl] as const;
+      const [hx, hy] = handPoint(holder, spec.layers[holder.index]!, motions.get(holder.index)!);
+      return [pl.index, { ...pl, x: hx, y: hy + pl.height * 0.45 }] as const;
+    }),
+  );
+}
+
+/**
+ * Büyütme balonunun bir anı (ekran px): nesnenin noktası; kaçındıkları (nesnenin kendisi, yüzler, yazılar, konuşma
+ * balonları); yüzler ayrıca ve üst gövdeler (göğüsten bele, calloutCost'ta yarı ağırlıkla).
+ */
+function insetScene(model: ShotModel, k: number, motions: Map<number, Motion>, drawnAt: Map<number, PlacedLayer>, heads: Head[], texts: ReturnType<typeof textsAt>, bubbles: BubbleView[], index: number) {
+  const { cam, centre } = model;
+  const at = drawnAt.get(index)!;
+  const tr = motions.get(index)!.tr;
+  const target = cameraPoint(cam, k, centre, [at.x + tr.x, at.y + tr.y - (at.height * tr.scale) / 2]);
+  const scale = cameraAt(cam, k, centre).scale;
+  const faces: Box[] = [];
+  const bodies: Box[] = [];
+  for (const h of heads) {
+    const [x, y] = cameraPoint(cam, k, centre, h.at);
+    const tall = cameraPoint(cam, k, centre, h.foot)[1] - y;
+    faces.push({ x: x - tall * 0.12, y, w: tall * 0.24, h: tall * 0.22 });
+    bodies.push({ x: x - tall * 0.16, y: y + tall * 0.2, w: tall * 0.32, h: tall * 0.35 });
+  }
+  const avoid: Box[] = [
+    { x: target[0] - (at.width * scale) / 2, y: target[1] - (at.height * scale) / 2, w: at.width * scale, h: at.height * scale },
+    ...faces,
+    ...texts.map(textBoxOf),
+    ...bubbles.map((b) => b.box),
+  ];
+  return { target, avoid, faces, bodies };
+}
+
+const insetSpots = new WeakMap<ShotModel, Map<number, readonly [number, number] | null>>();
+
+/**
+ * Büyütme balonunun yeri, çekim başına bir kez (modelle önbellekte). 5 Kas ölçümü: yer kare kare seçildiği için balonlu
+ * 79 çekimin 25'inde balon çekimin ortasında köşeden köşeye atlıyordu (kamera yaklaşırken ya da kişi yürürken adayların
+ * bedeli değişiyordu); 11'inde bir kişinin gövdesinin dörtte birinden çoğunu örtüyordu. Balonun açık olduğu anlarda
+ * (from ya da appear'dan sonra, CARD.samples'a yayılmış) her adayın bedeli toplanır (calloutCost, gövdeler dahil). Seçilen
+ * yer herhangi bir anda yakın çekimde bir yüze değecekse ya da bir kişinin üst gövdesinin bodyMax'ından çoğunu örtecekse
+ * balon hiç açılmaz (eskiden kare kare açılıp kapanabilirdi; NVIDIA s6-sh3: "balon ikinci adamın gövdesini örtüyor").
+ */
+function insetSpot(model: ShotModel, shotId: string, dur: number, fps: number, width: number, height: number, index: number, from: number): readonly [number, number] | undefined {
+  const cache = insetSpots.get(model) ?? new Map<number, readonly [number, number] | null>();
+  insetSpots.set(model, cache);
+  const known = cache.get(index);
+  if (known !== undefined) return known ?? undefined;
+  const lo = Math.max(CALLOUT.appear, from);
+  const views = CARD.samples.map((q) => {
+    const p = lo + (1 - lo) * q;
+    const k = interpolate(p, [0, 1], [0, 1], { easing: ease });
+    const motions = motionsAt(model, shotId, p, p * dur, dur, fps);
+    const heads = headsOf(model, motions);
+    const texts = textsAt(model, shotId, heads, k, dur, fps, width, height);
+    const bubbles = bubblesAt(model, shotId, motions, k, p * dur, dur, fps, width, height);
+    return insetScene(model, k, motions, drawnAtOf(model, motions), heads, texts, bubbles, index);
+  });
+  const cost = (c: readonly [number, number]) => views.reduce((n, v) => n + calloutCost(c, v.target, v.avoid, v.bodies), 0);
+  const spot = CALLOUT_SPOTS.reduce((a, b) => (cost(b) < cost(a) ? b : a));
+  const near = Math.max(model.cam.zoomFrom, model.cam.zoomTo) >= CALLOUT.closeUp;
+  const chosen = views.some((v) => calloutBlocked(spot, v.faces, v.bodies, near)) ? null : spot;
+  cache.set(index, chosen);
+  return chosen ?? undefined;
+}
+
 function bubblesAt(model: ShotModel, shotId: string, motions: Map<number, Motion>, k: number, t: number, dur: number, fps: number, width: number, height: number): BubbleView[] {
   const { spec, placed } = model;
   const bounds = bubbleBounds(model, width, height);
@@ -3318,15 +3390,7 @@ export function shotFrame(
   const texts = textsAt(model, shotId, heads, k, dur, fps, width, height);
   // Konuşma balonları (küçük resimde yok: resmin yazısı başlıktır).
   const bubbles = insets ? bubblesAt(model, shotId, motions, k, t, dur, fps, width, height) : [];
-  // Katmanların bu karedeki yeri: elde tutulan nesne tutan karakterin elini izler (avucun ortasından tutulur).
-  const drawnAt = new Map(
-    placed.map((pl) => {
-      const holder = pl.heldBy === undefined ? undefined : placed.find((h) => h.index === pl.heldBy);
-      if (!holder) return [pl.index, pl] as const;
-      const [hx, hy] = handPoint(holder, spec.layers[holder.index]!, motions.get(holder.index)!);
-      return [pl.index, { ...pl, x: hx, y: hy + pl.height * 0.45 }] as const;
-    }),
-  );
+  const drawnAt = drawnAtOf(model, motions);
   // Makro ek çekim: netlik nesneye çekilir, nesne sahnedeki yerinden karenin ortasına büyür (MACRO). Küçük resimde yok.
   const close = (() => {
     if (macro === undefined || !insets) return undefined;
@@ -3367,33 +3431,14 @@ export function shotFrame(
     })();
     return { asset: safe[layer.asset]!, box, q, ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}), ...(surface ? { surface } : {}) };
   })();
-  // Büyütme balonu: anlatılan küçük nesne yuvarlak pencerede büyük; yüzleri ve yazıları örtmeyen yerde. Makro varsa
-  // nesne zaten büyük: balon açılmaz (inceleme: "balon aynı nesneyi tekrar ediyor").
+  // Büyütme balonu: anlatılan küçük nesne yuvarlak pencerede büyük; yüzleri, gövdeleri ve yazıları örtmeyen, çekim
+  // başına bir kez seçilen yerde (insetSpot). Makro varsa nesne zaten büyük: balon açılmaz (inceleme: "balon aynı nesneyi
+  // tekrar ediyor").
   const inset = (() => {
     if (!insets || bg?.meta.exact || o.overlay || close) return undefined;
     const zoom = Math.max(cam.zoomFrom, cam.zoomTo);
     const index = calloutTarget(spec, placed, (i) => safe[spec.layers[i]!.asset]!.kind === "prop", zoom, subject);
     if (index === undefined) return undefined;
-    const at = drawnAt.get(index)!;
-    const tr = motions.get(index)!.tr;
-    const target = cameraPoint(cam, k, centre, [at.x + tr.x, at.y + tr.y - (at.height * tr.scale) / 2]);
-    const scale = cameraAt(cam, k, centre).scale;
-    const faces = heads.map((h) => {
-      const [x, y] = cameraPoint(cam, k, centre, h.at);
-      const tall = cameraPoint(cam, k, centre, h.foot)[1] - y;
-      return { x: x - tall * 0.12, y, w: tall * 0.24, h: tall * 0.22 };
-    });
-    const avoid: Box[] = [
-      // Nesnenin kendisi, yüzler ve yazılar.
-      { x: target[0] - (at.width * scale) / 2, y: target[1] - (at.height * scale) / 2, w: at.width * scale, h: at.height * scale },
-      ...faces,
-      ...texts.map(textBoxOf),
-      ...bubbles.map((b) => b.box),
-    ];
-    const spot = calloutSpot(target, avoid);
-    // Yakın çekimde yüz büyük: balon bir yüzü örtecekse açılmaz.
-    const box = { x: spot[0] - CALLOUT.r, y: spot[1] - CALLOUT.r, w: 2 * CALLOUT.r, h: 2 * CALLOUT.r };
-    if (zoom >= CALLOUT.closeUp && faces.some((f) => overlap(box, f) > 0)) return undefined;
     const layer = spec.layers[index]!;
     // Ekranlı nesnenin balonu da çekimin ekran içeriğini gösterir.
     const person = screenPersonOf(safe, layer.screen?.person);
@@ -3402,7 +3447,11 @@ export function shotFrame(
     const entered = [index, layer.on, layer.heldBy]
       .flatMap((i) => (i === undefined ? [] : spec.layers[i]!.anims))
       .reduce((end, a) => (ENTRANCE_ANIMS.has(a.type) ? Math.max(end, a.end) : end), 0);
-    return { asset: safe[layer.asset]!, target, at: spot, ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}), ...(entered ? { from: entered } : {}) };
+    const spot = insetSpot(model, shotId, dur, fps, width, height, index, entered);
+    if (!spot) return undefined;
+    // İşaret çizgisi nesneyi kare kare izler; balonun kendisi yerinde durur.
+    const { target } = insetScene(model, k, motions, drawnAt, heads, texts, bubbles, index);
+    return { asset: safe[layer.asset]!, target, at: [spot[0], spot[1]] as [number, number], ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}), ...(entered ? { from: entered } : {}) };
   })();
   return { p, t, k, dur, motions, texts, drawnAt, ...(inset ? { inset } : {}), ...(close ? { macroView: close } : {}), bubbles };
 }
