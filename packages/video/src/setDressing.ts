@@ -2,7 +2,7 @@ import { baseBackgroundId, VectorLayer, type PlacedLayer, type Timeline, type Ve
 import { visualVector } from "./entrance.ts";
 import { lintShot, type LintIssue } from "./lint.ts";
 import { coverIn, gridFor, shapesOf } from "./screen.ts";
-import { shotModel, viewAt, type ShotModel } from "./Vector.tsx";
+import { boxOf as cornersBox, faceFor, rigToCanvas, shotModel, viewAt, type ShotModel } from "./Vector.tsx";
 
 /**
  * Set eşyası yerleşimi (5 Kas, kullanıcının seçimi "oda başına set eşyası"; en yeni incelemelerde çekimlerin %37'sinde
@@ -26,7 +26,11 @@ import { shotModel, viewAt, type ShotModel } from "./Vector.tsx";
  * Eşya hiçbir şeyi bozmuyorsa konur (kamera onu görmediği için kadraj zaten aynı kalır): öbür katmanların yeri ve boyu aynı,
  * arkasında kalan bir katmanı (duvardaki tahta, pencere, öbür eşya) ya da önde de olsa duvarda/havada duran bir nesneyi
  * kendi alanının overlap'inden çok örtmüyor, öndeki nesnelerin ardında hidden'ından çoğu kaybolmuyor ve denetim (lintShot) yeni
- * bir kusur bulmuyor. Çekim başına en çok perShot eşya. Yönetmenin yakın çekimi (zoom ≥ close), Manim tahtalı, figüranlı ve haritalı
+ * bir kusur bulmuyor. Önünde duran kişinin başı eşyanın kenarına denk gelmiyor (head): eşyanın çizimi ya başı çerçeveliyor
+ * (başın kutusunun, üstüne margin baş boyu eklenmiş hâlinin en az inside'ı; dolabın önünde duran kişi) ya da başın
+ * çevresinden (her yana margin) en çok clear'ını örtüyor. 5 Kas, Amazon s7-sh3: ayaklı lambanın abajuru sunucunun başının
+ * hemen üstündeydi, şapka gibi okunuyordu; benzetimde rafın üst kenarı yüzün ortasından, dolabın yan kenarı başın içinden
+ * geçiyordu. Çekim başına en çok perShot eşya. Yönetmenin yakın çekimi (zoom ≥ close), Manim tahtalı, figüranlı ve haritalı
  * çekim döşenmez.
  */
 export const SET = {
@@ -42,6 +46,8 @@ export const SET = {
   reach: 0.25,
   /** Arka plan çiziminin eşya boyu şekli (sahne px'inin kesri): en az h yüksek, w aralığında geniş, altı low'dan aşağıda; cover'ından çoğu örtülmez. */
   fixture: { h: 0.15, w: [0.03, 0.35], low: 0.2, cover: 0.2 },
+  /** Önündeki başla teğet olmama: pay baş boyu cinsinden; çerçeveleme (inside) ve uzak durma (clear) eşikleri. */
+  head: { margin: 0.2, inside: 0.9, clear: 0.1 },
   close: 1.5,
   slots: [0.1, 0.9, 0.24, 0.76, 0.38, 0.62],
 } as const;
@@ -117,6 +123,20 @@ function fits(assets: Assets, before: ShotModel, after: ShotModel, index: number
     return n + (grid ? coverIn(grid, boxOf(p), layer.flip, box) : 0);
   }, 0);
   if (hidden > SET.hidden) return false;
+  // Önünde duranın başı (dinlenme pozunda, saç dahil) eşyanın kenarına denk gelmesin: ya çizim başı çerçeveler ya uzak durur.
+  const grid = gridFor(assets[after.spec.layers[index]!.asset]!);
+  const flip = after.spec.layers[index]!.flip;
+  const tangent = (p: PlacedLayer) => {
+    const layer = after.spec.layers[p.index]!;
+    const { head } = faceFor(assets[layer.asset]!);
+    const still = { tr: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 }, flip: layer.flip, squash: 1 };
+    const h = cornersBox([rigToCanvas(p, layer, still, [head.x, head.y]), rigToCanvas(p, layer, still, [head.x + head.w, head.y + head.h])]);
+    const m = SET.head.margin * h.h;
+    const framed = coverIn(grid!, box, flip, { x: h.x, y: h.y - m, w: h.w, h: h.h + m });
+    const near = coverIn(grid!, box, flip, { x: h.x - m, y: h.y - m, w: h.w + 2 * m, h: h.h + 2 * m });
+    return near > SET.head.clear && framed < SET.head.inside;
+  };
+  if (grid && others.some((p) => kind(p.index) === "character" && p.z > piece.z && tangent(p))) return false;
   const views = [0, 1].map((k) => viewAt(after.cam, k, after.centre));
   const seen = views.map((v) => meet(box, { x: v.x0, y: v.y0, w: v.w, h: v.h }) / area);
   // Yerinde duran eşya kadrajın kenarında ince bir şerit olarak görünmez (kişinin kenardaki dilimi gibi): o çekimde konmaz.

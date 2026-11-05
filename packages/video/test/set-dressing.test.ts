@@ -75,6 +75,24 @@ describe("set eşyası yerleşimi", () => {
     expect(out[1]!.vector!.layers.at(-1)).toMatchObject({ asset: "shelf", x });
   });
 
+  it("önünde duranın başı eşyanın kenarına denk gelmez: eşya başı çerçeveler, ondan uzak durur ya da o çekimde konmaz", () => {
+    // 5 Kas, Amazon s7-sh3: ayaklı lambanın abajuru sunucunun başının hemen üstündeydi, şapka gibi okunuyordu.
+    const x = SET.slots[2] * 1920;
+    const later = (piece: string, hx: number, assets: Record<string, VectorAsset> = ASSETS) =>
+      dressVisuals([visual("s1-sh1", { background: "room", layers: [hero()] }), visual("s1-sh2", { background: "room", layers: [hero(hx)] })], assets, { room: [piece] }, 30).map((v) =>
+        added(v).map((l) => l.x),
+      );
+    // Baş rafın içinde, tepesinin epey altında: dolabın önünde duran kişi.
+    expect(later("shelf", x)).toEqual([[x], [x]]);
+    // Rafın yan kenarı başın içinden geçer.
+    expect(later("shelf", x + 60)).toEqual([[x], []]);
+    // Alçak dolabın üst kenarı yüzün ortasından geçer.
+    expect(later("cabinet", x)).toEqual([[x], []]);
+    // Çizimi ölçülemeyen eşyada (viewBox yok) kenar bilinmez: eskisi gibi yerinde durur.
+    const blind = { ...ASSETS, shelf: asset("shelf", "prop", '<svg><rect width="100" height="200" fill="#7a4b2a"/></svg>', 100, 200, { realHeight: 1.8, grounded: true }) };
+    expect(later("shelf", x + 60, blind)).toEqual([[x], [x]]);
+  });
+
   it("ilk yer doluysa sonrakine; çekim başına en çok perShot eşya, iki eşya aynı yere konmaz", () => {
     const [v] = dressVisuals([visual("s1-sh1", { background: "room", layers: [hero(SET.slots[0] * 1920, 0.85)] })], ASSETS, { room: ["shelf", "cabinet", "plant"] }, 30);
     const xs = added(v!).map((l) => l.x);

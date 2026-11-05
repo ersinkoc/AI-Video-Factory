@@ -149,7 +149,7 @@ pnpm ys version
 - `--no-realism`: gerçeklik denetimini kapatır.
 - `--side-views`: yalnız vektör modunda. Yürüyen karakterlere ikinci, yandan bir çizim yapılır ve yürürken ona döner. Her biri bir tasarımcı çağrısı ve kapı denetimi tutar (~$0,15–0,35), kütüphanede saklanır.
 - `--no-reverse-views`: yalnız vektör modunda. Varsayılan olarak altı ya da daha çok çekimde kullanılan odaya (en çok üç oda) bir kez ters açı çizilir (her biri ~$0,11, kütüphanede saklanır); bu bayrak kapatır.
-- `--no-set-dressing`: yalnız vektör modunda. Varsayılan olarak her mekâna döneme uygun en çok iki büyük eşya bir kez çizilir (her biri ~$0,05, kütüphanede saklanır) ve o mekânın geniş ve orta çekimlerinde odanın dibine konur; bu bayrak kapatır.
+- `--no-set-dressing`: yalnız vektör modunda. Varsayılan olarak her mekâna döneme uygun en çok iki büyük eşya bir kez çizilir (her biri ~$0,05, kütüphanede saklanır) ve o mekânın geniş ve orta çekimlerinde odanın dibine konur (kenarı hiçbir kişinin başının içinden ya da hemen yanından geçmez); bu bayrak kapatır.
 - `--vertical`: 9:16 render eder.
 - `--no-captions`: altyazıyı videoya gömmez (`.srt` yine yazılır).
 
