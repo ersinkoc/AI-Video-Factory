@@ -260,6 +260,23 @@ export function neckOf(svg: string, rig: { width: number; height: number } = { w
   return { from: parts[0]!.at, to: parts.at(-1)!.at + parts.at(-1)!.len };
 }
 
+/**
+ * Bilek ekseni (iskelet x): eli ön kolun içinde ayrı grup olan kolda ön kolun (elsiz) orta çizgisi. El bu eksende aynalanınca bilekten
+ * kopmadan döner (handRoll). Eli ayrı grup olmayan kolda yok.
+ */
+export function wristsOf(svg: string, rig: { width: number; height: number } = { width: 400, height: 800 }): { l?: number; r?: number } {
+  const shapes = shapesOf(svg, rig);
+  const axis = (side: "l" | "r") => {
+    // El ön kolun içinde olmalı (iskelet: bilek ön kolla döner); kardeşse ön kolu izlemez, dönmesi de anlamsız.
+    if (!shapes.some((s) => s.ids.includes(`hand-${side}`) && s.ids.includes(`forearm-${side}`))) return undefined;
+    const sleeve = union(shapes.filter((s) => s.ids.includes(`forearm-${side}`) && !s.ids.includes(`hand-${side}`)));
+    return sleeve && sleeve.x + sleeve.w / 2;
+  };
+  const l = axis("l");
+  const r = axis("r");
+  return { ...(l === undefined ? {} : { l }), ...(r === undefined ? {} : { r }) };
+}
+
 /** Çizimin baş, ağız ve göz grupları ile çenesi (iskelet tuvali koordinatında). */
 export function faceOf(svg: string, rig: { width: number; height: number } = { width: 400, height: 800 }): Face {
   const g = geometry();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { faceOf, neckOf, noseOf, noseShift, transformOf, withNose } from "../src/rigGeometry.ts";
+import { faceOf, neckOf, noseOf, noseShift, transformOf, withNose, wristsOf } from "../src/rigGeometry.ts";
 
 const face = (inner: string, viewBox = "0 0 400 800") => faceOf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">${inner}</svg>`);
 
@@ -206,5 +206,14 @@ describe("boyun", () => {
     expect(neckOf(draw(NECK, undefined, ""))).toBeUndefined();
     expect(neckOf(draw(NECK, '<circle cx="200" cy="120" r="20"/>'))).toBeUndefined();
     expect(neckOf(draw(""))).toBeUndefined();
+  });
+});
+
+describe("bilek ekseni", () => {
+  it("eli ön kolun içinde ayrı grup olan kolda ön kolun (elsiz) orta çizgisi; el kardeşse ya da kol yalnız else yok", () => {
+    const arm = (side: string, sleeve: string) => `<g id="forearm-${side}">${sleeve}<g id="hand-${side}"><rect x="128" y="490" width="30" height="40"/></g></g>`;
+    expect(wristsOf(`<svg viewBox="0 0 400 800">${arm("l", '<rect x="130" y="400" width="24" height="90"/>')}</svg>`)).toEqual({ l: 142 });
+    expect(wristsOf(`<svg viewBox="0 0 400 800">${arm("r", "")}</svg>`)).toEqual({});
+    expect(wristsOf('<svg viewBox="0 0 400 800"><g id="forearm-l"><rect x="130" y="400" width="24" height="90"/></g><g id="hand-l"><rect x="128" y="490" width="30" height="40"/></g></svg>')).toEqual({});
   });
 });

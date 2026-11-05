@@ -40,7 +40,7 @@ const { BURST } = await import("../src/staging.ts");
 const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -119,6 +119,8 @@ const ASSETS = {
   // Burnu sol gözün iç köşesine yakın (rigGeometry noseOf) ve gözlerin altında başlayan iki çizim.
   nosy: asset("nosy", "character", `<svg viewBox="0 0 400 800">${PARTS.filter((p) => !["head", "eyes", "mouth"].includes(p)).map((p) => `<g id="${p}"><rect width="10" height="10" fill="#335577"/></g>`).join("")}<g id="head"><circle cx="200" cy="170" r="80"/><g id="eyes"><circle cx="180" cy="160" r="8"/><circle cx="220" cy="160" r="8"/></g><path d="M196 158 L192 185 L200 187"/><g id="mouth"><path d="M185 205 L215 205"/></g></g></svg>`, 400, 800),
   necky: asset("necky", "character", `<svg viewBox="0 0 400 800">${PARTS.filter((p) => !["head", "eyes", "mouth"].includes(p)).map((p) => `<g id="${p}"><rect width="10" height="10" fill="#335577"/></g>`).join("")}<g id="head"><rect x="185" y="210" width="30" height="80"/><circle cx="200" cy="170" r="60"/><g id="eyes"><circle cx="180" cy="160" r="6"/></g><g id="mouth"><path d="M185 205 L215 205"/></g></g></svg>`, 400, 800),
+  // Eli ön kolun içinde ayrı grup (bilek dönüşü): sağ ön kolun ekseni x 264 (dönme noktası 260).
+  handy: asset("handy", "character", `<svg viewBox="0 0 400 800">${PARTS.filter((p) => !["arm-r", "forearm-r", "hand-r"].includes(p)).map((p) => `<g id="${p}"><rect width="10" height="10" fill="#335577"/></g>`).join("")}<g id="arm-r"><rect x="250" y="300" width="20" height="100"/><g id="forearm-r"><rect x="254" y="400" width="20" height="90"/><g id="hand-r"><rect x="246" y="490" width="30" height="40"/></g></g></g></svg>`, 400, 800),
   lownose: asset("lownose", "character", `<svg viewBox="0 0 400 800">${PARTS.filter((p) => !["head", "eyes", "mouth"].includes(p)).map((p) => `<g id="${p}"><rect width="10" height="10" fill="#335577"/></g>`).join("")}<g id="head"><circle cx="200" cy="170" r="80"/><g id="eyes"><circle cx="180" cy="160" r="8"/><circle cx="220" cy="160" r="8"/></g><path d="M196 175 L192 190"/><g id="mouth"><path d="M185 205 L215 205"/></g></g></svg>`, 400, 800),
   talker: asset(
     "talker",
@@ -1487,6 +1489,33 @@ describe("vektör sahne: yan görünüş", () => {
   it("oturan karakter yan görünüşe dönmez", () => {
     const c = scene({ layers: [{ asset: "chair", x: 600, depth: 0 }, { asset: "walker", x: 600, on: 0, anims: [{ type: "walk", toX: 1500 }] }] }, { frame: 25 });
     expect(layerBox(c, "body").innerHTML).not.toContain("#0000aa");
+  });
+});
+
+describe("vektör sahne: bilek dönüşü", () => {
+  it("dinlenmede içte duran başparmak aşağı bakmaya başlayınca el aynalanır (bilekte döner); yukarıda ya da yanda kalırsa değişmez", () => {
+    const deg = (u: number) => (Math.asin(u) * 180) / Math.PI;
+    expect(handRoll("l", 0)).toBe(1);
+    // Sol kol dışa (artı) dümdüz yana: başparmak aşağıda, el tam aynalı; sağ kolda eksi.
+    expect(handRoll("l", 90)).toBeCloseTo(-1);
+    expect(handRoll("r", -90)).toBeCloseTo(-1);
+    expect(handRoll("r", 90)).toBe(1);
+    // Geçişin ortasında el kenarından görünür (bilek dönerken).
+    expect(handRoll("l", deg((HAND_ROLL.from + HAND_ROLL.to) / 2))).toBeCloseTo(0);
+    expect(handRoll("l", deg(HAND_ROLL.from))).toBe(1);
+  });
+
+  it("işaret eden kolun eli ön kolun ekseninde aynalanır; kavuşuk kollarda el çizildiği gibi", () => {
+    const hand = (type: string) => {
+      const c = scene({ layers: [{ asset: "handy", x: 700, depth: 0.3, anims: [{ type }] }, { asset: "box", x: 1500, y: 420 }] }, { frame: 150 });
+      const m = /#s1-0-hand-r\{transform:translate\((-?[\d.]+)px, (-?[\d.]+)px\) rotate\((-?[\d.]+)deg\) scale\((-?[\d.]+), (-?[\d.]+)\);transform-origin:(-?[\d.]+)px (-?[\d.]+)px/.exec(c.innerHTML)!;
+      cleanup();
+      return { sx: Number(m[4]), origin: [Number(m[6]), Number(m[7])] };
+    };
+    const point = hand("point");
+    expect(point.sx).toBeLessThan(-0.9);
+    expect(point.origin).toEqual([264, 490]);
+    expect(hand("arms_crossed")).toEqual({ sx: 1, origin: [260, 490] });
   });
 });
 

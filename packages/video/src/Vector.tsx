@@ -55,7 +55,7 @@ import { splitBrows, type BrowPart, type SplitBrows } from "./browShape.ts";
 import { bend, reach, type Reach } from "./ik.ts";
 import { revealWindow } from "./kinetic-timing.ts";
 import { lipLine, mouthIds, withMouths, type SpeakingMouth } from "./mouthShape.ts";
-import { faceOf, neckOf, noseOf, noseShift, withNose, type Bounds, type Face, type Nose } from "./rigGeometry.ts";
+import { faceOf, neckOf, noseOf, noseShift, withNose, wristsOf, type Bounds, type Face, type Nose } from "./rigGeometry.ts";
 import { visemeAt, visemeCues, type Viseme } from "./visemes.ts";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
@@ -416,6 +416,32 @@ export function browsFor(asset: VectorAsset): SplitBrows | undefined {
   let b = brows.get(asset);
   if (b === undefined) brows.set(asset, (b = splitBrows(asset.svg) ?? null));
   return b ?? undefined;
+}
+
+/**
+ * Elin bilek dönüşü (5 Kas, kullanıcı: "baş parmaklar, dirsek yönleri incelemek lazım"): tasarımcı eli avucu uyluğa,
+ * başparmağı önde çiziyor (önden başparmak içte; 26 çizimin hepsinde). El kolla birlikte döndüğü için yana uzanan kolda
+ * (işaret, omuz silkme, uzatma, anlatma, şaşkınlıkta alçak el) başparmak aşağı bakıyordu: avucu arkaya dönük, zorlama
+ * bir duruş. Dinlenmede içte duran başparmağın aşağı bakma payı (u: toplam dönüşle, 1 dümdüz aşağı) from'dan to'ya
+ * çıkarken el bilek ekseninde aynalanır (önden bilek dönüşü gibi daralıp öbür yana açılır), başparmak yukarı gelir.
+ * Jestlerin zirvesi u ≥ 0,55 ya da ≤ 0,1; el sallamada salınan el −0,2…−0,4 arasında: dönüş yalnız kol kalkarken olur.
+ */
+export const HAND_ROLL = { from: 0.3, to: 0.5 } as const;
+
+/** Elin aynalanma ölçeği (1 çizildiği gibi, −1 aynalı): kolun toplam dönüşünden (derece; omuz + dirsek + bilek + gövde). */
+export function handRoll(side: "l" | "r", turn: number): number {
+  const u = (side === "l" ? 1 : -1) * Math.sin((turn * Math.PI) / 180);
+  const q = Math.min(1, Math.max(0, (u - HAND_ROLL.from) / (HAND_ROLL.to - HAND_ROLL.from)));
+  return Math.cos(Math.PI * q * q * (3 - 2 * q));
+}
+
+const wrists = new WeakMap<VectorAsset, { l?: number; r?: number }>();
+
+/** Çizimin bilek eksenleri (rigGeometry wristsOf; varlık başına bir kez). */
+export function wristsFor(asset: VectorAsset): { l?: number; r?: number } {
+  let w = wrists.get(asset);
+  if (!w) wrists.set(asset, (w = wristsOf(asset.svg)));
+  return w;
 }
 
 const drawn = new WeakMap<VectorAsset, { svg: string; room?: Nose["room"] }>();
@@ -1959,6 +1985,13 @@ function motionOf(
   // Gözlerin pozu her karede kurulur (göz kırpma, bakış).
   const eyes = pose.eyes!.tx;
   if (room && noseShift(eyes, room)) pose.nose = { rotate: 0, sx: 1, sy: 1, tx: noseShift(eyes, room), ty: 0 };
+  // Yana uzanan kolda el bilekte döner, başparmak aşağı bakmaz (HAND_ROLL; eli ayrı çizilmiş önden çizimde).
+  const axes = figure ? {} : wristsFor(asset);
+  for (const side of ["l", "r"] as const) {
+    const hand = pose[`hand-${side}`];
+    if (axes[side] === undefined || !hand) continue;
+    hand.sx *= handRoll(side, pose[`arm-${side}`]!.rotate + pose[`forearm-${side}`]!.rotate + hand.rotate + pose.torso!.rotate);
+  }
   // Konuşma yarıdan fazla girmişken ses varsa şekil koddan çizilir; sessizlikte (X) çizimin kendi ağzı görünür.
   const viseme = voice?.viseme;
   const talking = face.mouth && viseme && viseme !== "X" && anims.some((a) => a.type === "talk" && gestureWeight(p, a, dur) >= 0.5);
@@ -2185,12 +2218,19 @@ function Layer({
           // Kaş kendi ortasında döner; ayrılamayan çizimde kaşın tek parçası yok (kural yazılmaz).
           const brow = k.startsWith("brow-") ? split?.centres[k as BrowPart] : undefined;
           if (k.startsWith("brow-") && !brow) return "";
-          const [px, py] = brow ?? (k === "torso" ? pivots.body : k === "nose" ? pivots.eyes : pivots[k as RigPart]);
+          const [pivotX, py] = brow ?? (k === "torso" ? pivots.body : k === "nose" ? pivots.eyes : pivots[k as RigPart]);
+          // Bilekte dönen el (handRoll) ön kolun ekseninde aynalanır: dönme noktası eksene alınır, kayma telafi edilir.
+          const axis = k.startsWith("hand-") && v.sx !== 1 ? wristsFor(look)[k.slice(-1) as "l" | "r"] : undefined;
+          const px = axis ?? pivotX;
+          const d = px - pivotX;
+          const a = (v.rotate * Math.PI) / 180;
+          const tx = v.tx + d * (Math.cos(a) - 1);
+          const ty = v.ty + d * Math.sin(a);
           // Kısalan üst kol (kameraya uzanan) ön kolu bozmaz: ön kol üst kolun ölçeğini dirsekte geri alır, yalnız
           // dirsek omza yaklaşır (ön kol üst kola göre döndüğü için kendi ölçeğiyle geri almak onu eğerdi).
           const up = k.startsWith("forearm-") ? pose[`arm-${k.slice(-1)}` as RigPart] : undefined;
           const undo = up && (up.sx !== 1 || up.sy !== 1) ? `scale(${(1 / up.sx).toFixed(4)}, ${(1 / up.sy).toFixed(4)}) ` : "";
-          const transform = `${undo}translate(${v.tx.toFixed(2)}px, ${v.ty.toFixed(2)}px) rotate(${v.rotate.toFixed(2)}deg) scale(${v.sx.toFixed(3)}, ${v.sy.toFixed(3)})`;
+          const transform = `${undo}translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) rotate(${v.rotate.toFixed(2)}deg) scale(${v.sx.toFixed(3)}, ${v.sy.toFixed(3)})`;
           const rule = `{transform:${transform};transform-origin:${px}px ${py}px;transform-box:view-box}`;
           // Gövdenin arkasına alınan boyun başla aynı dönüşümü alır (neckBehind: başın kardeşi).
           return `#${prefix}${k}${rule}${k === "head" ? `#${prefix}neck${rule}` : ""}`;
