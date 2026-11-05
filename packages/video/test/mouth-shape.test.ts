@@ -62,6 +62,10 @@ describe("konuşan ağzın çizime konması", () => {
     const shapes = SPOKEN.map((v) => `<g id="${ids.shape(v)}" display="none">${mouthSvg(v, box, { ink: "#222", mood: 0.3, drop: 30 })}</g>`).join("");
     expect(out).toBe(svg.replace('</path></g><g id="p-nose"/>', `</path></g><g transform="matrix(0.5 0 0 0.5 -5 -10)">${shapes}</g><g id="p-nose"/>`));
     expect(ids.mouth).toBe("p-mouth");
+    // Somurtan yüzde kapalı ağız (X) da konur: çizimin gülümsemesi yerine köşeleri aşağı eğri.
+    const sad = withMouths(svg, "p-", mouth, -0.7)!;
+    expect(sad).toContain(`<g id="${ids.shape("X")}" display="none">${mouthSvg("X", box, { ink: "#222", mood: -0.7, drop: 30 })}</g>`);
+    expect(out).not.toContain(ids.shape("X"));
   });
 
   it("ağız tek şekilse onun arkasına; ağız yoksa, kapanmamışsa ya da matris tersinmezse undefined", () => {

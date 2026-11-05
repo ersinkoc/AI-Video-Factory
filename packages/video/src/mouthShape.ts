@@ -130,6 +130,8 @@ export function withMouths(svg: string, prefix: string, mouth: SpeakingMouth, mo
   if (end === undefined || Math.abs(det) < 1e-9) return undefined;
   const inv = [d / det, -b / det, -c / det, a / det, (c * g - d * e) / det, (b * e - a * g) / det].map((n) => Math.round(n * 1e6) / 1e6);
   const style = { ink: mouth.ink, mood, drop: mouth.drop };
-  const shapes = SPOKEN.map((v) => `<g id="${ids.shape(v)}" display="none">${mouthSvg(v, mouth.box, style)}</g>`).join("");
+  // Somurtan yüzde kapalı ağız da (X): çizimin gülümseyen ağzı yerine köşeleri aşağı eğri.
+  const set: readonly Viseme[] = mood < 0 ? [...SPOKEN, "X"] : SPOKEN;
+  const shapes = set.map((v) => `<g id="${ids.shape(v)}" display="none">${mouthSvg(v, mouth.box, style)}</g>`).join("");
   return `${svg.slice(0, end)}<g transform="matrix(${inv.join(" ")})">${shapes}</g>${svg.slice(end)}`;
 }

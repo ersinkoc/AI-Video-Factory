@@ -115,8 +115,9 @@ export function splitBrows(svg: string): SplitBrows | undefined {
     if (!m[4]) depth++;
     else if (depth === 0) child(m.index + m[0].length);
   }
-  // Tek yol iki kaşı alt yol olarak taşıyabilir.
-  const pieces = units.length === 1 && /^<path\b/i.test(units[0]!) ? subpaths(units[0]!, attrsOf(/^<path([^>]*)/i.exec(units[0]!)![1]!)) : units;
+  // Bir yol iki kaşı alt yol olarak taşıyabilir; yanında başka parça (parlama çizgisi) olsa da bölünür (5 Kas: kaşları
+  // tek yolda, yanında ince bir parlama yolu olan çizimde iki kaş birden tek yana düşüyor, endişede birlikte dönüyordu).
+  const pieces = units.flatMap((u) => (/^<path\b/i.test(u) ? subpaths(u, attrsOf(/^<path([^>]*)/i.exec(u)![1]!)) : [u]));
   const measured = pieces.map((p) => ({ p, b: measure(p) }));
   if (measured.length < 2 || measured.some((m) => !m.b)) return undefined;
   const all = measured.reduce<Bounds | undefined>((u, m) => unionBounds(u, m.b!), undefined)!;

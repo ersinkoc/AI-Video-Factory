@@ -972,11 +972,14 @@ describe("vektör sahne: karakter iskeleti", () => {
       const css = c.querySelector("style")!.textContent!;
       const shapes = c.querySelectorAll("[id^='s1-0-viseme-']").length;
       cleanup();
-      return { visible: /#s1-0-viseme-([A-H])\{display:inline/.exec(css)?.[1], hidden: css.includes("#s1-0-mouth{visibility:hidden}"), shapes };
+      return { visible: /#s1-0-viseme-([A-HX])\{display:inline/.exec(css)?.[1], hidden: css.includes("#s1-0-mouth{visibility:hidden}"), shapes };
     };
     expect(shown({ anims: [{ type: "surprised", start: 0.4, end: 0.6 }] })).toEqual({ visible: "E", hidden: true, shapes: 8 });
     expect(shown({ anims: [{ type: "cheer", start: 0.4, end: 0.6 }] })).toEqual({ visible: "D", hidden: true, shapes: 8 });
     expect(shown({ anims: [], expression: "surprised" })).toEqual({ visible: "F", hidden: true, shapes: 8 });
+    // Somurtan yüz (endişe, üzüntü, öfke): koddan kapalı, köşeleri aşağı ağız; mutlu yüz çizimin ağzını korur.
+    expect(shown({ anims: [], expression: "sad" })).toEqual({ visible: "X", hidden: true, shapes: 9 });
+    expect(shown({ anims: [], expression: "happy" })).toEqual({ visible: undefined, hidden: false, shapes: 0 });
     // Jest henüz girmemişse çizimin ağzı (şekiller yine de konur).
     expect(shown({ anims: [{ type: "cheer", start: 0.7, end: 0.9 }] })).toEqual({ visible: undefined, hidden: false, shapes: 8 });
     // Konuşan sesin şeklini gösterir; konuşmanın sessizliğinde tepkinin ağzı.

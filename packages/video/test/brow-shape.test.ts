@@ -27,6 +27,14 @@ describe("kaşların ayrılması", () => {
     expect(out.centres).toEqual({ "brow-l": [174, 146], "brow-r": [226, 146] });
   });
 
+  it("iki kaşı taşıyan yolun yanında başka parça (parlama) olsa da alt yollar bölünür: iki kaş tek yana düşmez", () => {
+    const out = splitBrows(svg(`<g id="brows"><path d="M160 145l28 2M212 147l28-2" ${STROKE}/><path d="M170 145l10 0" stroke="#fff" stroke-width="1"/></g>`))!;
+    const r = /<g id="brow-r">(.*?)<\/g>/.exec(out.svg)![1]!;
+    expect(r).toMatch(/^<path d="M212,147[^"]*"[^>]*\/>$/);
+    expect(out.centres["brow-r"]).toEqual([226, 146]);
+    expect(out.centres["brow-l"][0]).toBeLessThan(180);
+  });
+
   it("grup çocuklar dönüşümleriyle ölçülür; açık kapanan şekil ve iç içe kendini kapatan grup okunur", () => {
     const out = splitBrows(
       svg(

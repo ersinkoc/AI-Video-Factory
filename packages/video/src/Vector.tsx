@@ -548,14 +548,25 @@ function quizzical(pose: (k: PosePart) => PartPose, seed: string, k: number): vo
 export const EXCLAIM: Partial<Record<VectorAnimType, Viseme>> = { surprised: "E", cheer: "D" };
 const SURPRISED_MOUTH: Viseme = "F";
 
-/** Katman ağız şekli isteyebilir mi: konuşuyor, ağzı açan bir jesti ya da şaşkın ifadesi var (şekiller bir kez konur). */
-export const opensMouth = (layer: Pick<VectorLayer, "anims" | "expression">) =>
-  layer.expression === "surprised" || layer.anims.some((a) => a.type === "talk" || EXCLAIM[a.type] !== undefined);
+/**
+ * Somurtan yüzün ağzı (endişe, üzüntü, öfke): çizimin ağzı yerine koddan çizilen kapalı ağız (X), köşeleri ifadenin
+ * mood'uyla aşağı. Çizimlerin ağzı hafif bir gülümseme; ters çevrilip basılınca silik bir çizgiye ya da hiçliğe iniyordu
+ * (5 Kas, yakın çekim yüz sayfası; "endişeli görünmüyor" notları baş 200 px'ken bile, endişede %27, üzüntüde %35).
+ */
+const FROWN_MOUTH: Viseme = "X";
+const frowns = (expression: VectorExpression | undefined) => EXPRESSIONS[expression ?? "neutral"].mood < 0;
 
-/** Konuşmayan kişinin tepkiden açılan ağzı (yoksa undefined): yarıdan fazla girmiş ilk ağız açan jest, yoksa şaşkın ifade. */
+/** Katman ağız şekli isteyebilir mi: konuşuyor, ağzı açan bir jesti, şaşkın ya da somurtan ifadesi var (şekiller bir kez konur). */
+export const opensMouth = (layer: Pick<VectorLayer, "anims" | "expression">) =>
+  layer.expression === "surprised" || frowns(layer.expression) || layer.anims.some((a) => a.type === "talk" || EXCLAIM[a.type] !== undefined);
+
+/**
+ * Konuşmayan kişinin ifadeden gelen ağzı (yoksa undefined): yarıdan fazla girmiş ilk ağız açan jest, yoksa şaşkın
+ * ifadenin küçük "o"su, yoksa somurtan ifadenin kapalı ağzı.
+ */
 export function exclaimOf(anims: VectorAnim[], p: number, dur: number, expression: VectorExpression | undefined): Viseme | undefined {
   const open = anims.find((a) => EXCLAIM[a.type] !== undefined && gestureWeight(p, a, dur) >= 0.5);
-  return open ? EXCLAIM[open.type] : expression === "surprised" ? SURPRISED_MOUTH : undefined;
+  return open ? EXCLAIM[open.type] : expression === "surprised" ? SURPRISED_MOUTH : frowns(expression) ? FROWN_MOUTH : undefined;
 }
 
 /**
