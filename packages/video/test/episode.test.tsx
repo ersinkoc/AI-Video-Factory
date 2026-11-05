@@ -65,7 +65,7 @@ vi.mock("pixi.js", () => {
 });
 
 const { Episode } = await import("../src/index.ts");
-const { EpisodeAudio } = await import("../src/Episode.tsx");
+const { EpisodeAudio, CutIn } = await import("../src/Episode.tsx");
 const { Ambience } = await import("../src/Ambience.tsx");
 const { Thumbnail } = await import("../src/Thumbnail.tsx");
 const { CROSSFADE, SCENE_CUT } = await import("../src/cut.ts");
@@ -243,6 +243,25 @@ describe("bölüm kompozisyonu", () => {
     const mid = style(SCENE_CUT.frames / 2);
     expect(mid.clip || mid.transform).not.toBe("");
     expect(style(SCENE_CUT.frames + 2)).toEqual({ clip: "", transform: "", opacity: "" });
+  });
+
+  it("hızlı kayan geçiş yatay hareket bulanıklığı alır (çekime özel SVG filtresi), yavaşlayınca ve geçişsiz çekimde yok", () => {
+    const at = (frame: number, cut?: object) => {
+      const c = draw(<CutIn cut={cut as never} id="s2-sh1"><i data-shot /></CutIn>, frame);
+      const box = c.firstElementChild as HTMLElement;
+      const r = { filter: box.style.filter, blur: c.querySelector("filter#s2-sh1-mb feGaussianBlur")?.getAttribute("stdDeviation") ?? null, first: box.querySelector("[data-shot]") !== null };
+      cleanup();
+      return r;
+    };
+    const slide = { kind: "slide", frames: 18, dir: 1 };
+    const mid = at(9, slide);
+    expect(mid.filter).toBe("url(#s2-sh1-mb)");
+    expect(mid.blur).toMatch(/^[\d.]+ 0$/);
+    expect(mid.first).toBe(true);
+    // İlk kare (önceki kare kırpılır: hız 0) ve bitmiş geçiş.
+    expect(at(0, slide).blur).toBeNull();
+    expect(at(30, slide)).toEqual({ filter: "", blur: null, first: true });
+    expect(at(9)).toEqual({ filter: "", blur: null, first: true });
   });
 
   it("durağan kare varsayılan olarak yavaşça yakınlaşır (ken burns)", () => {

@@ -13,7 +13,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { Ambience } from "./Ambience.tsx";
-import { captionPages, cutsOf, cutStyle, type Cut } from "./cut.ts";
+import { captionPages, cutLook, cutsOf, type Cut } from "./cut.ts";
 import { stageFit, VectorScene } from "./Vector.tsx";
 
 export type EpisodeProps = { timeline: Timeline };
@@ -101,12 +101,29 @@ function MathBoard({ url }: { url: string }) {
 /**
  * Çekim bir öncekinin üstüne geçişiyle biner (cut.ts cutsOf: sahne içinde çapraz geçiş, sahne değişince silinme, kayma,
  * daire ya da yakınlaşma). İlk çekimde geçiş yok: video siyahtan açılmasın, ilk kare dolu olsun (Shorts/Reels küçük resmi ve
- * otomatik oynatma ilk kareyi gösterir).
+ * otomatik oynatma ilk kareyi gösterir). Geçiş hızlıyken hareket bulanıklığı alır (cut.ts cutLook); yatay bulanıklığın SVG
+ * filtresi çekime özel kimlikle yanına konur.
  */
-export function CutIn({ children, cut }: { children: ReactNode; cut?: Cut }) {
+export function CutIn({ children, cut, id = "cut" }: { children: ReactNode; cut?: Cut; id?: string }) {
   const frame = useCurrentFrame();
-  const q = cut ? interpolate(frame, [0, cut.frames], [0, 1], { extrapolateRight: "clamp", ...(cut.kind === "dissolve" ? {} : { easing: Easing.inOut(Easing.cubic) }) }) : 1;
-  return <AbsoluteFill style={cut ? cutStyle(cut, q) : {}}>{children}</AbsoluteFill>;
+  const { width, height } = useVideoConfig();
+  if (!cut) return <AbsoluteFill>{children}</AbsoluteFill>;
+  const at = (f: number) => interpolate(f, [0, cut.frames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", ...(cut.kind === "dissolve" ? {} : { easing: Easing.inOut(Easing.cubic) }) });
+  const q = at(frame);
+  const { style, sigmaX } = cutLook(cut, q, q - at(frame - 1), width, height);
+  const filter = `${id}-mb`;
+  return (
+    <>
+      <AbsoluteFill style={sigmaX > 0 ? { ...style, filter: `url(#${filter})` } : style}>{children}</AbsoluteFill>
+      {sigmaX > 0 && (
+        <svg width={0} height={0} style={{ position: "absolute" }}>
+          <filter id={filter} x="-10%" y="0%" width="120%" height="100%">
+            <feGaussianBlur stdDeviation={`${sigmaX.toFixed(1)} 0`} />
+          </filter>
+        </svg>
+      )}
+    </>
+  );
 }
 
 function Captions({ captions }: { captions: Timeline["captions"] }) {
@@ -174,7 +191,7 @@ export function Episode({ timeline }: EpisodeProps) {
         const duration = v.durationInFrames + (cuts[i + 1]?.frames ?? 0);
         return (
           <Sequence key={v.shotId} from={v.fromFrame} durationInFrames={duration} name={v.shotId}>
-            <CutIn cut={cuts[i]}>
+            <CutIn cut={cuts[i]} id={v.shotId}>
               {v.kind === "motion_graphic" && v.vector ? (
                 <AbsoluteFill>
                   {/* Atmosfer sahnenin içinde çizilir: yazıların, balonun ve formül tahtasının altında kalır. */}

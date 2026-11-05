@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CROSSFADE, cutsOf, cutStyle, SCENE_CUT, sceneOf } from "../src/cut.ts";
+import { CROSSFADE, cutLook, cutsOf, cutStyle, MOTION_BLUR, SCENE_CUT, sceneOf } from "../src/cut.ts";
 
 const shots = (...ids: string[]) => ids.map((shotId) => ({ shotId }));
 
@@ -36,5 +36,27 @@ describe("çekim geçişleri", () => {
     expect(cutStyle(cut("iris"), 0.5)).toEqual({ clipPath: "circle(36% at 50% 50%)" });
     expect(cutStyle(cut("zoom"), 0.5)).toEqual({ opacity: 0.5, transform: "scale(1.09)" });
     for (const kind of [...SCENE_CUT.kinds, "dissolve" as const]) expect(cutStyle(cut(kind), 1)).toEqual({});
+  });
+
+  it("hareket bulanıklığı: kayma hızı kadar yatay iz, perde ve iris kenarı yumuşar, yakınlaşma hafif bulanık; yavaşken ve bitince yok", () => {
+    const cut = (kind: (typeof SCENE_CUT.kinds)[number] | "dissolve", dir: 1 | -1 = 1) => ({ kind, frames: 18, dir });
+    const [w, h] = [1920, 1080];
+    // Kayma: kare başına 0,02 × 1920 = 38,4 px yer değiştirme → iz 19,2 px → σ 9,6; çok hızlıda tavan.
+    expect(cutLook(cut("slide"), 0.5, 0.02, w, h)).toEqual({ style: cutStyle(cut("slide"), 0.5), sigmaX: 0.5 * 0.02 * 1920 * MOTION_BLUR.sigma });
+    expect(cutLook(cut("slide"), 0.5, 0.2, w, h).sigmaX).toBe(MOTION_BLUR.max);
+    expect(cutLook(cut("slide"), 0.02, 0.001, w, h).sigmaX).toBe(0);
+    // Perde: kenarın iki yanında iz kadar geçiş; ters yönde soldan.
+    const wipe = cutLook(cut("wipe"), 0.25, 0.05, w, h).style;
+    expect(wipe).toEqual({ maskImage: "linear-gradient(to right, #000 456.0px, transparent 504.0px)", WebkitMaskImage: "linear-gradient(to right, #000 456.0px, transparent 504.0px)" });
+    expect(String(cutLook(cut("wipe", -1), 0.25, 0.05, w, h).style.maskImage)).toMatch(/^linear-gradient\(to left, /);
+    expect(cutLook(cut("wipe"), 0.25, 0.0001, w, h).style).toEqual(cutStyle(cut("wipe"), 0.25));
+    // İris: daire kenarı yumuşar.
+    expect(String(cutLook(cut("iris"), 0.5, 0.05, w, h).style.maskImage)).toMatch(/^radial-gradient\(circle at 50% 50%, #000 [\d.]+px, transparent [\d.]+px\)$/);
+    // Yakınlaşma: genel bulanıklık en çok zoom px; yavaşta yok.
+    expect(cutLook(cut("zoom"), 0.5, 0.2, w, h).style).toEqual({ ...cutStyle(cut("zoom"), 0.5), filter: `blur(${MOTION_BLUR.zoom.toFixed(1)}px)` });
+    expect(cutLook(cut("zoom"), 0.5, 0.0001, w, h).style).toEqual(cutStyle(cut("zoom"), 0.5));
+    // Çapraz geçiş ve biten geçiş.
+    expect(cutLook(cut("dissolve"), 0.5, 0.1, w, h)).toEqual({ style: { opacity: 0.5 }, sigmaX: 0 });
+    expect(cutLook(cut("slide"), 1, 0.1, w, h)).toEqual({ style: {}, sigmaX: 0 });
   });
 });

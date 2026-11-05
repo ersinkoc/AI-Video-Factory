@@ -69,6 +69,43 @@ export function cutStyle(cut: Cut, q: number): Record<string, string | number> {
   }
 }
 
+/**
+ * Geçişin hareket bulanıklığı (5 Kas; kullanıcı: "videoya çok yakın görüntü"): kamera obtüratörü açıkken hareket eden
+ * görüntü hareket yönünde iz bırakır. Kayan kare 0,6 sn'de tuvali geçer (ortasında kare başına ~160 px); izsiz keskin
+ * kare çizgi film gibi görünüyordu. Kare başına yer değiştirmenin shutter kadarı iz olur (180° obtüratör): kayma (slide)
+ * yatay Gauss bulanıklığı alır (σ = iz × sigma, en çok max px; SVG feGaussianBlur yalnız x'te, CSS'in yönlü bulanıklığı
+ * yok), perde (wipe) ve iris kenarı iz kadar yumuşar (maske gradyanı; sert clip-path yerine), yakınlaşma (zoom) köşedeki
+ * yer değiştirmeyle hafif genel bulanıklık alır (en çok zoom px). Bulanıklık hızla gelir gider: geçişin ilk ve son
+ * karelerinde (yavaş) yoktur, min'in altında hiç çizilmez. Çapraz geçişte hareket yok.
+ */
+export const MOTION_BLUR = { shutter: 0.5, sigma: 0.5, max: 36, zoom: 4, min: 0.6 } as const;
+
+/** Geçişin bu karedeki biçemi, hareket bulanıklığıyla: dq bir önceki kareden bu yana ilerleme; sigmaX yatay bulanıklık (px). */
+export function cutLook(cut: Cut, q: number, dq: number, w: number, h: number): { style: Record<string, string | number>; sigmaX: number } {
+  const style = cutStyle(cut, q);
+  if (q >= 1 || cut.kind === "dissolve") return { style, sigmaX: 0 };
+  const smear = (px: number) => MOTION_BLUR.shutter * Math.abs(dq) * px;
+  const px = (v: number) => `${v.toFixed(1)}px`;
+  if (cut.kind === "slide") {
+    const sigma = Math.min(MOTION_BLUR.max, smear(w) * MOTION_BLUR.sigma);
+    return { style, sigmaX: sigma >= MOTION_BLUR.min ? sigma : 0 };
+  }
+  if (cut.kind === "zoom") {
+    const r = Math.min(MOTION_BLUR.zoom, smear((0.18 * Math.hypot(w, h)) / 2) * MOTION_BLUR.sigma);
+    return { style: r >= MOTION_BLUR.min ? { ...style, filter: `blur(${px(r)})` } : style, sigmaX: 0 };
+  }
+  // Perde ve iris: kenar iz kadar yumuşar.
+  const reach = cut.kind === "wipe" ? w : 0.72 * Math.sqrt((w * w + h * h) / 2);
+  const soft = smear(reach);
+  if (soft < MOTION_BLUR.min) return { style, sigmaX: 0 };
+  const edge = q * reach;
+  const mask =
+    cut.kind === "wipe"
+      ? `linear-gradient(to ${cut.dir > 0 ? "right" : "left"}, #000 ${px(edge - soft / 2)}, transparent ${px(edge + soft / 2)})`
+      : `radial-gradient(circle at 50% 50%, #000 ${px(edge - soft / 2)}, transparent ${px(edge + soft / 2)})`;
+  return { style: { maskImage: mask, WebkitMaskImage: mask }, sigmaX: 0 };
+}
+
 /** Altyazı sayfaları: kelimeler 1,4 sn içinde birleşir (TikTok tarzı). */
 export function captionPages(captions: Timeline["captions"]) {
   const tokens: Caption[] = captions.map((w, i) => ({
