@@ -78,10 +78,15 @@ export const isGpuFailure = (e: unknown) =>
 /**
  * Geçici dosya hatası (klasör/dosya kayboldu, kilitli) veya tarayıcı kurulumu zaman aşımı: aynı render'ı tekrar denemek
  * güvenli. 30 Eki: %90'dan sonra ses karıştırmada Temp altındaki "remotion-audio-mixing" klasörü kaybolunca 17 dk'lık
- * render boşa gitti.
+ * render boşa gitti. Sayfanın bir karede asılı kalması da (kare ya da delayRender zaman aşımı) geçicidir: 5 Kas, Next.js
+ * bölümü 11 dakikalık render'ın %60'ında "waiting for the page to render the React component at frame 4244 failed:
+ * timeout" ile düştü; aynı kareler tek tek de, aynı çekimler art arda tek render'da da sorunsuz çıktı.
  */
 export const isTransientRenderFailure = (e: unknown) =>
-  e instanceof Error && /No such file or directory|ENOENT|EBUSY|EPERM|while setting up the headless browser|render stalled/i.test(e.message);
+  e instanceof Error &&
+  /No such file or directory|ENOENT|EBUSY|EPERM|while setting up the headless browser|render stalled|waiting for the page to render the React component|was called but not cleared/i.test(
+    e.message,
+  );
 
 /**
  * Chrome kare alamadı ("ran out of memory or disk space"; 3 Kas, Java bölümü %30'da düştü: makinede 60 GB boş bellek

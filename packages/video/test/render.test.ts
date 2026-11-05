@@ -417,8 +417,12 @@ describe("çizim arka ucu", () => {
 });
 
 describe("isTransientRenderFailure", () => {
-  it("yalnız dosya/tarayıcı kurulum hatalarını geçici sayar", () => {
-    for (const m of ["ENOENT: x", "EBUSY: locked", "EPERM: operation", "No such file or directory", "while setting up the headless browser"]) {
+  it("yalnız dosya/tarayıcı kurulum hatalarını ve bir karede asılı kalan sayfayı geçici sayar", () => {
+    const hung = [
+      "waiting for the page to render the React component at frame 4244 failed: timeout 123000ms exceeded",
+      'A delayRender() "pixi sparks" was called but not cleared after 120000ms.',
+    ];
+    for (const m of ["ENOENT: x", "EBUSY: locked", "EPERM: operation", "No such file or directory", "while setting up the headless browser", ...hung]) {
       expect(isTransientRenderFailure(new Error(m))).toBe(true);
     }
     expect(isTransientRenderFailure(new Error("Out of memory"))).toBe(false);

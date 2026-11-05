@@ -121,7 +121,7 @@ describe("arka plan işleri", () => {
     expect(child.command).toBe(process.execPath);
     expect(child.args[0]).toBe(join(root, "node_modules", "tsx", "dist", "cli.mjs"));
     expect(child.args.slice(1)).toEqual([join(root, "apps", "cli", "src", "index.ts"), "episode", "run", "e1", "--until", "script"]);
-    expect(child.options).toMatchObject({ cwd: root, windowsHide: true });
+    expect(child.options).toMatchObject({ cwd: root, windowsHide: true, detached: true });
 
     child.stdout.emit("data", Buffer.from("▶ style\r\n\n  \nikinci satır\n"));
     child.stderr.emit("data", Buffer.from("uyarı"));

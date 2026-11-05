@@ -114,6 +114,9 @@ export function startJob(episodeId: string, label: string, args: string[]): JobV
     cwd: ROOT,
     env: process.env,
     windowsHide: true,
+    // Kendi süreç grubunda (Windows: kendi gizli konsolu): Stüdyo'yu durduran Ctrl+C işe ulaşmasın. 5 Kas: Stüdyo yeniden
+    // derlenmek için iki kez durduruldu, ikisinde de render %10'da sessizce öldü; kilitler bırakılmadı, günlüğe satır düşmedi.
+    detached: true,
   });
   const job: Job = { episodeId, label, status: "running", startedAt: new Date().toISOString(), log: [], child };
   const push = (chunk: Buffer) => {
