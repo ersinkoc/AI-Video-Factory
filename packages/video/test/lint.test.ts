@@ -258,6 +258,25 @@ describe("kamera: durağan kadrajda yarım yüz yok", () => {
     expect(faceSafe(top, true, [{ x: 900, y: 200, w: 40, h: 40 }], true, [{ x: 860, y: 160, w: 160, h: 600 }])).toBe(top);
   });
 
+  it("yerinde duran nesne yan kenarda ince şerit kalmaz: ya en az sliver'ı görünür ya hiç; önce yüzler", () => {
+    // Odak 960, 2x: kadraj 480–1440. Masa 1400–1600: %20'si görünüyor. İçeri almak 24 px (%32), dışarı atmak 40 px.
+    const c = cam({ zoomFrom: 2, zoomTo: 2, panX: 0 });
+    const desk = { x: 1400, y: 600, w: 200, h: 150 };
+    expect(FACE_SAFE.sliver).toBe(0.3);
+    expect(faceSafe(c, true, [], false, [], [desk]).focusX).toBe(984);
+    // Yalnız alttan kesilen (yatayda içeride) nesneye dokunulmaz.
+    expect(faceSafe(c, true, [], false, [], [{ x: 900, y: 700, w: 200, h: 300 }])).toBe(c);
+    // Soldaki yüz sağa kaymaya izin vermez: masa dışarı atılır.
+    const left = { x: 488, y: 400, w: 40, h: 40 };
+    expect(faceSafe(c, true, [left], false, [], [desk]).focusX).toBe(920);
+    // Hiçbir yerde düzelmeyen şerit (kadrajdan çok geniş nesne) yüzün düzeltilmesini engellemez; yüz de uymuyorsa kamera aynı.
+    const huge = { x: -1000, y: 600, w: 4000, h: 150 };
+    const out = faceSafe(c, true, [face], true, [], [huge]);
+    expect([out.focusX, out.focusY]).toEqual([904, 540]);
+    const wide = cam({ zoomFrom: 1, zoomTo: 1, panX: 0 });
+    expect(faceSafe(wide, false, [{ x: -40, y: 400, w: 100, h: 100 }], true, [], [huge])).toBe(wide);
+  });
+
   it("uyan odak yoksa (tam kadrajda odak kadrajı kaydırmaz) kamera aynı kalır", () => {
     const wide = cam({ zoomFrom: 1, zoomTo: 1, panX: 0 });
     expect(faceSafe(wide, false, [{ x: -40, y: 400, w: 100, h: 100 }], true)).toBe(wide);
