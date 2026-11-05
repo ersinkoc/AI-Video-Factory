@@ -3,6 +3,7 @@ import {
   ARM_GESTURES,
   CONVERSE,
   floorYOf,
+  FURNITURE,
   isWritable,
   namesMatch,
   prefixSvgIds,
@@ -39,7 +40,7 @@ import {
 import { useMemo, type CSSProperties, type ReactElement } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
-import { drawnBottom, screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
+import { coverIn, drawnBottom, gridFor, screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
 import { cameraDrift, depthOfField, lensScale, motionBlur, screenGlow } from "./lens.ts";
 import { keyLight, lightOf } from "./light.ts";
 import { visualVector } from "./entrance.ts";
@@ -2906,6 +2907,38 @@ const movingLayer = (spec: VectorShot, i: number) => spec.layers[i]!.anims.some(
  * Çekimin kurgusu (kareden bağımsız): temizlenmiş varlıklar, sahnelenmiş plan, yerleşim ve kamera. Render (VectorScene)
  * ve denetim (lint.ts) aynısını kullanır. dur: çekim süresi (sn).
  */
+/** Tezgâhın ardında yükselen kişinin yüzünü tezgâhın çizimi bundan fazla örtüyorsa step px adımlarla (en çok steps) kayar. */
+export const COUNTER = { clear: 0.15, step: 15, steps: 30, note: "tezgâhın bir parçası yüzünü örtüyordu, yana kaydı" } as const;
+
+/**
+ * Tezgâhın ardında yükselen kişi (resolveLayout, FURNITURE.lifted) yüzü tezgâhın çiziminin bir parçasının ardında
+ * kalıyorsa (5 Kas, Yapay zekâ s2-sh5: danışma masasının tabelasını taşıyan orta direk robotun yüzünü ikiye bölüyordu;
+ * yerleşim yalnız eşyanın kutusunu bilir) tezgâh boyunca yüzü açan en yakın yere kayar; ayakları yine tezgâhın ardında
+ * kalır. Çizimin dolu yerleri gridFor'dan.
+ */
+function clearOfCounters(placed: PlacedLayer[], spec: VectorShot, assets: Assets): PlacedLayer[] {
+  for (const q of placed) {
+    if (!q.fixes.includes(FURNITURE.lifted)) continue;
+    const layer = spec.layers[q.index]!;
+    const still: Motion = { tr: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 }, flip: layer.flip, squash: 1 };
+    const face = (x: number) => boxOf(faceCorners(assets[layer.asset]!).map((c) => rigToCanvas({ ...q, x }, layer, still, c)));
+    const front = placed.flatMap((o) => {
+      const g = o.z > q.z && o.grounded ? gridFor(assets[spec.layers[o.index]!.asset]!) : undefined;
+      return g ? [{ o, g }] : [];
+    });
+    const covered = (x: number) => Math.max(0, ...front.map(({ o, g }) => coverIn(g, { x: o.x - o.width / 2, y: o.y - o.height, w: o.width, h: o.height }, spec.layers[o.index]!.flip, face(x))));
+    if (covered(q.x) <= COUNTER.clear) continue;
+    const behind = (x: number) => front.some(({ o }) => Math.abs(o.x - x) + q.width * 0.3 <= o.width / 2);
+    const x = Array.from({ length: COUNTER.steps * 2 }, (_, n) => q.x + (n % 2 ? 1 : -1) * COUNTER.step * Math.ceil((n + 1) / 2)).find(
+      (x) => x - q.width / 2 >= 0 && x + q.width / 2 <= W && behind(x) && covered(x) <= COUNTER.clear,
+    );
+    if (x === undefined) continue;
+    q.x = x;
+    q.fixes.push(COUNTER.note);
+  }
+  return placed;
+}
+
 export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineStyle, width: number, height: number, overlay: boolean, dur: number): ShotModel {
   // Eski planlarda aynı karakterin kopyaları olabilir; render'da da tek kalır.
   const unique = uniqueCharacters(vector, (id) => assets[id]?.kind === "character");
@@ -2925,7 +2958,7 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
   const bubbled = dropEmptyBubbles(unique, safe);
   // Yönetmen planının saçma jestleri: elde tutma yerleşimi değiştirdiği için önce; işaret ve iş jesti yerleşimden sonra.
   const before = stageBefore(bubbled.spec, safe, dur);
-  const placed = resolveLayout(before.spec, safe);
+  const placed = clearOfCounters(resolveLayout(before.spec, safe), before.spec, safe);
   const tops = (o: PlacedLayer) => workTopOf(o, safe[before.spec.layers[o.index]!.asset]);
   const writable = (o: PlacedLayer) => isWritable(before.spec.layers[o.index]!.asset, safe[before.spec.layers[o.index]!.asset]);
   const after = stageAfter(before.spec, placed, safe, (i) => focusOf(before.spec, placed, i, (j) => safe[before.spec.layers[j]!.asset]?.kind, tops, writable).aim !== undefined);

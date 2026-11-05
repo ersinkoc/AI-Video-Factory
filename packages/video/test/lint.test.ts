@@ -79,6 +79,20 @@ describe("denetim: kare kuralları", () => {
     // Neredeyse tamamı kadraj dışında olan yüz örtülmüş sayılmaz.
     expect(issues({ layers: [person({ face: { x: -95, y: 250, w: 100, h: 100 } }), prop({ box: { x: 0, y: 0, w: 1920, h: 1080 } })] })).toEqual([]);
     expect(issues({ layers: [person(), prop({ box: { x: 540, y: 240, w: 200, h: 200 } })] })).toEqual([]);
+    // Çizimin dolu yerleri biliniyorsa kutu değil çizim sayılır (camın ardındaki yüz görünür).
+    expect(issues({ layers: [person(), prop({ cover: () => 0.1 })] })).toEqual([]);
+    expect(issues({ layers: [person(), prop({ box: { x: 0, y: 0, w: 10, h: 10 }, cover: () => 0.9 })] })).toEqual([["face_covered", 0]]);
+  });
+
+  it("çekimde: camın ardından görünen yüz örtülmüş sayılmaz; aynalı çizimde ızgara da aynalanır; ölçülemeyen çizimde kutu", () => {
+    // Kişinin önünde asılı cam pano: üstte ince tabela, gerisi yalnız kontur (yerleşim havadaki öğe için kişiyi oynatmaz).
+    const pane = (svg: string, flip = false) =>
+      codes(lintShot(visual({ background: "room", layers: [{ asset: "hero", x: 960, depth: 0.5 }, { asset: "pane", x: 960, y: 1000, height: 900, z: 99, flip }] }), { ...ASSETS, pane: asset("pane", "prop", svg, 100, 100, { realHeight: 3, grounded: false }) }));
+    const glass = '<svg viewBox="0 0 100 100"><rect width="100" height="4" fill="#e56b6f"/><rect y="4" width="100" height="96" fill="none" stroke="#000"/></svg>';
+    expect(pane(glass)).not.toContain("face_covered");
+    expect(pane(glass, true)).not.toContain("face_covered");
+    expect(pane('<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#000000"/></svg>', true)).toContain("face_covered");
+    expect(pane('<svg><rect width="100" height="100" fill="none"/></svg>')).toContain("face_covered");
   });
 
   it("yüzdeki yazı", () => {

@@ -1,6 +1,7 @@
 import { RIG, type PlacedLayer, type Timeline, type VectorAnim } from "@ys/core";
 import { visualVector } from "./entrance.ts";
 import { FAST_GESTURES } from "./motion.ts";
+import { coverIn, gridFor } from "./screen.ts";
 import type { StagingCode } from "./staging.ts";
 import { cameraPoint, faceBox, shotFrame, shotModel, textBoxOf, type Motion, type ShotFrame, type ShotModel } from "./Vector.tsx";
 
@@ -96,6 +97,23 @@ function screenBox(m: ShotModel, f: ShotFrame, pl: PlacedLayer, person: boolean)
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
+/**
+ * Nesnenin çiziminin ekrandaki bir bölgeyi gerçekten örttüğü pay (gridFor: dolgulu şekillerin hücreleri; çizim katman
+ * kutusuna "meet" ile oturur, aynalı katmanda ızgara da aynalanır). Ölçülemeyen çizimde undefined: kutu sayılır.
+ */
+function drawingCover(m: ShotModel, f: ShotFrame, pl: PlacedLayer): ((r: Box) => number) | undefined {
+  const layer = m.spec.layers[pl.index]!;
+  const grid = gridFor(m.safe[layer.asset]!);
+  if (!grid) return undefined;
+  const at = f.drawnAt.get(pl.index)!;
+  const tr = f.motions.get(pl.index)!.tr;
+  const [w, h] = [at.width * tr.scale, at.height * tr.scale];
+  const [x0, y0] = cameraPoint(m.cam, f.k, m.centre, [at.x + tr.x - w / 2, at.y + tr.y - h]);
+  const [x1, y1] = cameraPoint(m.cam, f.k, m.centre, [at.x + tr.x + w / 2, at.y + tr.y]);
+  const box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  return (r) => coverIn(grid, box, layer.flip, r);
+}
+
 /** Bir çekimin bütün nesnel hataları (her tür ve katman için bir kez, ilk görüldüğü kareyle). */
 export function lintShot(visual: Visual, assets: Assets, o: { fps?: number; step?: number } = {}): LintIssue[] {
   if (!visual.vector) return [];
@@ -136,6 +154,7 @@ export function lintShot(visual: Visual, assets: Assets, o: { fps?: number; step
       {
         layers: placed.map((pl) => {
           const tr = f.motions.get(pl.index)!.tr;
+          const cover = person(pl) ? undefined : drawingCover(model, f, pl);
           return {
             index: pl.index,
             person: person(pl),
@@ -146,6 +165,7 @@ export function lintShot(visual: Visual, assets: Assets, o: { fps?: number; step
             z: pl.z,
             width: pl.width,
             ...(person(pl) ? { face: faceBox(model, f.motions, f.k, pl) } : {}),
+            ...(cover ? { cover } : {}),
           };
         }),
         texts: f.texts.map((tx) => ({ text: tx.text.text, box: textBoxOf(tx) })),
@@ -202,6 +222,8 @@ export interface FrameView {
     width: number;
     /** Kişinin ekrandaki yüzü. */
     face?: Box;
+    /** Nesnenin çiziminin ekrandaki bir bölgeyi örttüğü pay (yoksa kutu sayılır). */
+    cover?: (region: Box) => number;
   }[];
   texts: { text: string; box: Box }[];
 }
@@ -222,7 +244,7 @@ export function frameIssues(v: FrameView, add: (code: LintCode, detail: string, 
     const sa = area(shown);
     for (const q of v.layers.slice(order + 1)) {
       if (q.opacity < 0.5 || l.moving || q.moving) continue;
-      const covered = overlap(shown, q.box) / sa;
+      const covered = q.cover ? q.cover(shown) : overlap(shown, q.box) / sa;
       if (covered > LINT.faceCovered) add("face_covered", `face ${Math.round(covered * 100)}% hidden behind layer ${q.index}`, l.index);
     }
     for (const tx of v.texts) {

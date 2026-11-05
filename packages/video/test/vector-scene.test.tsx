@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { cleanup, render } from "@testing-library/react";
-import { RIG, RIG_SIDE, textureLayer, TimelineVisual, VectorAnimType, VectorAsset, VectorLayer, VectorShot, type LineStyle, type Texture } from "@ys/core";
+import { FURNITURE, RIG, RIG_SIDE, textureLayer, TimelineVisual, VectorAnimType, VectorAsset, VectorLayer, VectorShot, type LineStyle, type Texture } from "@ys/core";
 import { random } from "remotion";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -40,7 +40,7 @@ const { BURST } = await import("../src/staging.ts");
 const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -1623,6 +1623,34 @@ describe("vektör sahne: bilgi kartı", () => {
         for (const t of f.texts) expect(overlap(textBoxOf(t), face) / (face.w * face.h)).toBeLessThan(CARD.face);
       }
     }
+  });
+});
+
+describe("vektör sahne: tezgâhın ardında", () => {
+  // Danışma masası (2,6 m; üst yarısı tabela ve ortasında tabelayı taşıyan direk, alt yarısı tezgâh): 1,7 m'lik kişi
+  // yükselir, yüzü direğin ardında kalırsa tezgâh boyunca kayar.
+  const desk = (above: string) =>
+    asset("helpdesk", "prop", `<svg viewBox="0 0 600 260"><rect width="600" height="50" fill="#e56b6f"/>${above}<rect y="130" width="600" height="130" fill="#6d597a"/></svg>`, 600, 260, { realHeight: 2.6, surface: 0.5, grounded: true });
+  const model = (above: string, x = 960) =>
+    shotModel(VectorShot.parse({ layers: [{ asset: "helpdesk", x: 960, depth: 0.3 }, { asset: "hero", x, depth: 0.5 }] }), { ...ASSETS, helpdesk: desk(above) }, "outline", 1920, 1080, false, 10);
+  const hero = (m: ReturnType<typeof model>) => m.placed.find((p) => p.index === 1)!;
+
+  it("yükselen kişinin yüzünü tezgâhın bir parçası (direk) örtüyorsa yüzü açan en yakın yere kayar; açıksa yerinde", () => {
+    const pole = hero(model('<rect x="285" y="50" width="30" height="80" fill="#355070"/>'));
+    expect(pole.fixes).toEqual(expect.arrayContaining([FURNITURE.lifted, COUNTER.note]));
+    expect(Math.abs(pole.x - 960)).toBeGreaterThan(0);
+    expect(Math.abs(pole.x - 960) % COUNTER.step).toBe(0);
+    const open = hero(model(""));
+    expect(open.fixes).toContain(FURNITURE.lifted);
+    expect(open.fixes).not.toContain(COUNTER.note);
+    expect(open.x).toBe(960);
+  });
+
+  it("tezgâh boyunca açık yer yoksa (bütün bant dolu) ya da kişi kadrajın kenarındaysa yerinde kalır", () => {
+    expect(hero(model('<rect y="50" width="600" height="80" fill="#355070"/>')).fixes).not.toContain(COUNTER.note);
+    // Kenardaki kişi: kadrajdan taşacak adaylar sayılmaz, içeri doğru kayar.
+    const edge = hero(model('<rect x="0" y="50" width="70" height="80" fill="#355070"/>', 150));
+    expect(edge.x).toBeGreaterThanOrEqual(edge.width / 2);
   });
 });
 

@@ -290,4 +290,25 @@ describe("sahne fiziği: yüzü örten eşya", () => {
     expect(by(tall, 2).height).toBeCloseTo(2 * STAGE.pxPerMeter * 0.75, 6);
     expect(by(tall, 2).fixes).not.toContain(FURNITURE.lowered);
   });
+
+  it("tezgâhın ardındaki kısa kişi göğsü tezgâhın üstüne gelene dek yükselir (ayakları tezgâhın ardında); yerinden oynamaz", () => {
+    // 1,1 m'lik robot, önünde 1 m'lik geniş tezgâh: yakında olduğu için tezgâhın üstü robotun yüzünü örter.
+    const shop = { ...assets, robot: asset("robot", "character", { realHeight: 1.1 }, 400, 800), counter: asset("counter", "prop", { realHeight: 1, surface: 1, grounded: true }, 4000, 500) };
+    const at = (layers: unknown[]) => resolveLayout(VectorShot.parse({ layers }), shop);
+    const placed = at([{ asset: "counter", x: 960, depth: 0.3 }, { asset: "robot", x: 960, depth: 0.45 }]);
+    const [counter, robot] = [by(placed, 0), by(placed, 1)];
+    expect(robot.x).toBe(960);
+    expect(robot.fixes).toContain(FURNITURE.lifted);
+    expect(robot.y).toBeCloseTo(counter.y - counter.height + robot.height * FURNITURE.chest, 6);
+    // Ayakları tezgâhın ardında kalır.
+    expect(robot.y).toBeGreaterThan(counter.y - counter.height);
+    // Tezgâhın kenarında duran (ayakları görünür) yükselmez, kenara çekilir.
+    const edge = at([{ asset: "counter", x: 400, depth: 0.3 }, { asset: "robot", x: 1750, depth: 0.45 }]);
+    expect(by(edge, 1).fixes).not.toContain(FURNITURE.lifted);
+    // Gereken yükselme boyunun FURNITURE.lift kesrinden fazlaysa (çok yüksek tezgâh) yükselmez.
+    const high = at([{ asset: "tall", x: 960, depth: 0.3 }, { asset: "robot", x: 960, depth: 0.45 }]);
+    expect(by(high, 1).fixes).not.toContain(FURNITURE.lifted);
+    // Üstü olmayan eşyanın (dolap) ardında kenara çekilir.
+    expect(by(at([{ asset: "cabinet", x: 960, depth: 0.3 }, { asset: "robot", x: 960, depth: 0.45 }]), 1).fixes).toContain(FURNITURE.aside);
+  });
 });

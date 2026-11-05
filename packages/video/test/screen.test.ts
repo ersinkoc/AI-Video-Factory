@@ -1,6 +1,6 @@
 import { VectorAsset, VectorScreen } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { drawnBottom, luminance, SCREEN_LINES, SCREEN_READ, screenBox, screenFor, screenOf, screenSvg } from "../src/screen.ts";
+import { coverGrid, coverOf, drawnBottom, luminance, SCREEN_LINES, SCREEN_READ, screenBox, screenFor, screenOf, screenSvg } from "../src/screen.ts";
 
 // Monitör: kasa (dış dikdörtgen), ekran (içinde, koyu), altta ayak.
 const MONITOR = `<svg viewBox="0 0 200 180"><rect x="0" y="0" width="200" height="140" rx="10" fill="#ddd"/><rect x="20" y="15" width="160" height="105" rx="6" fill="#1b2430"/><rect x="40" y="30" width="20" height="10" fill="#fff"/><rect x="80" y="140" width="40" height="40" fill="#999"/></svg>`;
@@ -57,6 +57,22 @@ describe("ekranın bulunması", () => {
     expect(drawnBottom('<svg viewBox="0 0 100 100"><ellipse cx="50" cy="90" rx="50" ry="5" fill="url(#g)"/></svg>')!.bottom).toBe(95);
     expect(drawnBottom('<svg viewBox="0 10 100 100"></svg>')!.bottom).toBe(110);
     expect(drawnBottom("<svg/>")).toBeUndefined();
+  });
+
+  it("dolu yer ızgarası: dolgulu şeklin değdiği hücreler dolu; yalnız konturu olan şekil (cam) ve aradaki boşluk boş", () => {
+    // Tabela (üst), cam (yalnız kontur), tezgâh (alt yarı).
+    const desk = '<svg viewBox="0 0 100 100"><rect y="0" width="100" height="20" fill="#e56b6f"/><rect y="20" width="100" height="30" fill="none" stroke="#000"/><rect y="50" width="100" height="50"/></svg>';
+    const g = coverGrid(desk, 10)!;
+    expect(g.n).toBe(10);
+    expect(coverOf(g, { x: 0, y: 25, w: 100, h: 20 })).toBe(0);
+    expect(coverOf(g, { x: 0, y: 60, w: 100, h: 20 })).toBe(1);
+    expect(coverOf(g, { x: 0, y: 10, w: 100, h: 20 })).toBeCloseTo(0.5);
+    // viewBox dışı boş; alanı olmayan bölge 0.
+    expect(coverOf(g, { x: 200, y: 60, w: 10, h: 10 })).toBe(0);
+    expect(coverOf(g, { x: 0, y: 60, w: 0, h: 10 })).toBe(0);
+    // Kutusu viewBox'tan taşan şekil kenar hücrelerinde kalır; viewBox'sız çizim ölçülmez.
+    expect(coverOf(coverGrid('<svg viewBox="0 0 10 10"><rect x="-5" y="-5" width="30" height="30" fill="#000"/></svg>', 4)!, { x: 0, y: 0, w: 10, h: 10 })).toBe(1);
+    expect(coverGrid("<svg/>")).toBeUndefined();
   });
 });
 

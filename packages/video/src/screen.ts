@@ -107,6 +107,73 @@ export function drawnBottom(svg: string): { vb: [number, number, number, number]
   return { vb: found.vb, bottom: pick.length ? Math.max(...pick.map((s) => s.y + s.h)) : found.vb[1] + found.vb[3] };
 }
 
+/**
+ * Çizimin dolu yerleri: viewBox n × n hücreye bölünür, dolgulu bir şeklin kutusuna değen hücre dolu sayılır (yalnız
+ * konturu olan cam, tabelanın altındaki boşluk, direklerin arası boş kalır). Animasyon denetimi bir nesnenin yüzü gerçekten
+ * örtüp örtmediğine buna bakar: kutusu bütün tezgâhı ve tabelasını içine alan danışma masası, aradaki camın ardındaki yüzü
+ * "örtülü" sayıyordu.
+ */
+export interface CoverGrid {
+  vb: [number, number, number, number];
+  n: number;
+  cells: Uint8Array;
+}
+
+export function coverGrid(svg: string, n = 96): CoverGrid | undefined {
+  const found = shapesOf(svg);
+  if (!found) return undefined;
+  const [vx, vy, vw, vh] = found.vb;
+  const cells = new Uint8Array(n * n);
+  const cell = (v: number) => Math.min(n - 1, Math.max(0, v));
+  for (const s of found.shapes) {
+    if (s.fill === "none") continue;
+    const [c0, c1] = [cell(Math.floor(((s.x - vx) / vw) * n)), cell(Math.ceil(((s.x + s.w - vx) / vw) * n) - 1)];
+    const [r0, r1] = [cell(Math.floor(((s.y - vy) / vh) * n)), cell(Math.ceil(((s.y + s.h - vy) / vh) * n) - 1)];
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) cells[r * n + c] = 1;
+  }
+  return { vb: found.vb, n, cells };
+}
+
+/** Bölgenin (viewBox koordinatında) dolu kısmının payı: hücrelerle kesişim alanına göre; viewBox dışı boş. */
+export function coverOf(g: CoverGrid, r: Bounds): number {
+  if (!(r.w > 0 && r.h > 0)) return 0;
+  const [vx, vy, vw, vh] = g.vb;
+  const [cw, ch] = [vw / g.n, vh / g.n];
+  // Yalnız bölgenin altındaki hücreler.
+  const span = (lo: number, size: number, from: number, step: number) => [Math.max(0, Math.floor((lo - from) / step)), Math.min(g.n - 1, Math.floor((lo + size - from) / step))] as const;
+  const [c0, c1] = span(r.x, r.w, vx, cw);
+  const [r0, r1] = span(r.y, r.h, vy, ch);
+  let covered = 0;
+  for (let row = r0; row <= r1; row++)
+    for (let col = c0; col <= c1; col++) {
+      if (!g.cells[row * g.n + col]) continue;
+      const x = vx + col * cw;
+      const y = vy + row * ch;
+      const w = Math.min(x + cw, r.x + r.w) - Math.max(x, r.x);
+      const h = Math.min(y + ch, r.y + r.h) - Math.max(y, r.y);
+      if (w > 0 && h > 0) covered += w * h;
+    }
+  return covered / (r.w * r.h);
+}
+
+const grids = new WeakMap<VectorAsset, CoverGrid | null>();
+
+/** Varlığın dolu yer ızgarası (varlık başına bir kez); viewBox'sız çizimde undefined. */
+export function gridFor(asset: VectorAsset): CoverGrid | undefined {
+  let g = grids.get(asset);
+  if (g === undefined) grids.set(asset, (g = coverGrid(asset.svg) ?? null));
+  return g ?? undefined;
+}
+
+/** box'a "meet" ile oturan (flip: aynalı) çizimin aynı koordinattaki r bölgesini örttüğü pay. */
+export function coverIn(g: CoverGrid, box: Bounds, flip: boolean, r: Bounds): number {
+  const [vx, vy, vw, vh] = g.vb;
+  const k = Math.min(box.w / vw, box.h / vh);
+  const [ox, oy] = [box.x + (box.w - vw * k) / 2, box.y + (box.h - vh * k) / 2];
+  const dx = (r.x - ox) / k;
+  return coverOf(g, { x: flip ? vx + vw - dx - r.w / k : vx + dx, y: vy + (r.y - oy) / k, w: r.w / k, h: r.h / k });
+}
+
 /** Çizimin ekranı (viewBox koordinatında): id'si "screen" olan öğe, yoksa çerçevesinin içindeki en büyük dikdörtgensi şekil. */
 export function screenOf(svg: string): ScreenRect | undefined {
   const found = shapesOf(svg);

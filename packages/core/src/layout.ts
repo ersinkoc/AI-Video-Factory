@@ -91,9 +91,18 @@ const isGrounded = (layer: VectorLayer, asset: VectorAsset, floorY: number) =>
 const entering = (layer: VectorLayer) => layer.anims.some((a) => a.type === "walk" || a.type === "slide_in" || a.type === "move");
 /**
  * Kişinin yüzünü örten, yere basan eşya: ayaktaki kişi kenara çekilir; oturanın önündeki eşya en çok lower kesri kadar
- * alçaltılır (kürsü 1,5 m → 0,98 m), daha fazlası gerçek ölçüye aykırı.
+ * alçaltılır (kürsü 1,5 m → 0,98 m), daha fazlası gerçek ölçüye aykırı. Tezgâhın (üstü olan eşya) ardında ayakta duran ve
+ * ayakları tezgâhın ardında kalan kişi önce yükselir: göğsü (boyunun chest kesri) tezgâhın üstüne gelene dek, en çok boyunun
+ * lift kesri kadar.
  */
-export const FURNITURE = { lower: 0.35, aside: "önündeki eşya yüzünü örtüyordu, kenara çekildi", lowered: "önündeki oturanın yüzünü örtüyordu, alçaltıldı" } as const;
+export const FURNITURE = {
+  lower: 0.35,
+  lift: 0.6,
+  chest: 0.6,
+  aside: "önündeki eşya yüzünü örtüyordu, kenara çekildi",
+  lowered: "önündeki oturanın yüzünü örtüyordu, alçaltıldı",
+  lifted: "tezgâhın ardında yüzü görünmüyordu, yükseltildi",
+} as const;
 
 /**
  * Konuşma mesafesi (m, iki kişinin ortaları arası) ve geçişin sınırları: aynı derinlikte sayılan z farkı, geçişin
@@ -560,6 +569,13 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
   // Ayaktaki kişi yüzünü açan en yakın x'e çekilir; oturan kişinin önündeki eşya en çok FURNITURE_LOWER kadar alçalır,
   // üstündekiler onunla iner. Giren kişiye dokunulmaz (geçerken örtülmek olağan).
   const furniture = list.filter((o) => o.grounded && o.on === undefined && o.heldBy === undefined && assets[spec.layers[o.index]!.asset]!.kind !== "character");
+  // Kişinin tezgâhın ardında yükselmesi gereken px (0: tezgâh değil, kişiyi baştan sona örtmüyor ya da gereken çok fazla).
+  const counterLift = (o: PlacedLayer, q: PlacedLayer) => {
+    const surface = assets[spec.layers[o.index]!.asset]!.meta.surface;
+    if (surface === undefined || Math.abs(o.x - q.x) + q.width * 0.3 > o.width / 2) return 0;
+    const lift = q.y - q.height * FURNITURE.chest - (o.y - o.height * surface);
+    return lift > 0 && lift <= q.height * FURNITURE.lift ? lift : 0;
+  };
   for (const q of people) {
     if (entering(spec.layers[q.index]!)) continue;
     const front = furniture.filter((o) => o.z > q.z);
@@ -569,6 +585,16 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
       front.some((o) => faceHidden(o, { ...q, x })) || ahead.some((p) => faceHidden({ ...p, width: p.width * 0.6 }, { ...q, x }));
     if (!hides(q.x)) continue;
     if (!q.sitting) {
+      // Tezgâhın ardındaki kısa kişi ya da yüksek tezgâh (5 Kas, Yapay zekâ s2-sh5: 1,1 m'lik robot 1,3 m'lik danışma
+      // tezgâhının ardında kayboluyordu; tezgâh 6 m genişti, kenara çekilecek yer de yoktu): ayakları tezgâhın ardında
+      // kaldığı sürece kişi göğsü tezgâhın üstüne gelene dek yükselir (canlandırmanın bilinen hilesi). Yönetmenin "tezgâhın
+      // arkasında" kurgusu korunur.
+      const lift = front.filter((o) => faceHidden(o, q)).map((o) => counterLift(o, q))[0];
+      if (lift) {
+        q.y -= lift;
+        note(q, FURNITURE.lifted);
+        continue;
+      }
       const half = q.width / 2;
       const x = nearest(q.x, (x) => !hides(x), half + 20, STAGE.width - half - 20);
       if (x === undefined) continue;
