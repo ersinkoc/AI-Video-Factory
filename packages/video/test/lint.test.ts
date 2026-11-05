@@ -249,3 +249,12 @@ describe("kamera: durağan kadrajda yarım yüz yok", () => {
     expect(faceSafe(wide, false, [{ x: -40, y: 400, w: 100, h: 100 }], true)).toBe(wide);
   });
 });
+
+describe("denetim: boş konuşma balonu", () => {
+  it("boş balon nesnesi atılır, sahne yeniden planlanmalı", () => {
+    const meta = { realHeight: 0.5, check: { kind: "prop", name: "bub", guess: "an empty speech bubble", recognizable: 8, passed: true } };
+    const assets = { ...ASSETS, bub: asset("bub", "prop", '<svg viewBox="0 0 100 80"><rect width="100" height="80"/></svg>', 100, 80, meta) };
+    const issues = lintShot(visual({ background: "room", layers: [{ asset: "hero", x: 700, depth: 0.3 }, { asset: "bub", x: 1100, y: 500, height: 200 }] }), assets);
+    expect(issues).toContainEqual(expect.objectContaining({ code: "empty_bubble", layer: 1, replan: true }));
+  });
+});

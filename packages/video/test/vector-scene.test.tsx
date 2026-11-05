@@ -80,6 +80,11 @@ const ASSETS = {
     400,
     800,
   ),
+  // Commons'tan boş konuşma balonu simgesi (kapının tahmini: içi boş): render'da atılır.
+  speech: asset("speech", "prop", '<svg viewBox="0 0 100 80"><path id="speech-icon" d="M0 0H100V70H20L0 80Z" fill="#ffffff"/></svg>', 100, 80, {
+    realHeight: 0.5,
+    check: { kind: "prop", name: "speech", guess: "an empty speech bubble", recognizable: 8, passed: true },
+  }),
   room: asset("room", "background", '<svg viewBox="0 0 1920 1080"><rect id="wall" width="1920" height="1080" fill="#aaaaaa"/></svg>', 1920, 1080),
   map: asset("map", "background", '<svg viewBox="0 0 1920 1080"><path id="route-0" d="M0 0L10 10" stroke="#f00"/><path id="route-1" d="M0 0L9 9"/></svg>', 1920, 1080, {
     exact: true,
@@ -1618,6 +1623,69 @@ describe("vektör sahne: bilgi kartı", () => {
         for (const t of f.texts) expect(overlap(textBoxOf(t), face) / (face.w * face.h)).toBeLessThan(CARD.face);
       }
     }
+  });
+});
+
+describe("vektör sahne: konuşma balonu", () => {
+  const bubble = (c: HTMLElement) => c.querySelector("[data-bubbles]");
+  it("konuşanın sözü başının yanında, kuyruğu ağzına; pencerenin dışında ve küçük resimde yok", () => {
+    const shot = { layers: [{ asset: "hero", x: 600, depth: 0.3, say: { text: "Bu benim hatam değil" } }, { asset: "box", x: 1400, y: 500 }] };
+    const open = scene(shot, { frame: 150 });
+    const svg = bubble(open)!;
+    expect(svg.innerHTML).toContain(">Bu benim hatam değil</text>");
+    expect(svg.querySelectorAll("path")).toHaveLength(2);
+    // Kişi solda: balon sağ üstünde, kuyruğu alt kenardan sola aşağı, ağza iner.
+    const rect = svg.querySelector("rect")!;
+    const [, tx, ty] = /^M [\d.]+ [\d.]+ L ([\d.]+) ([\d.]+)/.exec(svg.querySelector("path")!.getAttribute("d")!)!.map(Number);
+    expect(tx).toBeLessThan(Number(rect.getAttribute("x")) + Number(rect.getAttribute("width")) / 2);
+    expect(ty).toBeGreaterThan(Number(rect.getAttribute("y")) + Number(rect.getAttribute("height")));
+    cleanup();
+    expect(bubble(scene(shot, { frame: 10 }))).toBeNull();
+    cleanup();
+    expect(bubble(scene(shot, { frame: 150, insets: false }))).toBeNull();
+    cleanup();
+    // Düşünce bulutu; boş söz ve nesneye verilen söz çizilmez.
+    const cloud = bubble(scene({ layers: [{ asset: "hero", x: 600, depth: 0.3, say: { text: "Acaba?", kind: "thought" } }, { asset: "box", x: 1400, y: 500, say: { text: "kutu" } }] }, { frame: 150 }))!;
+    expect(cloud.querySelectorAll("circle")).toHaveLength(3);
+    expect(cloud.innerHTML).not.toContain("kutu");
+    cleanup();
+    expect(bubble(scene({ layers: [{ asset: "hero", x: 600, depth: 0.3, say: { text: "  " } }] }, { frame: 150 }))).toBeNull();
+  });
+
+  it("yan çekim boyunca bir kez seçilir; yürüyen kişinin balonu onunla gider; kadrajdan çıkan kişinin balonu yok", () => {
+    const m = shotModel(VectorShot.parse({ layers: [{ asset: "hero", x: 500, depth: 0.3, say: { text: "Geliyorum", start: 0, end: 1 }, anims: [{ type: "walk", toX: 1300, start: 0.2, end: 0.8 }] }] }), ASSETS, "outline", 1920, 1080, false, 10);
+    const at = (frame: number) => shotFrame(m, { shotId: "s1", frame, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).bubbles[0]!.box.x;
+    expect(at(285) - at(15)).toBeGreaterThan(500);
+    const gone = shotModel(VectorShot.parse({ layers: [{ asset: "hero", x: 500, depth: 0.3, say: { text: "Hoşça kal", start: 0, end: 1 }, anims: [{ type: "walk", toX: 2600, start: 0.1, end: 0.6 }] }] }), ASSETS, "outline", 1920, 1080, false, 10);
+    expect(shotFrame(gone, { shotId: "s1", frame: 280, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).bubbles).toEqual([]);
+  });
+
+  it("iki konuşanın balonu birbirini örtmez; büyütme balonu konuşma balonundan kaçınır", () => {
+    const m = shotModel(
+      VectorShot.parse({ layers: [{ asset: "hero", x: 800, depth: 0.3, say: { text: "Sen başla" } }, { asset: "ada", x: 1150, depth: 0.3, say: { text: "Hayır, sen başla" } }] }),
+      ASSETS,
+      "outline",
+      1920,
+      1080,
+      false,
+      10,
+    );
+    const [a, b] = shotFrame(m, { shotId: "s1", frame: 150, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).bubbles;
+    expect(overlap(a!.box, b!.box)).toBe(0);
+    // Elindeki küçük telefon büyütme balonunda; büyütme balonu konuşma balonunun üstüne açılmaz.
+    // Duvarı kaplayan öğe: kamera kendiliğinden yaklaşmaz, bardak küçük kalır.
+    const wall = { asset: "panorama", x: 960, y: 1080, height: 1080 };
+    const held = shotModel(VectorShot.parse({ layers: [{ asset: "hero", x: 1300, depth: 0.5, say: { text: "Bakın, bu bardak" } }, { asset: "cup", x: 0, heldBy: 0 }, wall] }), ASSETS, "outline", 1920, 1080, false, 10);
+    const f = shotFrame(held, { shotId: "s1", frame: 150, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false });
+    const [at] = [f.inset!.at];
+    expect(overlap(f.bubbles[0]!.box, { x: at[0] - CALLOUT.r, y: at[1] - CALLOUT.r, w: 2 * CALLOUT.r, h: 2 * CALLOUT.r })).toBe(0);
+  });
+
+  it("boş balon nesnesi atılır ve denetim sahneyi yeniden planlatır", () => {
+    const c = scene({ layers: [{ asset: "hero", x: 600, depth: 0.3 }, { asset: "speech", x: 1100, y: 500, height: 220 }] }, { frame: 150 });
+    expect(c.innerHTML).not.toContain("speech-icon");
+    const m = shotModel(VectorShot.parse({ layers: [{ asset: "hero", x: 600, depth: 0.3 }, { asset: "speech", x: 1100, y: 500, height: 220 }] }), ASSETS, "outline", 1920, 1080, false, 10);
+    expect(m.problems).toEqual([expect.objectContaining({ code: "empty_bubble", layer: 1, replan: true })]);
   });
 });
 

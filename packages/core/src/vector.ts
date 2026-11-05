@@ -309,6 +309,20 @@ export const VectorScreen = z
   .describe("What this layer's display or board shows in this shot; only for a prop with a screen or a writing surface");
 export type VectorScreen = z.infer<typeof VectorScreen>;
 
+/**
+ * Konuşma ya da düşünce balonu (5 Kas, inceleme: "konuşma balonu boş"; yönetmen boş bir balon simgesi istiyordu, içine söz
+ * yazacak bir şey yoktu). Söz konuşan karakterin katmanında; balonu kod başın yanına çizer (video bubble.ts).
+ */
+export const VectorSay = z
+  .object({
+    text: z.string().describe("The words in the bubble: what this character says or thinks, at most 8 words, in the episode language (names as written); never the narration sentence"),
+    kind: z.enum(["speech", "thought"]).default("speech").describe("speech: said aloud (tail to the mouth); thought: thought silently (a cloud with small circles)"),
+    start: z.number().min(0).max(1).default(0.15).describe("When the bubble opens (fraction of the shot)"),
+    end: z.number().min(0).max(1).default(0.9).describe("When it closes"),
+  })
+  .describe("A speech or thought bubble beside this character's head; only for a character");
+export type VectorSay = z.infer<typeof VectorSay>;
+
 export const VectorLayer = z.object({
   asset: z.string(),
   /** Katmanın alt-orta noktası (x), 1920×1080 tuvalde. */
@@ -334,6 +348,7 @@ export const VectorLayer = z.object({
   /** Sadece karakterler: çekim boyunca yüz ifadesi (anlatımın duygusu). */
   expression: VectorExpression.optional(),
   screen: VectorScreen.optional(),
+  say: VectorSay.optional(),
 });
 export type VectorLayer = z.infer<typeof VectorLayer>;
 

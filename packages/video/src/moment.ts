@@ -1,4 +1,5 @@
 import { ARM_GESTURES, type Timeline, type VectorAnim, type VectorAnimType } from "@ys/core";
+import { bubbleSize, sayWindow } from "./bubble.ts";
 import { visualVector } from "./entrance.ts";
 import { revealWindow } from "./kinetic-timing.ts";
 import { shotModel } from "./Vector.tsx";
@@ -33,13 +34,19 @@ export function stillMoment(visual: Visual, assets: Assets, fps: number): number
   const texts = spec.texts.flatMap((t) => t.anims.filter((a) => TEXT.has(a.type)).map((a) => revealWindow(a, t.text, dur)));
   const ready = Math.max(STILL.from, ...layerAnims.filter((a) => ENTRANCE.has(a.type)).map((a) => a.end), ...texts.map((a) => a.end));
   const exit = Math.min(STILL.to, ...layerAnims.filter((a) => a.type === "fade_out").map((a) => a.start));
-  const gestures = spec.layers.filter((l) => safe[l.asset]?.kind === "character").flatMap((l) => l.anims.filter((a) => ACTION.has(a.type)));
-  if (!gestures.length || ready > exit) return STILL.at;
-  const shown = (a: VectorAnim) => {
+  const people = spec.layers.filter((l) => safe[l.asset]?.kind === "character");
+  const gestures = people.flatMap((l) => l.anims.filter((a) => ACTION.has(a.type)));
+  const shown = (a: Pick<VectorAnim, "start" | "end">) => {
     const half = (a.end - a.start) / 2;
     return [a.start + Math.min(STILL.settle / dur, half), a.end - Math.min(STILL.release / dur, half)] as const;
   };
-  const windows = gestures.map(shown);
+  // Konuşma balonu da anlatılanın parçası: açılıp yerine oturduktan sonra, kapanmadan önce görünür.
+  const bubbles = people.flatMap((l) => {
+    const win = l.say && bubbleSize(l.say) ? sayWindow(l, dur) : undefined;
+    return win ? [win] : [];
+  });
+  const windows = [...gestures.map(shown), ...bubbles.map(shown)];
+  if (!windows.length || ready > exit) return STILL.at;
   const score = (p: number) => windows.filter(([lo, hi]) => p >= lo - 1e-9 && p <= hi + 1e-9).length;
   // Adaylar: ızgara ve her jestin görünür penceresinin uçları (kısa baş sallama ızgara adımının arasına düşmesin).
   const grid = Array.from({ length: Math.floor((exit - ready) / STILL.step + 1e-9) + 1 }, (_, i) => ready + i * STILL.step);

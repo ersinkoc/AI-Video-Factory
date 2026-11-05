@@ -1,6 +1,6 @@
 import { resolveLayout, VectorShot, type VectorAsset } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { BURST, CLASH, IN_HAND, PORTABLE_M, stageAfter, stageBefore } from "../src/staging.ts";
+import { BURST, CLASH, dropEmptyBubbles, emptyBubble, IN_HAND, PORTABLE_M, stageAfter, stageBefore } from "../src/staging.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({ id, kind, svg: "<svg/>", width: w, height: h, meta });
 const ASSETS = {
@@ -162,5 +162,42 @@ describe("sahneleme: yerleşimden sonra", () => {
   it("nesneye ve yerleşmemiş katmana dokunulmaz", () => {
     const s = shot([{ asset: "thing", x: 960, anims: [{ type: "point" }] }, { asset: "yok", x: 300, anims: [{ type: "point" }] }]);
     expect(after(s)).toEqual({ spec: s, problems: [] });
+  });
+});
+
+describe("sahneleme: boş konuşma balonu", () => {
+  const guess = (id: string, g: string) => asset(id, "prop", { check: { kind: "prop", name: id, guess: g } as never });
+  const BUBBLES = {
+    ...ASSETS,
+    empty: guess("empty", "an empty speech bubble"),
+    lines: guess("lines", "a comic-style speech bubble with placeholder text lines"),
+    idea: guess("idea", "a glowing yellow light bulb inside a speech bubble (idea icon)"),
+    dots: guess("dots", "An orange speech bubble with three teal dots inside, a typing/ellipsis indicator"),
+    laptop: guess("laptop", "A laptop with an empty chat window and two speech bubbles on its screen"),
+  };
+  it("kapı tahmininin ana adı balon ve içi boşsa boş balon; resimli balon, balonlu ekran ve karakter değil", () => {
+    expect(emptyBubble(BUBBLES.empty)).toBe(true);
+    expect(emptyBubble(BUBBLES.lines)).toBe(true);
+    expect(emptyBubble(BUBBLES.idea)).toBe(false);
+    expect(emptyBubble(BUBBLES.dots)).toBe(false);
+    expect(emptyBubble(BUBBLES.laptop)).toBe(false);
+    expect(emptyBubble(asset("c", "character", { check: { kind: "character", name: "c", guess: "an empty speech bubble" } as never }))).toBe(false);
+    expect(emptyBubble(BUBBLES.book)).toBe(false);
+    expect(emptyBubble(undefined)).toBe(false);
+  });
+
+  it("boş balon atılır, başvurular yeniden eşlenir, sahne yeniden planlanır; balonsuz çekime dokunulmaz", () => {
+    const s = shot([
+      { asset: "hero", x: 500, anims: [{ type: "point", target: 2 }] },
+      { asset: "empty", x: 900, y: 600, height: 200 },
+      { asset: "book", x: 1200, anims: [] },
+    ]);
+    const { spec, problems } = dropEmptyBubbles({ ...s, key: 2 }, BUBBLES);
+    expect(spec.layers.map((l) => l.asset)).toEqual(["hero", "book"]);
+    expect(spec.layers[0]!.anims[0]!.target).toBe(1);
+    expect(spec.key).toBe(1);
+    expect(problems).toEqual([{ layer: 1, code: "empty_bubble", detail: expect.stringContaining('"say"'), replan: true }]);
+    const plain = shot([{ asset: "hero", x: 500 }]);
+    expect(dropEmptyBubbles(plain, BUBBLES)).toEqual({ spec: plain, problems: [] });
   });
 });

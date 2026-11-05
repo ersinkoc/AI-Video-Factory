@@ -52,3 +52,13 @@ describe("inceleme karesinin anı", () => {
     expect(at({ layers: [hero([{ type: "point", start: 0.1, end: 0.5 }, { type: "slide_in", start: 0, end: 0.9 }, { type: "fade_out", start: 0.5, end: 1 }])] })).toBe(STILL.at);
   });
 });
+
+describe("inceleme karesinin anı: konuşma balonu", () => {
+  it("balon açılıp yerine oturduktan sonra, kapanmadan önce; boş söz balon sayılmaz", () => {
+    // Pencere 0,1–0,5: görünür 0,16–0,47; hazır olunan 0,3 sonrasında %80'e en yakını.
+    expect(at({ layers: [hero([], { say: { text: "Bu bizim hatamız değil", start: 0.1, end: 0.5 } })] })).toBeCloseTo(0.47);
+    expect(at({ layers: [hero([], { say: { text: "  ", start: 0.1, end: 0.5 } })] })).toBe(STILL.at);
+    // Çekim bitmeden açılamayan balon (kişi sonda giriyor) sayılmaz.
+    expect(at({ layers: [hero([{ type: "fade_in", start: 0.9, end: 1 }], { say: { text: "Geç kaldım" } })] })).toBe(STILL.at);
+  });
+});

@@ -3,6 +3,8 @@ import { chantTimes, crowdVoices, stepTimes } from "./crowd-timing.ts";
 import { visualVector } from "./entrance.ts";
 import { GESTURE_RHYTHM } from "./gesture-timing.ts";
 import { KINETIC, kineticLength, revealWindow } from "./kinetic-timing.ts";
+import { bubbleSize, sayWindow } from "./bubble.ts";
+import { emptyBubble } from "./staging.ts";
 
 /**
  * Kareye kilitli efekt sesleri: olaylar timeline'daki animasyonlardan çıkarılır (render'ın kullandığı zamanlamalarla),
@@ -36,6 +38,12 @@ export function sfxEvents(timeline: Timeline): SfxEvent[] {
     const span = (a: VectorAnim) => a.end - a.start;
     // Sahnenin ilk çekiminde beliren nesnelerin sesi de (entrance.ts).
     for (const layer of visualVector(v, timeline.vectorAssets, timeline.fps)!.layers) {
+      const asset = timeline.vectorAssets[layer.asset];
+      // Boş balon nesnesi render'da atılır (staging): sesi de yok.
+      if (emptyBubble(asset)) continue;
+      // Konuşma balonu açılırken hafif, tiz bir pop (render'daki pencereyle).
+      const win = asset?.kind === "character" && layer.say && bubbleSize(layer.say) ? sayWindow(layer, v.durationInFrames / timeline.fps) : undefined;
+      if (win) out.push({ frame: at(win.start), sound: "pop", pitch: 1.3 });
       for (const a of layer.anims) {
         if (a.type === "pop") out.push({ frame: at(a.start), sound: "pop" });
         if (a.type === "slide_in" || a.type === "spin") out.push({ frame: at(a.start), sound: "whoosh" });

@@ -194,3 +194,23 @@ describe("efekt sesi sentezi", () => {
     expect(w.length).toBe(50);
   });
 });
+
+describe("konuşma balonu sesi", () => {
+  it("balon açılırken tiz bir pop; boş söz, nesneye verilen söz ve atılan boş balon nesnesi sessiz", () => {
+    const meta = { check: { kind: "prop", name: "bub", guess: "an empty speech bubble", recognizable: 8, passed: true } };
+    const vectorAssets = {
+      hero: { id: "hero", kind: "character", svg: "<svg/>", width: 400, height: 800 },
+      pal: { id: "pal", kind: "character", svg: "<svg/>", width: 400, height: 800 },
+      box: { id: "box", kind: "prop", svg: "<svg/>", width: 100, height: 100 },
+      bub: { id: "bub", kind: "prop", svg: "<svg/>", width: 100, height: 80, meta },
+    };
+    const layers = [
+      { asset: "hero", x: 1, say: { text: "Merhaba", start: 0.2 } },
+      { asset: "pal", x: 2, say: { text: "  " } },
+      { asset: "box", x: 3, say: { text: "kutu" } },
+      { asset: "bub", x: 4, anims: [{ type: "pop", start: 0.5, end: 0.6 }] },
+    ];
+    const ev = sfxEvents(Timeline.parse({ episodeId: "e", lang: "tr", durationInFrames: 300, visuals: [vec({ layers })], audio: [], vectorAssets }));
+    expect(ev).toEqual([{ frame: 120, sound: "pop", pitch: 1.3 }]);
+  });
+});

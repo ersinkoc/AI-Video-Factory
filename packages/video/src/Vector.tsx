@@ -60,7 +60,8 @@ import { visemeAt, visemeCues, type Viseme } from "./visemes.ts";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
 import { FOREARM_LAG, gaitOf, gestureWeight, hop, paceWalks, physicalAnims, type Gait } from "./motion.ts";
-import { stageAfter, stageBefore, type StagingProblem } from "./staging.ts";
+import { dropEmptyBubbles, stageAfter, stageBefore, type StagingProblem } from "./staging.ts";
+import { bubbleAt, bubbleSide, bubbleSize, bubbleSvg, bubbleTail, bubbleTiming, sayWindow, type BubbleSide, type BubbleView, type Bounds as BubbleBounds } from "./bubble.ts";
 
 /**
  * Vektör sahne: Claude'un JSON tarifini deterministik olarak çizer. Bütün hareket burada hesaplanır;
@@ -2891,14 +2892,16 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
       }
     }),
   );
+  // Boş konuşma balonu nesnesi atılır (balonu kod çizer); sahne yeniden planlanır.
+  const bubbled = dropEmptyBubbles(unique, safe);
   // Yönetmen planının saçma jestleri: elde tutma yerleşimi değiştirdiği için önce; işaret ve iş jesti yerleşimden sonra.
-  const before = stageBefore(unique, safe, dur);
+  const before = stageBefore(bubbled.spec, safe, dur);
   const placed = resolveLayout(before.spec, safe);
   const tops = (o: PlacedLayer) => workTopOf(o, safe[before.spec.layers[o.index]!.asset]);
   const writable = (o: PlacedLayer) => isWritable(before.spec.layers[o.index]!.asset, safe[before.spec.layers[o.index]!.asset]);
   const after = stageAfter(before.spec, placed, safe, (i) => focusOf(before.spec, placed, i, (j) => safe[before.spec.layers[j]!.asset]?.kind, tops, writable).aim !== undefined);
   const spec = after.spec;
-  const problems = [...before.problems, ...after.problems];
+  const problems = [...bubbled.problems, ...before.problems, ...after.problems];
   const bg = spec.background ? safe[spec.background] : undefined;
   // Figüranlar kadronun arkasında; arkalarında kalan katmanları (duvardakiler, odanın dibindekiler) örtmezler. Tohum oda ve
   // tarif: aynı odada art arda gelen çekimlerde aynı seyirci oturur.
@@ -2974,6 +2977,8 @@ export interface ShotFrame {
   inset?: { asset: VectorAsset; target: [number, number]; at: [number, number]; screen?: VectorScreen; person?: ScreenPerson; from?: number };
   /** Makro ek çekim: nesnenin o anki kutusu (ekran px) ve ilerleme (0–1: arka planın bulanıklığı). */
   macroView?: { asset: VectorAsset; box: Box; q: number; screen?: VectorScreen; person?: ScreenPerson };
+  /** Bu karede açık konuşma/düşünce balonları (ekran px; bubble.ts). */
+  bubbles: BubbleView[];
 }
 
 /** Bir anın katman hareketleri (karenin çizimi; bilgi kartının yeri için örnek anlarda da). */
@@ -3091,11 +3096,85 @@ function cardAvoid(model: ShotModel, shotId: string, dur: number, fps: number, w
   return avoid;
 }
 
+/** Bir anın yazıları (bilgi kartı ve etiketler; kartın yeri çekim boyunca bir kez seçilir). */
+function textsAt(model: ShotModel, shotId: string, heads: Head[], k: number, dur: number, fps: number, width: number, height: number) {
+  const avoid = cardAvoid(model, shotId, dur, fps, width, height);
+  return layoutTexts(model.spec.texts, height > width, tagAnchor(model, heads, k), tagBounds(width, height, model.fit), avoid.bodies, avoid.faces, 1 / CARD.samples.length);
+}
+
+/** Konuşanın yüzünün ekrandaki kutusu, jestsiz: balon baş sallanırken titremez; kişi yürürken ve kamerayla gider. */
+function steadyFace(model: ShotModel, motions: Map<number, Motion>, k: number, pl: PlacedLayer): Box {
+  const layer = model.spec.layers[pl.index]!;
+  const { tr, flip, squash } = motions.get(pl.index)!;
+  return boxOf(faceCorners(model.safe[layer.asset]!).map((c) => cameraPoint(model.cam, k, model.centre, rigToCanvas(pl, layer, { tr, flip, squash }, c))));
+}
+
+/** Balonların durabileceği alan: etiketlerin yatay bandı (dikeyde görünen kısım), yazıların üst sınırı, altyazının üstü. */
+const bubbleBounds = (model: ShotModel, width: number, height: number): BubbleBounds => ({ ...tagBounds(width, height, model.fit), top: TEXT_TOP, bottom: TEXT_BOTTOM });
+
+const sided = new WeakMap<ShotModel, Map<number, BubbleSide>>();
+
+/**
+ * Konuşan karakterlerin balonlarının yanı, çekim başına bir kez (balonun görünme penceresinin ortasındaki an): kişi
+ * yürürken ya da kamera yaklaşırken balon bir yandan öbürüne atlamaz. Yan, konuşanın yüzünü, öteki yüzleri, yazıları ve
+ * önceki balonları en az örtendir.
+ */
+function bubbleSides(model: ShotModel, shotId: string, dur: number, fps: number, width: number, height: number): Map<number, BubbleSide> {
+  const hit = sided.get(model);
+  if (hit) return hit;
+  const { spec, safe, placed } = model;
+  const bounds = bubbleBounds(model, width, height);
+  const sides = new Map<number, BubbleSide>();
+  const taken: Box[] = [];
+  const isPerson = (pl: PlacedLayer) => safe[spec.layers[pl.index]!.asset]!.kind === "character";
+  for (const pl of placed.filter(isPerson)) {
+    const layer = spec.layers[pl.index]!;
+    const size = layer.say && bubbleSize(layer.say);
+    const win = sayWindow(layer, dur);
+    if (!size || !win) continue;
+    const p = (win.start + win.end) / 2;
+    const k = interpolate(p, [0, 1], [0, 1], { easing: ease });
+    const motions = motionsAt(model, shotId, p, p * dur, dur, fps);
+    const texts = textsAt(model, shotId, headsOf(model, motions), k, dur, fps, width, height).map(textBoxOf);
+    const others = placed.filter((o) => o !== pl && isPerson(o));
+    const faces = others.map((o) => faceBox(model, motions, k, o));
+    // Öteki kişilerin üst gövdesi (başından beline, kolları açık kutu genişliği): işaret eden kolu örtmesin.
+    const bodies = others.map((o) => {
+      const tr = motions.get(o.index)!.tr;
+      const top = o.y + tr.y - o.height * tr.scale;
+      const half = (o.width * tr.scale) / 2;
+      return boxOf([cameraPoint(model.cam, k, model.centre, [o.x + tr.x - half, top]), cameraPoint(model.cam, k, model.centre, [o.x + tr.x + half, top + o.height * tr.scale * 0.55])]);
+    });
+    const face = steadyFace(model, motions, k, pl);
+    const side = bubbleSide(face, size.w, size.h, { faces, texts: [...texts, ...taken], bodies }, bounds);
+    sides.set(pl.index, side);
+    taken.push(bubbleAt(side, face, size.w, size.h, bounds));
+  }
+  sided.set(model, sides);
+  return sides;
+}
+
+/** Bu karede açık balonlar: yanı çekim boyunca sabit, yeri konuşanın o anki yüzüne göre; yüzü kadrajda olmayanınki yok. */
+function bubblesAt(model: ShotModel, shotId: string, motions: Map<number, Motion>, k: number, t: number, dur: number, fps: number, width: number, height: number): BubbleView[] {
+  const { spec, placed } = model;
+  const bounds = bubbleBounds(model, width, height);
+  return [...bubbleSides(model, shotId, dur, fps, width, height)].flatMap(([index, side]) => {
+    const layer = spec.layers[index]!;
+    const timing = bubbleTiming(sayWindow(layer, dur)!, t, dur);
+    const face = steadyFace(model, motions, k, placed.find((pl) => pl.index === index)!);
+    const cx = face.x + face.w / 2;
+    if (!timing || cx < 0 || cx > W || face.y + face.h < 0 || face.y > H) return [];
+    const size = bubbleSize(layer.say!)!;
+    const box = bubbleAt(side, face, size.w, size.h, bounds);
+    return [{ box, tail: bubbleTail(box, face), rows: size.rows, size: size.size, kind: layer.say!.kind, ...timing }];
+  });
+}
+
 export function shotFrame(
   model: ShotModel,
   o: { shotId: string; frame: number; fps: number; durationInFrames: number; voice?: Voice; width: number; height: number; insets: boolean; overlay: boolean },
 ): ShotFrame {
-  const { spec, safe, placed, bg, cam, centre, fit, subject, macro } = model;
+  const { spec, safe, placed, bg, cam, centre, subject, macro } = model;
   const { shotId, frame, fps, voice, width, height, insets } = o;
   const p = Math.min(1, frame / Math.max(1, o.durationInFrames));
   const t = frame / fps;
@@ -3104,8 +3183,9 @@ export function shotFrame(
   const motions = motionsAt(model, shotId, p, t, dur, fps, voice);
   const heads = headsOf(model, motions);
   // Bilgi kartının yeri çekim boyunca bir kez seçilir (örnek anlardaki yüzler, etiketler ve üst gövdeler).
-  const avoid = cardAvoid(model, shotId, dur, fps, width, height);
-  const texts = layoutTexts(spec.texts, height > width, tagAnchor(model, heads, k), tagBounds(width, height, fit), avoid.bodies, avoid.faces, 1 / CARD.samples.length);
+  const texts = textsAt(model, shotId, heads, k, dur, fps, width, height);
+  // Konuşma balonları (küçük resimde yok: resmin yazısı başlıktır).
+  const bubbles = insets ? bubblesAt(model, shotId, motions, k, t, dur, fps, width, height) : [];
   // Katmanların bu karedeki yeri: elde tutulan nesne tutan karakterin elini izler (avucun ortasından tutulur).
   const drawnAt = new Map(
     placed.map((pl) => {
@@ -3158,6 +3238,7 @@ export function shotFrame(
       { x: target[0] - (at.width * scale) / 2, y: target[1] - (at.height * scale) / 2, w: at.width * scale, h: at.height * scale },
       ...faces,
       ...texts.map(textBoxOf),
+      ...bubbles.map((b) => b.box),
     ];
     const spot = calloutSpot(target, avoid);
     // Yakın çekimde yüz büyük: balon bir yüzü örtecekse açılmaz.
@@ -3173,7 +3254,7 @@ export function shotFrame(
       .reduce((end, a) => (ENTRANCE_ANIMS.has(a.type) ? Math.max(end, a.end) : end), 0);
     return { asset: safe[layer.asset]!, target, at: spot, ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}), ...(entered ? { from: entered } : {}) };
   })();
-  return { p, t, k, dur, motions, texts, drawnAt, ...(inset ? { inset } : {}), ...(close ? { macroView: close } : {}) };
+  return { p, t, k, dur, motions, texts, drawnAt, ...(inset ? { inset } : {}), ...(close ? { macroView: close } : {}), bubbles };
 }
 
 /** Çekimin bir karesinin çizimi (shotModel + shotFrame'in sonucu). */
@@ -3195,6 +3276,7 @@ function ShotStage({
   drawnAt,
   inset,
   macroView,
+  bubbles,
   lineStyle,
   ambience,
   grain,
@@ -3333,6 +3415,10 @@ function ShotStage({
       {!BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} />}
       {inset && <Callout {...inset} p={p} prefix={`${visual.shotId}-co-`} accent={readable(accent) ?? "#ffd84d"} />}
       {macroView && macroView.q > 0 && <Macro {...macroView} prefix={`${visual.shotId}-mc-`} />}
+      {/* Konuşma balonları kameranın dışında (yazı karede hep aynı boyda); konuşanın yüzünün yanında. */}
+      {bubbles.length > 0 && (
+        <svg data-bubbles width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }} dangerouslySetInnerHTML={{ __html: bubbles.map(bubbleSvg).join("") }} />
+      )}
       {/* Yazılar kamera hareketinin dışında: zoom onları altyazı bölgesine itmesin. */}
       <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>
         {texts.map((placed, i) => (

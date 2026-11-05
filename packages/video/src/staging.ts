@@ -1,4 +1,4 @@
-import { ARM_GESTURES, isWritable, workBoard, workSurface, workTopOf, type PlacedLayer, type VectorAnim, type VectorAsset, type VectorShot } from "@ys/core";
+import { ARM_GESTURES, isWritable, keepShotLayers, workBoard, workSurface, workTopOf, type PlacedLayer, type VectorAnim, type VectorAsset, type VectorShot } from "@ys/core";
 
 /**
  * Sahneleme denetimi (3 Kas, kullanıcı: "animasyonda sıfır hata, anlamsız hata olmasın"): yönetmen planının izleyiciye
@@ -9,7 +9,7 @@ import { ARM_GESTURES, isWritable, workBoard, workSurface, workTopOf, type Place
  * render ve denetim aynı sonucu görür.
  */
 
-export type StagingCode = "point_at_nothing" | "action_without_prop" | "gesture_clash" | "gesture_too_long" | "unsupported_staging";
+export type StagingCode = "point_at_nothing" | "action_without_prop" | "gesture_clash" | "gesture_too_long" | "unsupported_staging" | "empty_bubble";
 
 export interface StagingProblem {
   layer: number;
@@ -38,6 +38,34 @@ export const PORTABLE_M = 0.8;
 const HAND_REACH = 1000;
 
 const isArm = (a: VectorAnim) => ARM_GESTURES.includes(a.type);
+
+/** Kalite kapısının körlemesine tahmininin ana adı bir konuşma balonu (ilk birkaç sözcükte; "balonlu dizüstü" değil). */
+const BUBBLE_GUESS = /^\s*(?:an?|the|one)?\s*(?:[\w'-]+\s+){0,3}(?:speech|thought|chat|comic|dialog(?:ue)?|talk|word|text|message)[\s-]+(?:bubble|balloon)/i;
+/** Tahminde balonun içi boş (yazısız ya da yer tutucu çizgilerle). */
+const EMPTY_GUESS = /\b(?:empty|blank|placeholder|plain|unfilled|no (?:text|words|content)|without (?:text|words))\b/i;
+
+/**
+ * Boş konuşma balonu nesnesi (5 Kas, Yapay zeka ajanları: Commons'tan "boş konuşma balonu simgesi" 8 çekimde; inceleme
+ * her birinde "balon boş"). Kapı tahmininden: ana ad balon ve içi boş. İçinde resim olan balon (soru işareti, ampul,
+ * yazıyor üç noktası) ne gösterdiğini söylüyor, kalır.
+ */
+export function emptyBubble(asset: VectorAsset | undefined): boolean {
+  const guess = asset?.kind === "prop" ? asset.meta.check?.guess : undefined;
+  return guess !== undefined && BUBBLE_GUESS.test(guess) && EMPTY_GUESS.test(guess);
+}
+
+/**
+ * Boş balon nesneleri atılır: sözü olmayan balon izleyiciye "boş" görünür; balonu artık kod çizer (konuşanın `say`'i).
+ * Sahne yeniden planlanmalı (yönetmen sözü konuşana verir). Katman başvuruları (üstünde, elinde, işaret) yeniden eşlenir.
+ */
+export function dropEmptyBubbles(spec: VectorShot, assets: Record<string, VectorAsset>): { spec: VectorShot; problems: StagingProblem[] } {
+  const keep = spec.layers.map((l) => !emptyBubble(assets[l.asset]));
+  if (keep.every(Boolean)) return { spec, problems: [] };
+  const problems = keep.flatMap((k, i) =>
+    k ? [] : [{ layer: i, code: "empty_bubble" as const, detail: "an empty speech-bubble prop was dropped: code draws bubbles; give the speaking character \"say\" with the words", replan: true }],
+  );
+  return { spec: keepShotLayers(spec, keep), problems };
+}
 
 /**
  * Yerleşimden önce (elde tutma yerleşimi değiştirir): elde nesne isteyen jest yakındaki taşınabilir nesneyi ele alır ya da
