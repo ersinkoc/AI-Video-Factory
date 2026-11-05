@@ -189,6 +189,7 @@ describe("MediaGateway.generate kenar durumları", () => {
     const store: AssetStore = {
       get: (k) => real.get(k),
       list: (p) => real.list(p),
+      delete: (k) => real.delete(k),
       put: async (k, b, m) => {
         if (fail && k.startsWith("assets/")) throw new Error("disk dolu");
         return real.put(k, b, m);

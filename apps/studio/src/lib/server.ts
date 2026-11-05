@@ -22,6 +22,9 @@ import { createStoreFromEnv, type AssetStore } from "@ys/storage";
 // Çalışma anında çözülen veri klasörü; derleyicinin tüm projeyi pakete izlemesini engeller.
 export const ROOT = resolve(/*turbopackIgnore: true*/ process.env.YS_ROOT ?? join(process.cwd(), "..", ".."));
 
+/** Bölümün render klasörü (CLI'nin çalışma klasörü `.data/episodes`): video, Short, kareler, render önbelleği. */
+export const workDirOf = (episodeId: string) => join(ROOT, ".data", "episodes", episodeId);
+
 interface Studio {
   store: AssetStore;
   repo: EpisodeRepo;
@@ -177,6 +180,11 @@ export async function episodeBusy(episodeId: string, state: { heartbeatAt?: stri
   // Kilidin sahibi öldüyse (çökme, öldürülme) dosyadaki "sürüyor" kesin bayattır.
   if (await deadLock(init().store, episodeId)) return false;
   return !(job?.endedAt && job.endedAt >= (state.heartbeatAt ?? ""));
+}
+
+/** Silinen bölümün (bitmiş) işi listeden düşer. */
+export function forgetJob(episodeId: string): void {
+  init().jobs.delete(episodeId);
 }
 
 export function getJob(episodeId: string): JobView | undefined {

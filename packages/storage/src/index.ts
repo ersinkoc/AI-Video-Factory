@@ -1,7 +1,8 @@
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   ListObjectsV2Command,
@@ -16,6 +17,15 @@ export interface AssetStore {
   get(key: string): Promise<Uint8Array | null>;
   /** Önekle başlayan tüm anahtarlar. */
   list(prefix: string): Promise<string[]>;
+  /** Anahtarı siler; yoksa bir şey yapmaz. */
+  delete(key: string): Promise<void>;
+}
+
+/** Önekle başlayan tüm anahtarları siler (bir bölümün klasörü gibi); silinen sayısını döner. */
+export async function deletePrefix(store: AssetStore, prefix: string): Promise<number> {
+  const keys = await store.list(prefix);
+  for (const key of keys) await store.delete(key);
+  return keys.length;
 }
 
 export async function putJson(store: AssetStore, key: string, value: unknown): Promise<string> {
@@ -76,8 +86,10 @@ export class FsAssetStore implements AssetStore {
   }
 
   async list(prefix: string): Promise<string[]> {
+    // Önekin klasöründen başlanır: tüm kökü (kütüphane, önbellek) gezmek her listede saniyeler sürüyordu.
+    const base = prefix.slice(0, prefix.lastIndexOf("/") + 1).replace(/\/+$/, "");
     try {
-      const entries = await readdir(this.root, { recursive: true, withFileTypes: true });
+      const entries = await readdir(base ? this.pathFor(base) : this.root, { recursive: true, withFileTypes: true });
       return entries
         .filter((e) => e.isFile() && !e.name.endsWith(".tmp"))
         .map((e) => relative(this.root, join(e.parentPath, e.name)).split(sep).join("/"))
@@ -85,6 +97,19 @@ export class FsAssetStore implements AssetStore {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw e;
+    }
+  }
+
+  async delete(key: string): Promise<void> {
+    const p = this.pathFor(key);
+    await rm(p, { force: true });
+    // Boşalan klasörler de gider (silinen bölümün klasörü kalmasın); dolu klasörde rmdir hata verir, orada durulur.
+    for (let dir = dirname(p); dir !== this.root; dir = dirname(dir)) {
+      try {
+        await rmdir(dir);
+      } catch {
+        break;
+      }
     }
   }
 }
@@ -149,6 +174,11 @@ export class S3AssetStore implements AssetStore {
       if (e instanceof NoSuchKey) return null;
       throw e;
     }
+  }
+
+  /** S3 olmayan anahtarı silmeyi de başarılı sayar. */
+  async delete(key: string): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 }
 

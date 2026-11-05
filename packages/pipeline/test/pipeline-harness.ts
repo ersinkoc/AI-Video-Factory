@@ -29,6 +29,9 @@ export class MemStore implements AssetStore {
   async list(prefix: string): Promise<string[]> {
     return [...this.map.keys()].filter((k) => k.startsWith(prefix));
   }
+  async delete(key: string): Promise<void> {
+    this.map.delete(key);
+  }
   text(key: string): string | undefined {
     const b = this.map.get(key);
     return b ? new TextDecoder().decode(b) : undefined;

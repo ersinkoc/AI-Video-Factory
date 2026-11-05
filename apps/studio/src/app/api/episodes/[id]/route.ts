@@ -1,15 +1,17 @@
+import { rm } from "node:fs/promises";
 import { msg } from "@ys/core/messages";
 import { groupCosts } from "@ys/media-gateway";
-import { estimateEpisode, lineStyleOf, listLibraryCharacters, motionModeOf, progressOf, runStatusOf, type MotionMode } from "@ys/pipeline/light";
-import { errorResponse, textResponse } from "../../../../lib/api";
-import { episodeBusy, episodeSpentUsd, estimateContext, getJob, ledgerEntries, quotaOf, repo, store } from "../../../../lib/server";
+import { deleteEpisode, estimateEpisode, lineStyleOf, listLibraryCharacters, motionModeOf, progressOf, runStatusOf, type MotionMode } from "@ys/pipeline/light";
+import { apiError, errorResponse, textResponse } from "../../../../lib/api";
+import { episodeBusy, episodeSpentUsd, estimateContext, forgetJob, getJob, ledgerEntries, quotaOf, repo, store, workDirOf } from "../../../../lib/server";
 import type { EpisodeResponse, QuotaView } from "../../../../lib/types";
 
 const MODES: MotionMode[] = ["animated", "mixed", "still", "vector"];
+const EPISODE_ID = /^[a-z0-9][a-z0-9-]{0,120}$/;
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  if (!/^[a-z0-9][a-z0-9-]{0,120}$/.test(id)) return textResponse(req, msg("api.badEpisode"), 400);
+  if (!EPISODE_ID.test(id)) return textResponse(req, msg("api.badEpisode"), 400);
   try {
     const [state, entries, estimateCtx] = await Promise.all([repo().load(id), ledgerEntries(id), estimateContext()]);
     const estimates = Object.fromEntries(MODES.map((m) => [m, estimateEpisode(state, estimateCtx, m)])) as EpisodeResponse["estimates"];
@@ -61,5 +63,29 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     return Response.json(body);
   } catch (e) {
     return errorResponse(req, e, 404);
+  }
+}
+
+/**
+ * Bölümü siler (yarım kalmış ya da bitmiş): önce render klasörü (video, Short, kareler, render önbelleği), sonra
+ * depodaki dosyaları. İş sürerken (Stüdyo işi ya da CLI kilidi) silinmez: çalışan süreç durumu bellekten yeniden yazardı.
+ */
+export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  if (!EPISODE_ID.test(id)) return apiError(req, msg("api.badEpisode"));
+  let state;
+  try {
+    state = await repo().load(id);
+  } catch (e) {
+    return errorResponse(req, e, 404);
+  }
+  try {
+    if (await episodeBusy(id, state, runStatusOf(state).status)) return apiError(req, msg("api.busy"), 409);
+    forgetJob(id);
+    await rm(workDirOf(id), { recursive: true, force: true });
+    await deleteEpisode(store(), id);
+    return Response.json({ ok: true });
+  } catch (e) {
+    return errorResponse(req, e, 500);
   }
 }

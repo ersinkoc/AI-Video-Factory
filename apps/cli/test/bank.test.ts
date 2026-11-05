@@ -14,6 +14,7 @@ function memStore() {
     put: async (k: string, b: Uint8Array) => (map.set(k, b), `mem://${k}`),
     get: async (k: string) => map.get(k) ?? null,
     list: async (p: string) => [...map.keys()].filter((k) => k.startsWith(p)),
+    delete: async (k: string) => void map.delete(k),
   };
 }
 

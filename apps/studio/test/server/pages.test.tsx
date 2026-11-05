@@ -78,6 +78,9 @@ vi.mock("../../src/app/new-episode-form", () => ({
 }));
 vi.mock("../../src/app/nav-menu", () => ({ NavMenu: () => <nav data-nav="" /> }));
 vi.mock("../../src/app/auto-refresh", () => ({ AutoRefresh: ({ everyMs }: { everyMs: number }) => <i data-refresh={everyMs} /> }));
+vi.mock("../../src/app/delete-episode", () => ({
+  DeleteEpisode: ({ id, title, running }: { id: string; title: string; running: boolean }) => <i data-delete={id} data-title={title} data-running={String(running)} />,
+}));
 vi.mock("../../src/app/episodes/[id]/parts", () => ({
   Badge: ({ status, children }: { status: string; children: ReactNode }) => <b data-status={status}>{children}</b>,
 }));
@@ -171,6 +174,11 @@ describe("Ana sayfa", () => {
     expect(t).toContain("Vektör");
     expect(t).toContain("2/14 · $3.00");
     expect(h).toContain('href="/episodes/e-video"');
+    // Her kartta silme düğmesi (bağlantının dışında); çalışan bölümde kapalı.
+    expect(h).toContain('data-delete="e-video" data-title="Bitmiş Başlık" data-running="false"');
+    expect(h).toContain('data-delete="e-bos" data-title="Konu" data-running="false"');
+    expect(h).toContain('data-delete="e-calisan" data-title="Konu" data-running="true"');
+    expect(h).not.toMatch(/<a [^>]*>(?:(?!<\/a>).)*data-delete/s);
     // Form artık kendi sayfasında; ana sayfada yalnız ona giden düğme var.
     expect(h).not.toContain("data-form");
     expect(h).toContain('href="/episodes/new"');

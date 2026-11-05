@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -468,6 +468,69 @@ describe("GET /api/episodes/[id]", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("DELETE /api/episodes/[id]", () => {
+  const del = async (id: string) => {
+    const res = await episode.DELETE(new Request("http://x", { method: "DELETE", headers: { ...TR, "content-type": "application/json" }, body: "{}" }), params({ id }));
+    return { res, body: (await res.json()) as Record<string, any> };
+  };
+  const bytes = new TextEncoder().encode("x");
+  const ids = async () => new Set((await server.repo().list()).map((e) => e.id));
+
+  it("geçersiz kimlik 400, olmayan bölüm 404", async () => {
+    expect((await del("../x")).res.status).toBe(400);
+    const { res, body } = await del("yok");
+    expect(res.status).toBe(404);
+    expect(body.error).toBe("Bölüm bulunamadı: yok");
+  });
+
+  it("bitmiş ya da yarım bölüm silinir: render klasörü, durum, kareler, efekt ve müzik; kütüphane ve öteki bölüm kalır", async () => {
+    await saveEpisode("e-sil", { done: { style: "t" }, render: { path: "v.mp4" } as EpisodeState["render"] });
+    await saveEpisode("e-sil-2");
+    const dir = server.workDirOf("e-sil");
+    mkdirSync(join(dir, ".render-cache"), { recursive: true });
+    writeFileSync(join(dir, "e-sil.mp4"), "v");
+    writeFileSync(join(dir, ".render-cache", "p1.mp4"), "v");
+    for (const key of ["assets/stills/e-sil/s1.jpg", "assets/sfx/e-sil/a.wav", "assets/music/e-sil/b.wav", "library/vector/prop/kalem.svg"]) await server.store().put(key, bytes, "application/octet-stream");
+    // Bitmiş Stüdyo işi listeden de düşer.
+    server.startJob("e-sil", "job.render", []);
+    lastChild().emit("exit", 0, null);
+    const { res, body } = await del("e-sil");
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ ok: true });
+    expect(existsSync(dir)).toBe(false);
+    expect(server.getJob("e-sil")).toBeUndefined();
+    expect(await ids()).not.toContain("e-sil");
+    expect(await ids()).toContain("e-sil-2");
+    expect((await server.store().list("assets/")).filter((k) => k.includes("e-sil"))).toEqual([]);
+    expect(await server.store().get("library/vector/prop/kalem.svg")).not.toBeNull();
+    // Render klasörü hiç oluşmamış (senaryoda kalmış) bölüm de silinir.
+    expect((await del("e-sil-2")).res.status).toBe(200);
+    expect(await ids()).not.toContain("e-sil-2");
+  });
+
+  it("iş sürerken silinmez (Stüdyo işi ya da CLI kilidi)", async () => {
+    await saveEpisode("e-is");
+    server.startJob("e-is", "job.script", []);
+    const { res, body } = await del("e-is");
+    expect(res.status).toBe(409);
+    expect(body.error).toBe("Önce çalışan iş bitmeli");
+    expect(lastChild().kill).not.toHaveBeenCalled();
+    await saveEpisode("e-cli");
+    await lockOf("e-cli", process.pid);
+    expect((await del("e-cli")).res.status).toBe(409);
+    expect([...(await ids())].filter((id) => id === "e-cli" || id === "e-is").sort()).toEqual(["e-cli", "e-is"]);
+  });
+
+  it("silme hatası 500 ile bildirilir, bölüm listede kalır", async () => {
+    await saveEpisode("e-kilitli");
+    vi.spyOn(server.store(), "delete").mockRejectedValueOnce(new Error("disk meşgul"));
+    const { res, body } = await del("e-kilitli");
+    expect(res.status).toBe(500);
+    expect(body.error).toBe("disk meşgul");
+    expect(await ids()).toContain("e-kilitli");
   });
 });
 

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { FsAssetStore } from "@ys/storage";
 import {
   approve,
+  deleteEpisode,
   editNarration,
   EpisodeRepo,
   changeVoice,
@@ -246,5 +247,21 @@ describe("EpisodeRepo", () => {
     expect((await repo.list()).map((s) => s.id)).toEqual(["yeni", "eski"]);
     const updated = await repo.update("eski", (s) => selectCandidate(s, "c1", 0));
     expect(updated.concept?.selected.c1?.key).toBe("a");
+  });
+
+  it("bölüm silinince kendi dosyaları gider; adı benzeyen bölüm, kütüphane ve ortak önbellek kalır", async () => {
+    const store = new FsAssetStore(mkdtempSync(join(tmpdir(), "ys-repo-")));
+    const repo = new EpisodeRepo(store);
+    await repo.save({ ...baseState(), id: "e1" });
+    await repo.save({ ...baseState(), id: "e10" });
+    const bytes = new Uint8Array([1]);
+    for (const key of ["episodes/e1/run.lock.json", "assets/stills/e1/s1-ab.jpg", "assets/sfx/e1/x.wav", "assets/music/e1/y.wav", "assets/stills/e10/s1.jpg", "assets/abc123", "library/vector/ada.svg"]) {
+      await store.put(key, bytes);
+    }
+    expect(await deleteEpisode(store, "e1")).toBe(5);
+    expect((await repo.list()).map((s) => s.id)).toEqual(["e10"]);
+    expect((await store.list("")).sort()).toEqual(["assets/abc123", "assets/stills/e10/s1.jpg", "episodes/e10/state.json", "library/vector/ada.svg"]);
+    await expect(repo.load("e1")).rejects.toThrow();
+    expect(await deleteEpisode(store, "e1")).toBe(0);
   });
 });

@@ -7,6 +7,7 @@ import { getI18n } from "../lib/locale";
 import { ledgerEntries, repo } from "../lib/server";
 import { Badge } from "./episodes/[id]/parts";
 import { AutoRefresh } from "./auto-refresh";
+import { DeleteEpisode } from "./delete-episode";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +94,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
             const thumb = thumbOf(e);
             const usd = (spent.get(e.id) ?? 0) / 1_000_000;
             return (
-              <li key={e.id}>
+              <li key={e.id} className="relative">
                 <Link href={`/episodes/${e.id}`} className="card flex gap-4 p-3 transition hover:border-muted">
                   <div className="relative hidden aspect-video w-44 shrink-0 overflow-hidden rounded-lg bg-panel-2 sm:block">
                     {thumb ? (
@@ -115,7 +116,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
                       </div>
                       <Badge status={st.status}>{statusLabel(t, st)}</Badge>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 pr-8">
                       <ol className="flex flex-1 gap-0.5" aria-label={t("home.stages", { done: Object.keys(e.done).length, total: STAGES.length })}>
                         {STAGES.map((s) => (
                           <li
@@ -131,6 +132,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
                     </div>
                   </div>
                 </Link>
+                {/* Kartın dışında: bağlantının içine düğme konamaz. */}
+                <DeleteEpisode id={e.id} title={e.story?.title ?? e.input.topic} running={st.status === "running"} />
               </li>
             );
           })}

@@ -59,6 +59,11 @@ const tr = {
   "home.title": "Bölümler",
   "home.empty": "Henüz bölüm yok. Başlamak için Yeni bölüm'e tıkla.",
   "home.stages": "{done}/{total} aşama",
+  "home.delete": "Bölümü sil",
+  "home.delete.ask": "{title} silinsin mi? Videosu ve tüm dosyaları gider; kütüphanedeki çizimler kalır.",
+  "home.delete.yes": "Sil",
+  "home.delete.no": "Vazgeç",
+  "home.delete.running": "İş sürerken silinemez; önce durdur.",
 
   "form.title": "Yeni bölüm",
   "video.srt": "Altyazı (.srt)",
@@ -621,6 +626,11 @@ const en: Record<MessageKey, string> = {
   "home.title": "Episodes",
   "home.empty": "No episodes yet. Click New episode to start.",
   "home.stages": "{done}/{total} stages",
+  "home.delete": "Delete episode",
+  "home.delete.ask": "Delete {title}? Its video and all its files go; drawings in the library stay.",
+  "home.delete.yes": "Delete",
+  "home.delete.no": "Cancel",
+  "home.delete.running": "Can't delete while a job runs; stop it first.",
 
   "form.title": "New episode",
   "video.srt": "Subtitles (.srt)",

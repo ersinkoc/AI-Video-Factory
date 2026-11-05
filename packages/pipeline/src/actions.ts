@@ -1,5 +1,5 @@
 import { LocalizedError, msg, reverseAssetId, sideAssetId, VectorAssetMeta } from "@ys/core";
-import { getJson, putJson, type AssetStore } from "@ys/storage";
+import { deletePrefix, getJson, putJson, type AssetStore } from "@ys/storage";
 import { libraryIdOf, noteCharacterUse } from "./library.ts";
 import { cleanSeries } from "./series.ts";
 import { GATES, motionModeOf, STAGES, type EpisodeInput, type EpisodeState, type Gate, type MotionMode } from "./state.ts";
@@ -56,6 +56,21 @@ export class EpisodeRepo {
     await this.save(state);
     return state;
   }
+}
+
+/** Bölümün depodaki kendi dosyaları: inceleme kareleri, efekt ve müzik izleri; durum ve çalışma kilidi en sonda. */
+export const episodePrefixes = (id: string): string[] => [`assets/stills/${id}/`, `assets/sfx/${id}/`, `assets/music/${id}/`, `episodes/${id}/`];
+
+/**
+ * Bölümü depodan siler (yarım kalmış ya da bitmiş); silinen dosya sayısını döner. Durum dosyası en son gider: yarıda
+ * kalan silme bölümü listede bırakır, yeniden denenebilir. Ortak kütüphane (onaylı karakterler, nesneler, haritalar) ve
+ * içerik adresli üretim önbelleği başka bölümlerin de olduğu için kalır; harcama defteri geçmiş kaydı olarak kalır.
+ * Render klasörü (yerel disk) çağıranın işidir.
+ */
+export async function deleteEpisode(store: AssetStore, id: string): Promise<number> {
+  let n = 0;
+  for (const prefix of episodePrefixes(id)) n += await deletePrefix(store, prefix);
+  return n;
 }
 
 /** Bu aşamadan sonraki tüm aşamaların "bitti" işaretini kaldırır (çıktılar yeniden üretilecek). */

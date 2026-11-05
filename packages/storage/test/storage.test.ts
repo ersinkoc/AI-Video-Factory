@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   ListObjectsV2Command,
@@ -26,7 +27,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   };
 });
 
-const { createStoreFromEnv, FsAssetStore, getJson, putJson, S3AssetStore } = await import("../src/index.ts");
+const { createStoreFromEnv, deletePrefix, FsAssetStore, getJson, putJson, S3AssetStore } = await import("../src/index.ts");
 
 const errno = (code?: string) => Object.assign(new Error(code ?? "bilinmeyen"), code ? { code } : {});
 
@@ -102,6 +103,36 @@ describe("FsAssetStore", () => {
     expect(renameFail.errors).toEqual([]);
     expect(await readdir(root)).toEqual([]);
   });
+
+  it("liste önekin klasöründen başlar; olmayan klasör boş, kökün dışı reddedilir", async () => {
+    const store = new FsAssetStore(root);
+    await store.put("ep/a/state.json", new Uint8Array([1]));
+    await store.put("ep/a/kare/1.jpg", new Uint8Array([1]));
+    await store.put("ep/ab/state.json", new Uint8Array([1]));
+    expect((await store.list("ep/a/")).sort()).toEqual(["ep/a/kare/1.jpg", "ep/a/state.json"]);
+    expect((await store.list("ep/a")).sort()).toEqual(["ep/a/kare/1.jpg", "ep/a/state.json", "ep/ab/state.json"]);
+    expect(await store.list("ep/a/st")).toEqual(["ep/a/state.json"]);
+    expect(await store.list("yok/b/")).toEqual([]);
+    expect((await store.list("/")).length).toBe(0);
+    expect((await store.list("//")).length).toBe(0);
+    await expect(store.list("../x/")).rejects.toThrow("Geçersiz anahtar");
+  });
+
+  it("siler, boşalan klasörleri de kaldırır, dolu klasörde durur; olmayan anahtar sorun değil; önekle toplu siler", async () => {
+    const store = new FsAssetStore(root);
+    await store.put("ep/a/kare/1.jpg", new Uint8Array([1]));
+    await store.put("ep/a/state.json", new Uint8Array([1]));
+    await store.put("ep/b/state.json", new Uint8Array([1]));
+    await store.delete("ep/a/kare/1.jpg");
+    expect(await readdir(join(root, "ep", "a"))).toEqual(["state.json"]);
+    await store.delete("ep/a/yok.json");
+    expect(await deletePrefix(store, "ep/a/")).toBe(1);
+    expect(await readdir(join(root, "ep"))).toEqual(["b"]);
+    expect(await deletePrefix(store, "ep/b/")).toBe(1);
+    expect(await readdir(root)).toEqual([]);
+    expect(await deletePrefix(store, "ep/c/")).toBe(0);
+    await expect(store.delete("../x")).rejects.toThrow("Geçersiz anahtar");
+  });
 });
 
 describe("S3AssetStore", () => {
@@ -153,6 +184,14 @@ describe("S3AssetStore", () => {
     expect(await store.get("a")).toBeNull();
     send.mockRejectedValueOnce(new Error("ağ"));
     await expect(store.get("a")).rejects.toThrow("ağ");
+  });
+
+  it("siler", async () => {
+    const send = vi.spyOn(S3Client.prototype, "send").mockResolvedValue({} as never);
+    await new S3AssetStore(opts).delete("ep/a.json");
+    const cmd = send.mock.calls[0]![0] as DeleteObjectCommand;
+    expect(cmd).toBeInstanceOf(DeleteObjectCommand);
+    expect(cmd.input).toEqual({ Bucket: "kova", Key: "ep/a.json" });
   });
 });
 
