@@ -2983,10 +2983,19 @@ describe("vektör sahne: sinematografi (alan derinliği, kameranın nefesi, ekra
     expect(crowd([{ asset: "box", x: 700, depth: 0.1 }])).toBe("");
   });
 
-  it("kamera haritada nefes almaz; çizilmiş sahnede alır", () => {
-    expect(cameraDiv(scene({ background: "map" }, { frame: 150 })).style.transform).not.toMatch(DRIFT);
+  it("kamera haritada nefes almaz, ışık da düşmez; çizilmiş odada ikisi de var (ışık kameranın içinde)", () => {
+    const map = scene({ background: "map" }, { frame: 150 });
+    expect(cameraDiv(map).style.transform).not.toMatch(DRIFT);
+    expect(map.querySelector("[data-light]")).toBeNull();
     cleanup();
-    expect(cameraDiv(scene({ background: "room" }, { frame: 150 })).style.transform).toMatch(DRIFT);
+    const room = scene({ background: "room" }, { frame: 150 });
+    expect(cameraDiv(room).style.transform).toMatch(DRIFT);
+    const light = room.querySelector("[data-light]") as HTMLElement;
+    expect(light.style.background).toMatch(/^linear-gradient\((90|270)deg/);
+    expect(cameraDiv(room).contains(light)).toBe(true);
+    cleanup();
+    // Arka plansız sahnede de yok.
+    expect(scene({ layers: [{ asset: "hero", x: 700 }] }).querySelector("[data-light]")).toBeNull();
   });
 
   it("ışık saçan ekran içeriğiyle parlar, köşesi ekranınki; ışık saçmayan pano parlamaz", () => {

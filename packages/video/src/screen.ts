@@ -32,7 +32,8 @@ const num = (v: string | undefined) => {
 };
 const PLAIN = /^(#[0-9a-f]{3,8}|rgba?\([\d.,\s%]+\))$/i;
 
-interface Shape extends Bounds {
+/** Çizimin bir şekli (viewBox koordinatında, grup dönüşümleri uygulanmış): sınır kutusu, gerçek alanı, dolgusu. */
+export interface Shape extends Bounds {
   i: number;
   area: number;
   fill?: string;
@@ -40,8 +41,11 @@ interface Shape extends Bounds {
   named: boolean;
 }
 
-/** Çizimin ekranı (viewBox koordinatında): id'si "screen" olan öğe, yoksa çerçevesinin içindeki en büyük dikdörtgensi şekil. */
-export function screenOf(svg: string): ScreenRect | undefined {
+/** Düz renk dolgusu (gradyan ya da desen değil). */
+export const plainFill = (fill: string | undefined): fill is string => fill !== undefined && PLAIN.test(fill);
+
+/** Çizimin şekilleri çizim sırasıyla (tanımlar, maskeler, kırpmalar hariç); viewBox'ı okunamazsa undefined. */
+export function shapesOf(svg: string): { vb: [number, number, number, number]; shapes: Shape[] } | undefined {
   const vb = (/viewBox="([^"]*)"/.exec(svg)?.[1] ?? "").split(/[\s,]+/).map(Number);
   if (vb.length !== 4 || !(vb[2]! > 0 && vb[3]! > 0)) return undefined;
   const g = geometry();
@@ -87,7 +91,15 @@ export function screenOf(svg: string): ScreenRect | undefined {
     if (!(b.width > 0 && b.height > 0)) continue;
     shapes.push({ i: shapes.length, x: b.x, y: b.y, w: b.width, h: b.height, area: Math.abs(item.area), fill, rx: num(a.rx), named });
   }
-  const plain = (s: Shape) => (s.fill && PLAIN.test(s.fill) ? { fill: s.fill } : {});
+  return { vb: vb as [number, number, number, number], shapes };
+}
+
+/** Çizimin ekranı (viewBox koordinatında): id'si "screen" olan öğe, yoksa çerçevesinin içindeki en büyük dikdörtgensi şekil. */
+export function screenOf(svg: string): ScreenRect | undefined {
+  const found = shapesOf(svg);
+  if (!found) return undefined;
+  const { vb, shapes } = found;
+  const plain = (s: Shape) => (plainFill(s.fill) ? { fill: s.fill } : {});
   // Tasarımcı ekranı adlandırdıysa o (grup ise şekillerinin birleşimi).
   const own = shapes.filter((s) => s.named);
   if (own.length) {
@@ -95,7 +107,7 @@ export function screenOf(svg: string): ScreenRect | undefined {
     const y = Math.min(...own.map((s) => s.y));
     return { x, y, w: Math.max(...own.map((s) => s.x + s.w)) - x, h: Math.max(...own.map((s) => s.y + s.h)) - y, rx: own[0]!.rx, ...plain(own[0]!) };
   }
-  const total = vb[2]! * vb[3]!;
+  const total = vb[2] * vb[3];
   const inside = (c: Shape, d: Shape) => c.x >= d.x - 0.5 && c.y >= d.y - 0.5 && c.x + c.w <= d.x + d.w + 0.5 && c.y + c.h <= d.y + d.h + 0.5;
   const best = shapes
     .filter((c) => {

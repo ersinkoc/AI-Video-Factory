@@ -116,10 +116,16 @@ export function depthOfField(model: LensModel, k: number): DepthOfField | undefi
   return { bg: blur(0, LENS.bg), layers, crowd: model.crowd ? blur(model.crowd.z, LENS.person) : 0 };
 }
 
-function seedOf(text: string): number {
+/**
+ * Metinden 0–1 tohum: FNV-1a, sonunda karıştırma (murmur3 fmix32). Karıştırmasız FNV'nin üst bitleri benzer kimliklerde
+ * ("room-0", "room-1") değişmiyordu: 20 odanın hepsi aynı yandan ışık alıyordu.
+ */
+export function seedOf(text: string): number {
   let h = 2166136261;
   for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
-  return (h >>> 0) / 4294967296;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
 /** Kameranın nefesi: sahneye (kamera dönüşümünden önce) uygulanacak CSS dönüşümü; t saniye. */

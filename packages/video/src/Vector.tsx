@@ -41,6 +41,7 @@ import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVid
 import { drawCss, drawPlan } from "./drawOn.ts";
 import { screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
 import { cameraDrift, depthOfField, lensScale, screenGlow } from "./lens.ts";
+import { keyLight, lightOf } from "./light.ts";
 import { visualVector } from "./entrance.ts";
 import { Ambience } from "./Ambience.tsx";
 import { Crowd, crowdFigures, crowdZ, type CrowdFigure } from "./crowd.tsx";
@@ -3075,6 +3076,8 @@ function ShotStage({
             placed.every((pl) => pl.z < crowd.z) &&
             crowdOf(<Crowd crowd={spec.crowd!} figures={crowd.figures} p={p} t={t} prefix={`${visual.shotId}-cr-`} lineStyle={lineStyle} floorY={crowd.floorY} />)}
         </div>
+        {/* Işık odanın bir yanından düşer (light.ts: pencerenin yanı, yoksa odaya bağlı); haritada yok. */}
+        {bg && !bg.meta.exact && <AbsoluteFill data-light style={keyLight(lightOf(bg))} />}
       </AbsoluteFill>
       <AbsoluteFill style={MOOD_GRADE[spec.mood]} />
       {grain && (
