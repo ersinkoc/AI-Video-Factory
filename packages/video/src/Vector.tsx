@@ -2489,6 +2489,37 @@ function MapOverlay({ meta, p, prefix }: { meta: VectorAsset["meta"]; p: number;
 /** Karakterlerin arkasında kalan atmosfer: konfeti, kıvılcım ve toz yüzleri örtmesin (inceleme: "konfeti yüzü kapatıyor"). */
 const BEHIND = new Set<Visual["ambience"]>(["confetti", "embers", "dust"]);
 
+/** Nesnenin çizimi w × h kutuda (oran korunur); ekranı varsa çekimin ekran içeriği üstünde (balon ve makro). */
+function PropView({ asset, w, h, prefix, screen, person }: { asset: VectorAsset; w: number; h: number; prefix: string; screen?: VectorScreen | undefined; person?: ScreenPerson | undefined }) {
+  const svg = prefixSvgIds(fitSvg(asset.svg, "meet"), prefix);
+  const rect = screen && asset.kind === "prop" ? screenFor(asset) : undefined;
+  const box = rect && screenBox(asset.svg, rect, w, h);
+  return (
+    <div style={{ position: "absolute", left: 0, top: 0, width: w, height: h }}>
+      <div style={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: svg }} />
+      {box && (
+        <div
+          data-screen
+          style={{ position: "absolute", left: box.x, top: box.y, width: box.w, height: box.h }}
+          dangerouslySetInnerHTML={{ __html: screenSvg(screen!, box.w, box.h, { fill: rect.fill, rx: rect.rx * box.k, person, prefix: `${prefix}s-` }) }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Makro ek çekimin nesnesi: o anki kutusunda, altında ilerledikçe koyulaşan yumuşak gölge. */
+function Macro({ asset, box, q, screen, person, prefix }: NonNullable<ShotFrame["macroView"]> & { prefix: string }) {
+  return (
+    <div
+      data-macro={asset.id}
+      style={{ position: "absolute", left: box.x, top: box.y, width: box.w, height: box.h, filter: `drop-shadow(0 ${(24 * q).toFixed(1)}px ${(30 * q).toFixed(1)}px rgba(0,0,0,${(0.45 * q).toFixed(2)}))` }}
+    >
+      <PropView asset={asset} w={box.w} h={box.h} prefix={prefix} screen={screen} person={person} />
+    </div>
+  );
+}
+
 /**
  * Büyütme balonu: nesnenin çizimi yuvarlak, kenarlı bir pencerede büyük; pencereden nesneye ince bir çizgi ve nesnenin
  * üstünde küçük bir nokta. Yaylanarak açılır, çekim sonuna kadar kalır.
@@ -2515,11 +2546,8 @@ function Callout({
   const s = calloutScale(p);
   if (s === 0) return null;
   const { r } = CALLOUT;
-  const svg = prefixSvgIds(fitSvg(asset.svg, "meet"), prefix);
-  // Çizim balonun içindeki kare kutuda (kenarlardan %13 içeride); ekranı varsa içeriği de onun üstünde.
+  // Çizim balonun içindeki kare kutuda (kenarlardan %13 içeride).
   const side = 2 * r * (1 - 2 * 0.13);
-  const rect = screen && asset.kind === "prop" ? screenFor(asset) : undefined;
-  const box = rect && screenBox(asset.svg, rect, side, side);
   return (
     <div data-callout={asset.id} style={{ position: "absolute", left: 0, top: 0, width: W, height: H, opacity: Math.min(1, s) }}>
       <svg width={W} height={H} style={{ position: "absolute", left: 0, top: 0 }}>
@@ -2541,14 +2569,9 @@ function Callout({
           transform: `scale(${s})`,
         }}
       >
-        <div style={{ position: "absolute", inset: "13%" }} dangerouslySetInnerHTML={{ __html: svg }} />
-        {box && (
-          <div
-            data-screen
-            style={{ position: "absolute", left: 2 * r * 0.13 + box.x, top: 2 * r * 0.13 + box.y, width: box.w, height: box.h }}
-            dangerouslySetInnerHTML={{ __html: screenSvg(screen!, box.w, box.h, { fill: rect.fill, rx: rect.rx * box.k, person, prefix: `${prefix}s-` }) }}
-          />
-        )}
+        <div style={{ position: "absolute", left: 2 * r * 0.13, top: 2 * r * 0.13 }}>
+          <PropView asset={asset} w={side} h={side} prefix={prefix} screen={screen} person={person} />
+        </div>
       </div>
     </div>
   );
@@ -2629,6 +2652,50 @@ export interface ShotModel {
   problems: StagingProblem[];
   /** Figüranlar (crowd.tsx): z'si bundan küçük katmanlar onların arkasında çizilir. */
   crowd?: { figures: CrowdFigure[]; z: number; floorY: number };
+  /** Makro ek çekimin nesnesi (katman indeksi): yakın çekimde okunur boya gelemeyen anlatılan nesne (macroOf). */
+  macro?: number;
+}
+
+/**
+ * Makro ek çekim (5 Kas; kullanıcı kararı: nesneler sahnede gerçek boyunda kalır, ama yakın çekimde okunmuyorsa kamera
+ * "dibine girer"). Nvidia incelemesi: 76 çekimin 46'sında "anlatılan nesne minik" (3 cm'lik çip, 9,5 cm'lik zarf, 18 cm'lik
+ * DGX-1; kişinin başı kadrajda kalınca kamera onları büyütemiyor), büyütme balonu "nesneyi yalnız balon gösteriyor",
+ * "aynı nesneyi tekrar ediyor" diye yetersiz bulunuyordu. Yönetmen yakın çekim istemiş (zoom ≥ CLOSE_UP.zoom) ve
+ * odağını nesneye koymuşsa (odak nesneye her yüzden en az focus kat daha yakın; kişinin tepkisini anlatan çekimde odak
+ * yüzdedir: "kahve başında sohbet eden üç kurucu"da fincan öne çıkıp kişiler bulanıklaşıyordu) ve yakın çekimin öznesi
+ * olan nesne çekim sonunda √alanıyla kare yüksekliğinin below'undan küçükse: nesnenin girişi bittikten (en erken start sn)
+ * sonra sec sn içinde arka plan blur px bulanıklaşır ve dim kadar kararır (netlik nesneye çekilir), nesne sahnedeki
+ * yerinden büyüyerek karenin ortasına (y) gelir, √alanı target olur (en çok maxW × maxH). Balon açılmaz. Nesnenin girişi
+ * çekimin late kesrinden sonra bitiyorsa makro yok (açılacak zaman kalmaz; inceleme karesi de ondan önce alınır).
+ */
+export const MACRO = { below: 0.25, target: 0.45, focus: 0.8, late: 0.6, start: 0.3, sec: 0.7, blur: 10, dim: 0.25, y: 0.54, maxW: 0.72, maxH: 0.66 } as const;
+
+/** Katmanın giriş animasyonları: makro nesne girişini bitirmeden açılmaz. */
+const ENTRANCE_ANIMS = new Set<VectorAnimType>(["fade_in", "pop", "slide_in", "draw_on"]);
+
+/** Makro ek çekimin nesnesi: yakın çekimin okunur boya gelemeyen öznesi (ya da anlatılan nesnesi); yoksa undefined. */
+export function macroOf(
+  spec: VectorShot,
+  placed: PlacedLayer[],
+  cam: VectorShot["camera"],
+  centre: boolean,
+  subject: number | undefined,
+  isProp: (i: number) => boolean,
+  isPerson: (i: number) => boolean,
+): number | undefined {
+  const asked = spec.camera;
+  if (Math.max(asked.zoomFrom, asked.zoomTo) < CLOSE_UP.zoom || spec.math || spec.crowd) return undefined;
+  const index = subject ?? spec.key;
+  const pl = placed.find((p) => p.index === index);
+  if (!pl || !isProp(pl.index) || spec.layers.some((l) => l.on === pl.index)) return undefined;
+  if (spec.layers[pl.index]!.anims.some((a) => ENTRANCE_ANIMS.has(a.type) && a.end > MACRO.late)) return undefined;
+  // Yönetmenin odağı nesnede mi (yüzün ortası kutunun tepesinden boyun ~%12'si aşağıda).
+  const [fx, fy] = [asked.focusX ?? W / 2, asked.focusY ?? H / 2];
+  const toObject = Math.hypot(pl.x - fx, pl.y - pl.height / 2 - fy);
+  const toFaces = placed.filter((p) => isPerson(p.index)).map((p) => Math.hypot(p.x - fx, p.y - p.height * 0.88 - fy));
+  if (toFaces.some((d) => toObject >= d * MACRO.focus)) return undefined;
+  const side = Math.sqrt(pl.width * pl.height) * cameraAt(cam, 1, centre).scale;
+  return side < MACRO.below * H ? pl.index : undefined;
 }
 
 /** Katman sahneye giriyor ya da yer değiştiriyor (yürüme, kayma, taşınma). */
@@ -2717,7 +2784,10 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
     const xs = keep.flatMap((pl) => [0, 1].flatMap((q) => [pl.x - pl.width / 2, pl.x + pl.width / 2].map((x) => cameraPoint(cam, q, centre, [x, pl.y])[0])));
     return contentFit(width, base, xs);
   })();
-  return { spec, safe, placed, ...(bg ? { bg } : {}), keep, cam, centre, ...(subject === undefined ? {} : { subject }), fit, problems, ...(crowd ? { crowd } : {}) };
+  // Haritada ve Manim tahtalı çekimde makro yok.
+  const kindOf = (i: number) => safe[spec.layers[i]!.asset]!.kind;
+  const macro = bg?.meta.exact || overlay ? undefined : macroOf(spec, placed, cam, centre, subject, (i) => kindOf(i) === "prop", (i) => kindOf(i) === "character");
+  return { spec, safe, placed, ...(bg ? { bg } : {}), keep, cam, centre, ...(subject === undefined ? {} : { subject }), fit, problems, ...(crowd ? { crowd } : {}), ...(macro === undefined ? {} : { macro }) };
 }
 
 /** Çekimin bir karesi: katmanların hareketi, ekrandaki yazılar, elde tutulanların yeri ve büyütme balonu. */
@@ -2731,13 +2801,15 @@ export interface ShotFrame {
   texts: ReturnType<typeof layoutTexts>;
   drawnAt: Map<number, PlacedLayer>;
   inset?: { asset: VectorAsset; target: [number, number]; at: [number, number]; screen?: VectorScreen; person?: ScreenPerson };
+  /** Makro ek çekim: nesnenin o anki kutusu (ekran px) ve ilerleme (0–1: arka planın bulanıklığı). */
+  macroView?: { asset: VectorAsset; box: Box; q: number; screen?: VectorScreen; person?: ScreenPerson };
 }
 
 export function shotFrame(
   model: ShotModel,
   o: { shotId: string; frame: number; fps: number; durationInFrames: number; voice?: Voice; width: number; height: number; insets: boolean; overlay: boolean },
 ): ShotFrame {
-  const { spec, safe, placed, bg, cam, centre, fit, subject } = model;
+  const { spec, safe, placed, bg, cam, centre, fit, subject, macro } = model;
   const { shotId, frame, fps, voice, width, height, insets } = o;
   const p = Math.min(1, frame / Math.max(1, o.durationInFrames));
   const t = frame / fps;
@@ -2802,9 +2874,32 @@ export function shotFrame(
       return [pl.index, { ...pl, x: hx, y: hy + pl.height * 0.45 }] as const;
     }),
   );
-  // Büyütme balonu: anlatılan küçük nesne yuvarlak pencerede büyük; yüzleri ve yazıları örtmeyen yerde.
+  // Makro ek çekim: netlik nesneye çekilir, nesne sahnedeki yerinden karenin ortasına büyür (MACRO). Küçük resimde yok.
+  const close = (() => {
+    if (macro === undefined || !insets) return undefined;
+    const layer = spec.layers[macro]!;
+    const at = drawnAt.get(macro)!;
+    const tr = motions.get(macro)!.tr;
+    const [x0, y0] = cameraPoint(cam, k, centre, [at.x + tr.x - (at.width * tr.scale) / 2, at.y + tr.y - at.height * tr.scale]);
+    const [x1, y1] = cameraPoint(cam, k, centre, [at.x + tr.x + (at.width * tr.scale) / 2, at.y + tr.y]);
+    // Hedef: √alan target × kare yüksekliği, çizimin oranıyla; kareye sığmazsa küçülür.
+    const ratio = Math.sqrt(at.width / at.height);
+    const side = MACRO.target * H;
+    const shrink = Math.min(1, (MACRO.maxW * W) / (side * ratio), (MACRO.maxH * H * ratio) / side);
+    const w = side * ratio * shrink;
+    const h = (side / ratio) * shrink;
+    // Nesnenin girişi bitmeden açılmaz.
+    const entered = Math.max(0, ...layer.anims.filter((a) => ENTRANCE_ANIMS.has(a.type)).map((a) => a.end)) * dur;
+    const q = ease(Math.min(1, Math.max(0, (t - Math.max(MACRO.start, entered)) / MACRO.sec)));
+    const mix = (a: number, b: number) => a + (b - a) * q;
+    const box = { x: mix(x0, W / 2 - w / 2), y: mix(y0, MACRO.y * H - h / 2), w: mix(x1 - x0, w), h: mix(y1 - y0, h) };
+    const person = screenPersonOf(safe, layer.screen?.person);
+    return { asset: safe[layer.asset]!, box, q, ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}) };
+  })();
+  // Büyütme balonu: anlatılan küçük nesne yuvarlak pencerede büyük; yüzleri ve yazıları örtmeyen yerde. Makro varsa
+  // nesne zaten büyük: balon açılmaz (inceleme: "balon aynı nesneyi tekrar ediyor").
   const inset = (() => {
-    if (!insets || bg?.meta.exact || o.overlay) return undefined;
+    if (!insets || bg?.meta.exact || o.overlay || close) return undefined;
     const zoom = Math.max(cam.zoomFrom, cam.zoomTo);
     const index = calloutTarget(spec, placed, (i) => safe[spec.layers[i]!.asset]!.kind === "prop", zoom, subject);
     if (index === undefined) return undefined;
@@ -2835,7 +2930,7 @@ export function shotFrame(
     const person = screenPersonOf(safe, layer.screen?.person);
     return { asset: safe[layer.asset]!, target, at: spot, ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}) };
   })();
-  return { p, t, k, dur, motions, texts, drawnAt, ...(inset ? { inset } : {}) };
+  return { p, t, k, dur, motions, texts, drawnAt, ...(inset ? { inset } : {}), ...(close ? { macroView: close } : {}) };
 }
 
 /** Çekimin bir karesinin çizimi (shotModel + shotFrame'in sonucu). */
@@ -2856,6 +2951,7 @@ function ShotStage({
   texts,
   drawnAt,
   inset,
+  macroView,
   lineStyle,
   ambience,
   grain,
@@ -2895,6 +2991,8 @@ function ShotStage({
           // Yakın çekim: odak noktasına doğru yaklaşır ve onu ortalar.
           transform: cameraTransform(cam, k, centre),
           transformOrigin: "0 0",
+          // Makro ek çekimde netlik nesneye çekilir: sahne bulanıklaşır ve kararır.
+          ...(macroView && macroView.q > 0 ? { filter: `blur(${(MACRO.blur * macroView.q).toFixed(2)}px) brightness(${(1 - MACRO.dim * macroView.q).toFixed(3)})` } : {}),
         }}
       >
         {bg?.meta.globe && (
@@ -2965,6 +3063,7 @@ function ShotStage({
       <AbsoluteFill style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.32) 100%)" }} />
       {!BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} />}
       {inset && <Callout {...inset} p={p} prefix={`${visual.shotId}-co-`} accent={readable(accent) ?? "#ffd84d"} />}
+      {macroView && macroView.q > 0 && <Macro {...macroView} prefix={`${visual.shotId}-mc-`} />}
       {/* Yazılar kamera hareketinin dışında: zoom onları altyazı bölgesine itmesin. */}
       <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>
         {texts.map((placed, i) => (

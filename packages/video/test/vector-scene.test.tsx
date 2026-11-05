@@ -39,7 +39,7 @@ const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
 const { CALLOUT } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -68,6 +68,7 @@ const ASSETS = {
   desk: asset("desk", "prop", '<svg viewBox="0 0 200 100"><rect id="desk" width="200" height="100" fill="#996633"/></svg>', 200, 100, { realHeight: 0.75, surface: 1, grounded: true }),
   // Masaya konan yatık küçük nesne (çek): okunur en uzun kenarla bile alanı küçük.
   check: asset("check", "prop", '<svg viewBox="0 0 400 100"><rect id="check" width="400" height="100" fill="#00ffff"/></svg>', 400, 100, { realHeight: 0.04 }),
+  phone: asset("phone", "prop", '<svg viewBox="0 0 100 180"><rect width="100" height="180" rx="12" fill="#222222"/><rect id="phone-screen" x="8" y="16" width="84" height="148" fill="#1b2430"/></svg>', 100, 180, { realHeight: 0.14 }),
   cup: asset("cup", "prop", '<svg viewBox="0 0 100 100"><rect id="cup" width="100" height="100" fill="#00ff00"/></svg>', 100, 100, { realHeight: 0.3 }),
   chair: asset("chair", "prop", '<svg viewBox="0 0 100 100"><rect id="chair" width="100" height="100" fill="#0000ff"/></svg>', 100, 100, { realHeight: 0.9, surface: 0.5, grounded: true }),
   hero: asset(
@@ -1493,6 +1494,85 @@ describe("vektör sahne: bilgi kartı", () => {
   });
 });
 
+describe("vektör sahne: makro ek çekim", () => {
+  const cam = { zoomFrom: 1.6, zoomTo: 1.8, panX: 0, focusX: 700, focusY: 700 };
+  const shot = (extra: object = {}) => VectorShot.parse({ layers: [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "check", x: 700, on: 0 }, { asset: "hero", x: 1300, depth: 0.4 }], camera: cam, ...extra });
+  const chip = { ...PL, index: 1, x: 700, y: 640, width: 40, height: 10 };
+  const face = { ...PL, index: 2, x: 1300, y: 900, width: 260, height: 520 };
+  const prop = (i: number) => i !== 2;
+  const person = (i: number) => i === 2;
+
+  it("yönetmen yakın çekimde odağını küçük nesneye koyduysa makro olur; yüze, geniş çekime, büyük nesneye, yüzeye değil", () => {
+    expect(macroOf(shot(), [chip, face], cam, true, 1, prop, person)).toBe(1);
+    // Odak verilmemişse karenin ortası.
+    const centred = { zoomFrom: 1.6, zoomTo: 1.8 };
+    expect(macroOf(shot({ camera: centred }), [{ ...chip, x: 960, y: 545 }, face], cam, true, 1, prop, person)).toBe(1);
+    // Kişisiz çekim de; özne yoksa anlatılan nesne.
+    expect(macroOf(shot({ key: 1 }), [chip], cam, true, undefined, prop, person)).toBe(1);
+    // Odak yüzde (tepkiyi anlatan çekim), ya da nesneyle yüz arası eşit uzaklıkta.
+    expect(macroOf(shot({ camera: { ...cam, focusX: 1300, focusY: 480 } }), [chip, face], cam, true, 1, prop, person)).toBeUndefined();
+    expect(macroOf(shot({ camera: { ...cam, focusX: 1000, focusY: 600 } }), [chip, face], cam, true, 1, prop, person)).toBeUndefined();
+    // Yönetmen geniş çekim istemiş (kod yaklaştırmış olsa da), figüranlı ya da tahtalı çekim.
+    expect(macroOf(shot({ camera: { ...cam, zoomFrom: 1, zoomTo: 1.2 } }), [chip, face], cam, true, 1, prop, person)).toBeUndefined();
+    expect(macroOf(shot({ crowd: { size: "group" } }), [chip, face], cam, true, 1, prop, person)).toBeUndefined();
+    // Okunur boydaki nesne, kişi, üstünde bir şey duran yüzey, özne de anlatılan nesne de yok.
+    expect(macroOf(shot(), [{ ...chip, width: 600, height: 300 }, face], cam, true, 1, prop, person)).toBeUndefined();
+    expect(macroOf(shot(), [chip, face], cam, true, 2, prop, person)).toBeUndefined();
+    expect(macroOf(shot(), [{ ...chip, index: 0 }, face], cam, true, 0, prop, person)).toBeUndefined();
+    expect(macroOf(shot(), [chip, face], cam, true, undefined, prop, person)).toBeUndefined();
+    // Girişi çekimin sonlarında biten nesne (açılacak zaman yok).
+    const late = shot({ layers: [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "check", x: 700, on: 0, anims: [{ type: "fade_in", start: 0.6, end: 0.8 }] }] });
+    expect(macroOf(late, [chip], cam, true, 1, prop, person)).toBeUndefined();
+  });
+
+  it("netlik nesneye çekilir: girişten sonra arka plan bulanıklaşır, nesne karenin ortasına büyür; balon açılmaz, küçük resimde yok", () => {
+    const spec = shot();
+    const model = shotModel(spec, ASSETS, "outline", 1920, 1080, false, 10);
+    expect(model.macro).toBe(1);
+    const frame = (n: number, insets = true) => shotFrame(model, { shotId: "s1", frame: n, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets, overlay: false });
+    // Başta sahnedeki yerinde ve boyunda (q = 0).
+    expect(frame(0).macroView!.q).toBe(0);
+    const end = frame(150);
+    expect(end.inset).toBeUndefined();
+    const { box, q } = end.macroView!;
+    expect(q).toBe(1);
+    expect(box.x + box.w / 2).toBeCloseTo(960, 6);
+    expect(box.y + box.h / 2).toBeCloseTo(MACRO.y * 1080, 6);
+    // Çekin oranı (4:1) korunur, √alanı target.
+    expect(box.w / box.h).toBeCloseTo(4, 6);
+    expect(Math.sqrt(box.w * box.h)).toBeCloseTo(MACRO.target * 1080, 6);
+    expect(frame(150, false).macroView).toBeUndefined();
+    // Giriş animasyonu bitmeden açılmaz; dik telefon da oranını korur.
+    const entering = shotModel(shot({ layers: [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "phone", x: 700, on: 0, anims: [{ type: "pop", start: 0, end: 0.3 }] }] }), ASSETS, "outline", 1920, 1080, false, 10);
+    const at = (n: number) => shotFrame(entering, { shotId: "s1", frame: n, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).macroView!;
+    expect(at(80).q).toBe(0);
+    expect(at(140).q).toBeGreaterThan(0);
+    const tall = at(200).box;
+    expect(tall.h / tall.w).toBeCloseTo(1.8, 6);
+    expect(Math.sqrt(tall.w * tall.h)).toBeCloseTo(MACRO.target * 1080, 6);
+    // Haritada ve Manim tahtalı çekimde yok.
+    expect(shotModel(spec, ASSETS, "outline", 1920, 1080, true, 10).macro).toBeUndefined();
+  });
+
+  it("sahne bulanık ve koyu, nesne üstünde büyük (ekran içeriğiyle); başta ikisi de yok", () => {
+    const layers = [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "phone", x: 700, on: 0, screen: { kind: "code", lines: ["print(1)"] } }];
+    const props = { layers, camera: { ...cam, focusY: 600 }, key: 1 };
+    const c = scene(props, { frame: 150 });
+    const macro = c.querySelector('[data-macro="phone"]') as HTMLElement;
+    expect(macro).not.toBeNull();
+    expect(macro.querySelector("[data-screen]")!.innerHTML).toContain("print");
+    expect([...c.querySelectorAll("div")].some((d) => d.style.filter.startsWith(`blur(${MACRO.blur.toFixed(2)}px)`))).toBe(true);
+    cleanup();
+    const start = scene(props, { frame: 0 });
+    expect(start.querySelector("[data-macro]")).toBeNull();
+    expect([...start.querySelectorAll("div")].some((d) => d.style.filter.startsWith("blur("))).toBe(false);
+    cleanup();
+    // Ekranda bir kişi: büyüyen telefonda da görünür.
+    const call = scene({ ...props, layers: [layers[0], { ...layers[1], screen: { person: "hero" } }] }, { frame: 150 });
+    expect(call.querySelector('[data-macro="phone"] [data-screen]')!.innerHTML).toContain('id="s1-mc-s-p-');
+  });
+});
+
 describe("vektör sahne: büyütme balonu ve atmosfer katmanı", () => {
   // Duvarı kaplayan öğe: geniş çekim dolu, kamera kendiliğinden yaklaşmaz (fillWide).
   const wall = { asset: "panorama", x: 960, y: 1080, height: 1080 };
@@ -1540,21 +1620,27 @@ describe("vektör sahne: büyütme balonu ve atmosfer katmanı", () => {
   });
 
   it("yakın çekimde kamera masadaki özneyi okunur boya getiremezse balon ona açılır; bir yüzü örtecekse açılmaz", () => {
-    const frame = (layers: object[], focusX: number) => {
-      const m = shotModel(VectorShot.parse({ layers, camera: { zoomFrom: 2, zoomTo: 2, focusX, focusY: 650 } }), ASSETS, "outline", 1920, 1080, false, 5);
+    const frame = (layers: object[], focusX: number, focusY = 650) => {
+      const m = shotModel(VectorShot.parse({ layers, camera: { zoomFrom: 2, zoomTo: 2, focusX, focusY } }), ASSETS, "outline", 1920, 1080, false, 5);
       return { m, f: shotFrame(m, { shotId: "s1", frame: 120, fps: 30, durationInFrames: 150, width: 1920, height: 1080, insets: true, overlay: false }) };
     };
     const small = (m: ReturnType<typeof frame>["m"]) => {
       const pl = m.placed.find((p) => p.index === m.subject)!;
       return Math.sqrt(pl.width * pl.height) * Math.max(m.cam.zoomFrom, m.cam.zoomTo) < CALLOUT.closeBelow * 1080;
     };
-    // Masada çek, yanında kişi: kamera kişinin başını da kadrajda tuttuğu için çek okunur boya gelemez.
-    const one = frame([{ asset: "walker", x: 600, depth: 0.3 }, { asset: "longtable", x: 1000, depth: 0.3 }, { asset: "check", x: 900, on: 1 }], 900);
+    // Masada çek, yanında kişi, yönetmenin odağı kişinin yüzünde: kamera başını da kadrajda tuttuğu için çek okunur
+    // boya gelemez. (Odak çekte olsaydı makro ek çekim olurdu, balon açılmazdı.)
+    const layers = [{ asset: "walker", x: 600, depth: 0.3 }, { asset: "longtable", x: 1000, depth: 0.3 }, { asset: "check", x: 900, on: 1 }];
+    const macro = frame(layers, 900);
+    expect(macro.m.macro).toBe(2);
+    expect(macro.f.inset).toBeUndefined();
+    const one = frame(layers, 650, 480);
+    expect(one.m.macro).toBeUndefined();
     expect(one.m.subject).toBe(2);
     expect(small(one.m)).toBe(true);
     expect(one.f.inset?.asset.id).toBe("check");
     // İki yanında birer kişi: balonun her aday yeri bir yüzü örtüyor.
-    const two = frame([{ asset: "walker", x: 760, depth: 0.3 }, { asset: "ada", x: 1160, depth: 0.3 }, { asset: "longtable", x: 960, depth: 0.3 }, { asset: "check", x: 960, on: 2 }], 960);
+    const two = frame([{ asset: "walker", x: 760, depth: 0.3 }, { asset: "ada", x: 1160, depth: 0.3 }, { asset: "longtable", x: 960, depth: 0.3 }, { asset: "check", x: 960, on: 2 }], 760, 470);
     expect(two.m.subject).toBe(3);
     expect(small(two.m)).toBe(true);
     expect(two.f.inset).toBeUndefined();
