@@ -36,10 +36,11 @@ import {
   textureLayer,
   VERTICAL_SAFE,
 } from "@ys/core";
-import { useMemo, type CSSProperties } from "react";
+import { useMemo, type CSSProperties, type ReactElement } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
 import { screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
+import { cameraDrift, depthOfField, lensScale, screenGlow } from "./lens.ts";
 import { visualVector } from "./entrance.ts";
 import { Ambience } from "./Ambience.tsx";
 import { Crowd, crowdFigures, crowdZ, type CrowdFigure } from "./crowd.tsx";
@@ -2061,6 +2062,7 @@ function Layer({
   draw,
   zoom = 1,
   person,
+  blur = 0,
 }: {
   layer: VectorLayer;
   asset: VectorAsset;
@@ -2074,6 +2076,8 @@ function Layer({
   zoom?: number;
   /** Ekranda yüzü görünen kadro karakteri (layer.screen.person). */
   person?: ScreenPerson;
+  /** Alan derinliği (lens.ts): katmanın bulanıklığı, kameranın içindeki px. */
+  blur?: number;
 }) {
   const { width: w, height: h } = placed;
   // Ekranın bu çekimdeki içeriği çizimin kendi ekranının üstüne (screen.ts); ekranı bulunamayan nesnede çizilmez.
@@ -2138,8 +2142,9 @@ function Layer({
     opacity: layer.opacity * tr.opacity,
     transform: `translate(${tr.x}px, ${tr.y}px) rotate(${layer.rotate + tr.rotate}deg) scale(${tr.scale * motion.squash * (motion.flip ? -1 : 1)}, ${tr.scale})`,
     transformOrigin: "50% 100%",
-    filter: sketch ? "url(#ys-sketch)" : undefined,
+    filter: [sketch ? "url(#ys-sketch)" : "", blur ? `blur(${blur.toFixed(2)}px)` : ""].join(" ").trim() || undefined,
   };
+  const glow = face && screenGlow(asset, layer.screen?.kind, face.box.w, face.box.h);
   const drawn = <div style={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: svg }} />;
   return (
     <div style={style}>
@@ -2158,7 +2163,8 @@ function Layer({
         <div
           data-screen
           // Aynalanan nesnede ekranın yeri aynalanır, yazısı düz okunur. Elle çizilirken ekran çizim bitince açılır.
-          style={{ position: "absolute", left: face.box.x, top: face.box.y, width: face.box.w, height: face.box.h, transform: motion.flip ? "scaleX(-1)" : undefined, opacity: draw === undefined || draw >= 1 ? 1 : 0 }}
+          // Işık saçan ekran (monitör, televizyon, telefon) içeriğiyle çevresine hafifçe parlar.
+          style={{ position: "absolute", left: face.box.x, top: face.box.y, width: face.box.w, height: face.box.h, transform: motion.flip ? "scaleX(-1)" : undefined, opacity: draw === undefined || draw >= 1 ? 1 : 0, boxShadow: glow, borderRadius: glow ? rect!.rx * face.box.k : undefined }}
           dangerouslySetInnerHTML={{ __html: face.svg }}
         />
       )}
@@ -2962,6 +2968,8 @@ function ShotStage({
   width,
   height,
   crowd,
+  subject,
+  macro,
 }: ShotModel &
   ShotFrame & {
     visual: Visual;
@@ -2975,6 +2983,20 @@ function ShotStage({
     width: number;
     height: number;
   }) {
+  // Sinematografi (lens.ts): kamera yaklaştıkça netlik özneye çekilir, önü ve arkası derinliğine göre bulanıklaşır;
+  // kamera hafifçe nefes alır. Bulanıklık ekran px'i, kameranın içindeki öğeye ölçeğe bölünerek yazılır.
+  const dof = depthOfField({ spec, safe, placed, cam, bg, subject, macro, crowd }, k);
+  const local = (px: number) => px / lensScale(cam, k);
+  const bgBlur = dof ? local(dof.bg) : 0;
+  const crowdBlur = dof?.crowd ? local(dof.crowd) : 0;
+  const crowdOf = (el: ReactElement) =>
+    crowdBlur ? (
+      <div key="crowd" style={{ position: "absolute", left: 0, top: 0, width: W, height: H, filter: `blur(${crowdBlur.toFixed(2)}px)` }}>
+        {el}
+      </div>
+    ) : (
+      el
+    );
   const stage = (
     <AbsoluteFill style={{ overflow: "hidden", background: `linear-gradient(160deg, ${c0}, ${c1})` }}>
       {lineStyle === "sketch" && (
@@ -2988,8 +3010,9 @@ function ShotStage({
       )}
       <AbsoluteFill
         style={{
-          // Yakın çekim: odak noktasına doğru yaklaşır ve onu ortalar.
-          transform: cameraTransform(cam, k, centre),
+          // Yakın çekim: odak noktasına doğru yaklaşır ve onu ortalar. Kameranın nefesi ekran düzleminde, en sonda
+          // (haritada yok: veri sabit durur).
+          transform: `${bg?.meta.exact ? "" : `${cameraDrift(visual.shotId, t)} `}${cameraTransform(cam, k, centre)}`,
           transformOrigin: "0 0",
           // Makro ek çekimde netlik nesneye çekilir: sahne bulanıklaşır ve kararır.
           ...(macroView && macroView.q > 0 ? { filter: `blur(${(MACRO.blur * macroView.q).toFixed(2)}px) brightness(${(1 - MACRO.dim * macroView.q).toFixed(3)})` } : {}),
@@ -3006,9 +3029,11 @@ function ShotStage({
           <AbsoluteFill
             // Arka plan geri çekilir: soluk, düşük kontrastlı ve hafif koyu; dolu duvar detayı karakterle yarışmasın.
             // Harita bilgi taşır: renkleri olduğu gibi kalır.
+            // Alan derinliğinde duvar da bulanıklaşır; kenarı saydamla karışıp açılmasın diye bulanıklık kadar büyütülür.
             style={{
-              filter: bg.meta.exact ? undefined : "saturate(0.78) contrast(0.86) brightness(0.94)",
+              filter: bg.meta.exact ? undefined : `saturate(0.78) contrast(0.86) brightness(0.94)${bgBlur ? ` blur(${bgBlur.toFixed(2)}px)` : ""}`,
               opacity: bg.meta.globe ? clamp01((p - GLOBE_SETTLE) / 0.06) : undefined,
+              ...(bgBlur ? { transform: `scale(${(1 + (2 * bgBlur) / H).toFixed(4)})` } : {}),
             }}
             dangerouslySetInnerHTML={{ __html: prefixSvgIds(fitSvg(bg.svg, "slice"), `${visual.shotId}-bg-`) }}
           />
@@ -3027,7 +3052,7 @@ function ShotStage({
             // Figüranlar ilk önlerindeki katmandan hemen önce (yoksa en sonda) çizilir.
             const extras =
               crowd && pl.z >= crowd.z && (n === 0 || placed[n - 1]!.z < crowd.z)
-                ? [<Crowd key="crowd" crowd={spec.crowd!} figures={crowd.figures} p={p} t={t} prefix={`${visual.shotId}-cr-`} lineStyle={lineStyle} floorY={crowd.floorY} />]
+                ? [crowdOf(<Crowd key="crowd" crowd={spec.crowd!} figures={crowd.figures} p={p} t={t} prefix={`${visual.shotId}-cr-`} lineStyle={lineStyle} floorY={crowd.floorY} />)]
                 : [];
             return [
               ...extras,
@@ -3042,12 +3067,13 @@ function ShotStage({
                 draw={drawOf(layer.anims, p)}
                 zoom={Math.max(cam.zoomFrom, cam.zoomTo)}
                 person={screenPersonOf(safe, layer.screen?.person)}
+                blur={local(dof?.layers.get(pl.index) ?? 0)}
               />,
             ];
           })}
-          {crowd && placed.every((pl) => pl.z < crowd.z) && (
-            <Crowd crowd={spec.crowd!} figures={crowd.figures} p={p} t={t} prefix={`${visual.shotId}-cr-`} lineStyle={lineStyle} floorY={crowd.floorY} />
-          )}
+          {crowd &&
+            placed.every((pl) => pl.z < crowd.z) &&
+            crowdOf(<Crowd crowd={spec.crowd!} figures={crowd.figures} p={p} t={t} prefix={`${visual.shotId}-cr-`} lineStyle={lineStyle} floorY={crowd.floorY} />)}
         </div>
       </AbsoluteFill>
       <AbsoluteFill style={MOOD_GRADE[spec.mood]} />

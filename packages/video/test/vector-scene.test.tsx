@@ -39,6 +39,7 @@ const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
 const { CALLOUT } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
+const { LENS } = await import("../src/lens.ts");
 const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
@@ -69,6 +70,7 @@ const ASSETS = {
   // Masaya konan yatık küçük nesne (çek): okunur en uzun kenarla bile alanı küçük.
   check: asset("check", "prop", '<svg viewBox="0 0 400 100"><rect id="check" width="400" height="100" fill="#00ffff"/></svg>', 400, 100, { realHeight: 0.04 }),
   phone: asset("phone", "prop", '<svg viewBox="0 0 100 180"><rect width="100" height="180" rx="12" fill="#222222"/><rect id="phone-screen" x="8" y="16" width="84" height="148" fill="#1b2430"/></svg>', 100, 180, { realHeight: 0.14 }),
+  slate: asset("slate", "prop", '<svg viewBox="0 0 200 140"><rect width="200" height="140" fill="#6b4a2b"/><rect id="slate-board" x="12" y="12" width="176" height="116" fill="#1f3d2b"/></svg>', 200, 140, { realHeight: 0.9, grounded: true, writable: true }),
   cup: asset("cup", "prop", '<svg viewBox="0 0 100 100"><rect id="cup" width="100" height="100" fill="#00ff00"/></svg>', 100, 100, { realHeight: 0.3 }),
   chair: asset("chair", "prop", '<svg viewBox="0 0 100 100"><rect id="chair" width="100" height="100" fill="#0000ff"/></svg>', 100, 100, { realHeight: 0.9, surface: 0.5, grounded: true }),
   hero: asset(
@@ -189,6 +191,10 @@ function scene(shot: object, o: Opts = {}) {
 }
 
 /** Bir varlığın çizildiği katman kutusu (svg → iç div → katman div). */
+/** Kamera dönüşümü, önündeki kamera nefesi (lens.ts cameraDrift) atılmış. */
+const DRIFT = /^translate\(960px, 540px\) scale\(1\.003\) translate\(-?[\d.]+px, -?[\d.]+px\) /;
+const camOnly = (transform: string) => transform.replace(DRIFT, "");
+
 function layerBox(c: HTMLElement, id: string, shotId = "s1"): HTMLElement {
   const el = c.querySelector(`[id$="-${id}"]`);
   if (!el || !el.id.startsWith(shotId)) throw new Error(`katman yok: ${id}`);
@@ -2258,14 +2264,15 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     const c = scene({ camera: { zoomFrom: 1, zoomTo: 1.2, focusX: 300, focusY: 200 }, mood: "night" }, { frame: 300 });
     // Odak noktası ekranda yerinde kalır: kayma = odak × (1 − zoom).
     const cam = [...c.querySelectorAll("div")].find((d) => d.style.transform.includes("scale(1.2)")) as HTMLElement;
-    expect(cam.style.transform).toBe("translate(-60px, -40px) scale(1.2) translateX(0%)");
+    expect(cam.style.transform).toMatch(DRIFT);
+    expect(camOnly(cam.style.transform)).toBe("translate(-60px, -40px) scale(1.2) translateX(0%)");
     expect(cam.style.transformOrigin).toMatch(/^0(px)? 0(px)?$/);
     expect([...c.querySelectorAll("div")].some((d) => d.style.mixBlendMode === "multiply")).toBe(true);
   });
 
   it("odak verilmezse kadraj merkezine yakınlaşır", () => {
     const c = scene({});
-    expect([...c.querySelectorAll("div")].some((d) => d.style.transform.startsWith("translate(-0px, -0px) scale(1)") || d.style.transform.startsWith("translate(0px, 0px) scale(1)"))).toBe(true);
+    expect([...c.querySelectorAll("div")].some((d) => camOnly(d.style.transform).startsWith("translate(-0px, -0px) scale(1)") || camOnly(d.style.transform).startsWith("translate(0px, 0px) scale(1)"))).toBe(true);
   });
 
   it("geniş çekim kenardaki kişiyi kesmez: odak kayar, sığmazsa zoom azalır; yakın çekime ve sığana dokunmaz", () => {
@@ -2437,7 +2444,7 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
   it("sahnede boş geniş çekim yaklaşır; sahneye yürüyen biri varsa yaklaşmaz", () => {
     const zoomOf = (layers: object[]) => {
       const c = scene({ layers, camera: { zoomFrom: 1.1, zoomTo: 1.1, panX: 0, focusX: 960, focusY: 540 } }, { frame: 150 });
-      const t = [...c.querySelectorAll("div")].map((d) => d.style.transform).find((tr) => tr.includes("scale(") && tr.includes("translateX("))!;
+      const t = [...c.querySelectorAll("div")].map((d) => camOnly(d.style.transform)).find((tr) => tr.includes("scale(") && tr.includes("translateX("))!;
       cleanup();
       return Number(/scale\(([\d.]+)\)/.exec(t)![1]);
     };
@@ -2936,5 +2943,63 @@ describe("vektör sahne: kaşlar", () => {
     const c = scene({ layers: [{ asset: "hero", x: 960, depth: 0, expression: "worried" }] }, { frame: 150 });
     expect(c.querySelector("style")!.textContent).not.toContain("brow-l{");
     expect(pose(c, "brows").ty).toBe(-3);
+  });
+});
+
+describe("vektör sahne: sinematografi (alan derinliği, kameranın nefesi, ekran parıltısı)", () => {
+  const close = { zoomFrom: 2.2, zoomTo: 2.2, panX: 0, focusX: 700, focusY: 500 };
+  // Katman indeksiyle (iki karakterin parça kimlikleri aynı).
+  const filterOf = (c: HTMLElement, i: number) => (c.querySelector(`[id^="s1-${i}-"]`)!.closest("svg")!.parentElement!.parentElement as HTMLElement).style.filter;
+  const cameraDiv = (c: HTMLElement) => [...c.querySelectorAll("div")].find((d) => d.style.transformOrigin === "0 0" || d.style.transformOrigin === "0px 0px") as HTMLElement;
+
+  it("yakın çekimde özne net; arkadaki kişi ve duvar bulanık, duvar kenarı açılmasın diye büyütülür; geniş çekimde hepsi net", () => {
+    const shot = { background: "room", layers: [{ asset: "hero", x: 700, depth: 0.3 }, { asset: "ada", x: 1250, depth: 0.9 }], camera: close };
+    const c = scene(shot, { frame: 150 });
+    expect(filterOf(c, 0)).toBe("");
+    expect(filterOf(c, 1)).toMatch(/^blur\(\d+\.\d\dpx\)$/);
+    const wall = c.querySelector('[id="s1-bg-wall"]')!.closest("svg")!.parentElement as HTMLElement;
+    expect(wall.style.filter).toMatch(/^saturate\(0\.78\) contrast\(0\.86\) brightness\(0\.94\) blur\([\d.]+px\)$/);
+    expect(wall.style.transform).toMatch(/^scale\(1\.00\d+\)$/);
+    cleanup();
+    // Duvarı kaplayan öğe: geniş çekim dolu, kamera kendiliğinden yaklaşmaz (fillWide).
+    const wide = scene({ ...shot, layers: [...shot.layers, { asset: "panorama", x: 960, y: 1080, height: 1080 }], camera: { zoomFrom: 1, zoomTo: 1, panX: 0 } }, { frame: 150 });
+    expect(filterOf(wide, 1)).toBe("");
+    expect((wide.querySelector('[id="s1-bg-wall"]')!.closest("svg")!.parentElement as HTMLElement).style.transform).toBe("");
+  });
+
+  it("çizgi titreşimi bulanıklıkla birlikte; figüranlar sıralarının derinliğinde bulanık (önlerinde katman olsun olmasın)", () => {
+    const shot = { background: "room", layers: [{ asset: "hero", x: 700, depth: 0.3 }, { asset: "ada", x: 1250, depth: 0.9 }], camera: close };
+    expect(filterOf(scene(shot, { frame: 150, lineStyle: "sketch" }), 1)).toMatch(/^url\(#ys-sketch\) blur\([\d.]+px\)$/);
+    cleanup();
+    const crowd = (layers: object[]) => {
+      const c = scene({ background: "room", layers, crowd: { action: "listen" }, camera: close }, { frame: 150 });
+      const wrap = [...c.querySelectorAll("div")].find((d) => d.style.filter.startsWith("blur(") && d.querySelector("[data-crowd]"));
+      const filter = wrap?.style.filter ?? "";
+      cleanup();
+      return filter;
+    };
+    expect(crowd([{ asset: "hero", x: 700, depth: 0.1 }])).toMatch(/^blur\([\d.]+px\)$/);
+    // Netlenecek kimse yok: figüranlar da net.
+    expect(crowd([{ asset: "box", x: 700, depth: 0.1 }])).toBe("");
+  });
+
+  it("kamera haritada nefes almaz; çizilmiş sahnede alır", () => {
+    expect(cameraDiv(scene({ background: "map" }, { frame: 150 })).style.transform).not.toMatch(DRIFT);
+    cleanup();
+    expect(cameraDiv(scene({ background: "room" }, { frame: 150 })).style.transform).toMatch(DRIFT);
+  });
+
+  it("ışık saçan ekran içeriğiyle parlar, köşesi ekranınki; ışık saçmayan pano parlamaz", () => {
+    const code = { kind: "code", lines: ["x = 1"] };
+    const screen = scene({ layers: [{ asset: "monitor", x: 900, depth: 0.3, screen: code }] }).querySelector("[data-screen]") as HTMLElement;
+    expect(screen.style.boxShadow).toContain("rgba(120,190,255,0.32)");
+    expect(screen.style.borderRadius).not.toBe("");
+    cleanup();
+    // Kara tahtada yazı var ama ışık saçmaz.
+    const board = scene({ layers: [{ asset: "slate", x: 900, depth: 0.3, screen: { kind: "text", lines: ["x"] } }] }).querySelector("[data-screen]") as HTMLElement;
+    expect(board.innerHTML).toContain("x");
+    expect(board.style.boxShadow).toBe("");
+    expect(board.style.borderRadius).toBe("");
+    expect(LENS.drift.amp).toBeLessThan(5);
   });
 });

@@ -74,6 +74,7 @@ Report only problems a viewer would notice:
 - cluttered: too many elements or a busy background competing with the subject; empty: nothing meaningful on screen.
 - character_cut_off / character_floating / wrong_scale: placement problems; backdrop_box: a character or prop shows its own rectangle/disc background.
 - repetitive: looks the same as the previous frames (same colours, same layout); off_story: does not match the intent.
+The camera behaves like a real lens: in medium and close shots the wall, extras and people far in front of or behind the subject are deliberately soft (depth of field) and screens glow slightly. Do not report that softness; report blur only when the subject itself, a speaking person or a text the shot is about cannot be read.
 lessons: up to 3 general rules (not about a single shot) for the director (layout, texts, mood), the designer (drawing assets) or the script, only if a problem appears in several shots. Skip rules already known:
 ${known.map((k) => `- ${k}`).join("\n") || "- (none yet)"}`,
       prompt: shots.map((s, i) => `Image ${i + 1} = ${s.shotId}: ${s.intent}`).join("\n"),
