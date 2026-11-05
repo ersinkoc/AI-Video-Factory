@@ -126,6 +126,10 @@ export const COSTS_MESSAGES = {
     tr: "çok kullanılan oda başına ters açı (en çok {max}, ~${usd} + kapı); kütüphanede olanlar ücretsiz",
     en: "reverse angle per heavily used room (at most {max}, ~${usd} + gate); those already in the library are free",
   },
+  "cost.basis.setDressing": {
+    tr: "mekân başına en çok {max} set eşyası (set düzenleyici + nesne çizimi); kütüphanede olanlar ücretsiz",
+    en: "at most {max} set pieces per place (set dresser + object drawing); those already in the library are free",
+  },
   "cost.basis.props": {
     tr: "tahmin: yeni nesneler; kütüphanede olanlar ücretsiz",
     en: "estimate: new objects only; those already in the library are free",

@@ -34,6 +34,7 @@ interface CreateBody {
   realism?: boolean;
   sideViews?: boolean;
   reverseViews?: boolean;
+  setDressing?: boolean;
   captions?: boolean;
   sfx?: boolean;
   music?: boolean;
@@ -72,6 +73,8 @@ export async function POST(req: Request) {
     sideViews: body.sideViews === true,
     // Ters açı (vektör modunda çok kullanılan odalar); gönderilmezse açık.
     reverseViews: body.reverseViews !== false,
+    // Set eşyası (vektör modunda mekân başına döneme uygun mobilya); gönderilmezse açık.
+    setDressing: body.setDressing !== false,
     // Gönderilmezse eski davranış: gömülü.
     captions: body.captions !== false,
     // Efekt sesleri yalnız vektör modunda; gönderilmezse açık.

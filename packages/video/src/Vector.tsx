@@ -40,6 +40,7 @@ import {
 import { useMemo, type CSSProperties, type ReactElement } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
+import { PAPER, paperOf, translucentShare, withPaper } from "./paperBase.ts";
 import { coverIn, drawnBottom, gridFor, screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
 import { cameraDrift, depthOfField, lensScale, motionBlur, screenGlow } from "./lens.ts";
 import { keyLight, lightOf } from "./light.ts";
@@ -463,6 +464,28 @@ export function faceSvgFor(asset: VectorAsset): { svg: string; room?: Nose["room
     drawn.set(asset, (f = { svg: neck ? neckBehind(nosed, neck) : nosed, ...(nose ? { room: nose.room } : {}) }));
   }
   return f;
+}
+
+/** Kâğıt zemininde silüeti kendi grubunda dönen parçalar: iskelet, ayrılmış kaşlar, burun ve boyun. */
+const PAPER_PARTS = [...Object.keys(RIG.pivots), "brow-l", "brow-r", "nose", "neck"];
+
+const papered = new WeakMap<VectorAsset, Map<string, string>>();
+
+/**
+ * Render'ın çizimi kâğıt zeminiyle (paperBase; suluboya paketleri): boyası yarı saydam kişi ve nesnenin altına kâğıt
+ * renginde opak silüet, kişide her parçanın kendi grubunda. Zemin almayan pakette ve opak çizimde faceSvgFor'un çizimi.
+ */
+export function paperedFor(asset: VectorAsset, paper: string | undefined): string {
+  const svg = faceSvgFor(asset).svg;
+  if (!paper) return svg;
+  let byPaper = papered.get(asset);
+  if (!byPaper) papered.set(asset, (byPaper = new Map()));
+  let out = byPaper.get(paper);
+  if (out === undefined) {
+    out = translucentShare(asset.svg) >= PAPER.share ? withPaper(svg, paper, asset.kind === "character" ? PAPER_PARTS : undefined) : svg;
+    byPaper.set(paper, out);
+  }
+  return out;
 }
 
 /** İskelet parçalarının bu karedeki pozu: sürekli canlılık + Claude'un istediği jestler. */
@@ -1673,7 +1696,7 @@ export function keyCamera(cam: VectorShot["camera"], centre: boolean, key: Place
 const CROP = { feet: 0.01, thigh: 0.27, step: 4, zoom: 1.25, zoomStep: 1.02 } as const;
 
 /** Kameranın k anında gösterdiği tuval bölgesi. */
-function viewAt(cam: VectorShot["camera"], k: number, centre: boolean): { x0: number; y0: number; w: number; h: number } {
+export function viewAt(cam: VectorShot["camera"], k: number, centre: boolean): { x0: number; y0: number; w: number; h: number } {
   const at = cameraAt(cam, k, centre);
   return { x0: -at.tx / at.scale - (at.panX / 100) * W, y0: -at.ty / at.scale, w: W / at.scale, h: H / at.scale };
 }
@@ -2158,6 +2181,7 @@ function Layer({
   person,
   blur = 0,
   streak,
+  paper,
 }: {
   layer: VectorLayer;
   asset: VectorAsset;
@@ -2175,6 +2199,8 @@ function Layer({
   blur?: number;
   /** Hareket bulanıklığı (lens.ts motionBlur): yatay/dikey iz ve büyüme bulanıklığı, kameranın içindeki px. */
   streak?: { x: number; y: number; r: number };
+  /** Paketin kâğıt rengi (paperBase paperOf): yarı saydam boyanın altına opak zemin. */
+  paper?: string | undefined;
 }) {
   const { width: w, height: h } = placed;
   // Ekranın bu çekimdeki içeriği çizimin kendi ekranının üstüne (screen.ts); ekranı bulunamayan nesnede çizilmez.
@@ -2193,7 +2219,8 @@ function Layer({
   const look = motion.side ?? asset;
   const split = figure ? undefined : browsFor(look);
   // Kaşları ayrılmış, burnu gruplanmış, boynu gövdenin arkasına alınmış çizim (3D figürün yedeği çizimin kendisi).
-  const prefixed = prefixSvgIds(fitSvg(figure ? look.svg : faceSvgFor(look).svg, "meet"), prefix);
+  // Suluboyada boyanın altında kâğıt: arkadaki oda kişinin ve nesnenin içinden görünmez.
+  const prefixed = prefixSvgIds(fitSvg(figure ? look.svg : paperedFor(look, paper), "meet"), prefix);
   // Düşünen el yüzün önünde (yandan yürürken front yok: yan çizimde kol jesti uygulanmaz).
   const raw = motion.front ? armInFront(prefixed, prefix, motion.front) : prefixed;
   const shaped = pose?.torso ? wrapTorso(raw, prefix) : raw;
@@ -2659,9 +2686,28 @@ function MapOverlay({ meta, p, prefix }: { meta: VectorAsset["meta"]; p: number;
 /** Karakterlerin arkasında kalan atmosfer: konfeti, kıvılcım ve toz yüzleri örtmesin (inceleme: "konfeti yüzü kapatıyor"). */
 const BEHIND = new Set<Visual["ambience"]>(["confetti", "embers", "dust"]);
 
+/** Derinliği olan atmosfer: uzak kısmı odayla kişiler arasında, yakın kısmı önde (Ambience FOG). */
+const DEPTH = new Set<Visual["ambience"]>(["fog"]);
+
 /** Nesnenin çizimi w × h kutuda (oran korunur); ekranı varsa çekimin ekran içeriği üstünde (balon ve makro). */
-function PropView({ asset, w, h, prefix, screen, person }: { asset: VectorAsset; w: number; h: number; prefix: string; screen?: VectorScreen | undefined; person?: ScreenPerson | undefined }) {
-  const svg = prefixSvgIds(fitSvg(asset.svg, "meet"), prefix);
+function PropView({
+  asset,
+  w,
+  h,
+  prefix,
+  screen,
+  person,
+  paper,
+}: {
+  asset: VectorAsset;
+  w: number;
+  h: number;
+  prefix: string;
+  screen?: VectorScreen | undefined;
+  person?: ScreenPerson | undefined;
+  paper?: string | undefined;
+}) {
+  const svg = prefixSvgIds(fitSvg(paperedFor(asset, paper), "meet"), prefix);
   const rect = screen && asset.kind === "prop" ? screenFor(asset) : undefined;
   const box = rect && screenBox(asset.svg, rect, w, h);
   return (
@@ -2679,7 +2725,7 @@ function PropView({ asset, w, h, prefix, screen, person }: { asset: VectorAsset;
 }
 
 /** Makro ek çekimin nesnesi: o anki kutusunda, altında ilerledikçe koyulaşan yumuşak gölge. */
-function Macro({ asset, box, q, screen, person, surface, prefix }: NonNullable<ShotFrame["macroView"]> & { prefix: string }) {
+function Macro({ asset, box, q, screen, person, surface, prefix, paper }: NonNullable<ShotFrame["macroView"]> & { prefix: string; paper: string | undefined }) {
   // Yüzey şeridi: kenarları ve altı bulanık sahneye yumuşakça karışır.
   const fade = "linear-gradient(to right, transparent, #000 22%, #000 78%, transparent), linear-gradient(to bottom, #000 45%, transparent)";
   return (
@@ -2690,7 +2736,7 @@ function Macro({ asset, box, q, screen, person, surface, prefix }: NonNullable<S
           style={{ position: "absolute", left: surface.clip.x, top: surface.clip.y, width: surface.clip.w, height: surface.clip.h, overflow: "hidden", opacity: q, maskImage: fade, maskComposite: "intersect", WebkitMaskImage: fade, WebkitMaskComposite: "source-in" }}
         >
           <div style={{ position: "absolute", left: surface.box.x - surface.clip.x, top: surface.box.y - surface.clip.y }}>
-            <PropView asset={surface.asset} w={surface.box.w} h={surface.box.h} prefix={`${prefix}sf-`} />
+            <PropView asset={surface.asset} w={surface.box.w} h={surface.box.h} prefix={`${prefix}sf-`} paper={paper} />
           </div>
         </div>
       )}
@@ -2698,7 +2744,7 @@ function Macro({ asset, box, q, screen, person, surface, prefix }: NonNullable<S
         data-macro={asset.id}
         style={{ position: "absolute", left: box.x, top: box.y, width: box.w, height: box.h, filter: `drop-shadow(0 ${(24 * q).toFixed(1)}px ${(30 * q).toFixed(1)}px rgba(0,0,0,${(0.45 * q).toFixed(2)}))` }}
       >
-        <PropView asset={asset} w={box.w} h={box.h} prefix={prefix} screen={screen} person={person} />
+        <PropView asset={asset} w={box.w} h={box.h} prefix={prefix} screen={screen} person={person} paper={paper} />
       </div>
     </>
   );
@@ -2718,6 +2764,7 @@ function Callout({
   screen,
   person,
   from,
+  paper,
 }: {
   asset: VectorAsset;
   target: readonly [number, number];
@@ -2729,6 +2776,7 @@ function Callout({
   person?: ScreenPerson;
   /** Nesnenin girişinin bittiği an (çekim kesri): balon ondan önce açılmaz. */
   from?: number;
+  paper?: string | undefined;
 }) {
   const s = calloutScale(p, from);
   if (s === 0) return null;
@@ -2757,7 +2805,7 @@ function Callout({
         }}
       >
         <div style={{ position: "absolute", left: 2 * r * 0.13, top: 2 * r * 0.13 }}>
-          <PropView asset={asset} w={side} h={side} prefix={prefix} screen={screen} person={person} />
+          <PropView asset={asset} w={side} h={side} prefix={prefix} screen={screen} person={person} paper={paper} />
         </div>
       </div>
     </div>
@@ -2814,11 +2862,13 @@ export function VectorScene({
   const dur = visual.durationInFrames / fps;
   // Sahnenin ilk çekiminde katmanlar sırayla belirir (entrance.ts).
   const vector = useMemo(() => visualVector(visual, assets, fps)!, [visual, assets, fps]);
-  const model = useMemo(() => shotModel(vector, assets, lineStyle, width, height, overlay, dur), [vector, assets, lineStyle, width, height, overlay, dur]);
+  const dressing = visual.dressing;
+  const model = useMemo(() => shotModel(vector, assets, lineStyle, width, height, overlay, dur, dressing), [vector, assets, lineStyle, width, height, overlay, dur, dressing]);
   const shot = shotFrame(model, { shotId: visual.shotId, frame, fps, durationInFrames: visual.durationInFrames, voice, width, height, insets, overlay });
   const [c0 = "#1d2433", c1 = "#3a4a66", accent = "#ffd84d"] = palette;
   const grain = useMemo(() => textureLayer(texture, `${visual.shotId}-tex`), [texture, visual.shotId]);
-  return <ShotStage {...model} {...shot} {...{ visual, lineStyle, ambience, grain, texture, c0, c1, accent, width, height }} />;
+  const paper = paperOf(texture, palette);
+  return <ShotStage {...model} {...shot} {...{ visual, lineStyle, ambience, grain, texture, paper, c0, c1, accent, width, height }} />;
 }
 
 /** Çekimin kareden bağımsız kurgusu: temizlenmiş varlıklar, yerleşim ve son kamera (render ve denetim aynı sonucu görür). */
@@ -2841,6 +2891,8 @@ export interface ShotModel {
   crowd?: { figures: CrowdFigure[]; z: number; floorY: number };
   /** Makro ek çekimin nesnesi (katman indeksi): yakın çekimde okunur boya gelemeyen anlatılan nesne (macroOf). */
   macro?: number;
+  /** Set eşyası olmayan katmanlar (shotModel dressing): jestler hedefini, yüzeyini ve panosunu bunlardan seçer. */
+  framing: PlacedLayer[];
 }
 
 /**
@@ -2939,7 +2991,20 @@ function clearOfCounters(placed: PlacedLayer[], spec: VectorShot, assets: Assets
   return placed;
 }
 
-export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineStyle, width: number, height: number, overlay: boolean, dur: number): ShotModel {
+/**
+ * dressing: koddan eklenen set eşyalarının varlık kimlikleri (TimelineVisual.dressing). Odanın parçasıdırlar: kadraj onlarsız
+ * kurulur (geniş çekimin içeriğe yaklaşması, kadrajda kalacaklar, yakın çekimin çerçevesi), kesilebilirler.
+ */
+export function shotModel(
+  vector: VectorShot,
+  assets: Assets,
+  lineStyle: LineStyle,
+  width: number,
+  height: number,
+  overlay: boolean,
+  dur: number,
+  dressing: readonly string[] = [],
+): ShotModel {
   // Eski planlarda aynı karakterin kopyaları olabilir; render'da da tek kalır.
   const unique = uniqueCharacters(vector, (id) => assets[id]?.kind === "character");
   // Varlıklar üretimde temizlenir; gömmeden önce bir kez daha (savunma derinliği).
@@ -2959,9 +3024,11 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
   // Yönetmen planının saçma jestleri: elde tutma yerleşimi değiştirdiği için önce; işaret ve iş jesti yerleşimden sonra.
   const before = stageBefore(bubbled.spec, safe, dur);
   const placed = clearOfCounters(resolveLayout(before.spec, safe), before.spec, safe);
+  // Set eşyası odanın parçası: kadraja, jestin hedefine (işaret), iş yüzeyine ya da panoya sayılmaz.
+  const framing = placed.filter((pl) => !dressing.includes(before.spec.layers[pl.index]!.asset));
   const tops = (o: PlacedLayer) => workTopOf(o, safe[before.spec.layers[o.index]!.asset]);
   const writable = (o: PlacedLayer) => isWritable(before.spec.layers[o.index]!.asset, safe[before.spec.layers[o.index]!.asset]);
-  const after = stageAfter(before.spec, placed, safe, (i) => focusOf(before.spec, placed, i, (j) => safe[before.spec.layers[j]!.asset]?.kind, tops, writable).aim !== undefined);
+  const after = stageAfter(before.spec, framing, safe, (i) => focusOf(before.spec, framing, i, (j) => safe[before.spec.layers[j]!.asset]?.kind, tops, writable).aim !== undefined);
   const spec = after.spec;
   const problems = [...bubbled.problems, ...before.problems, ...after.problems];
   const bg = spec.background ? safe[spec.background] : undefined;
@@ -2976,15 +3043,15 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
       })()
     : undefined;
   const moving = (i: number) => movingLayer(spec, i);
-  // Geniş çekimde kadrajda kalacaklar: karakterler ve sahnedeki küçük nesneler; sahneye giren (yürüyen, kayan) hariç.
-  const keep = placed.filter((pl) => {
+  // Geniş çekimde kadrajda kalacaklar: karakterler ve sahnedeki küçük nesneler; sahneye giren (yürüyen, kayan) ve set eşyası hariç.
+  const keep = framing.filter((pl) => {
     const layer = spec.layers[pl.index]!;
     if (moving(pl.index)) return false;
     return safe[layer.asset]!.kind === "character" || ((pl.grounded || pl.heldBy !== undefined) && pl.width < W * 0.4);
   });
   const { cam, centre, subject } = ((): { cam: VectorShot["camera"]; centre: boolean; subject?: number } => {
     const isPerson = (pl: PlacedLayer) => safe[spec.layers[pl.index]!.asset]!.kind === "character";
-    const held = heldFraming(placed, spec.layers);
+    const held = heldFraming(framing, spec.layers);
     const close = closeUpCamera(spec.camera, held, Boolean(bg?.meta.exact), (pl) => !isPerson(pl), (pl) => isPerson(pl) && !moving(pl.index), spec.key);
     if (bg?.meta.exact) return close;
     // Yerinde duranların yüzleri (dinlenme pozunda): kadrajın kenarında yarım kalmasın (faceSafe).
@@ -2998,7 +3065,7 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
     const headTop = (pl: PlacedLayer) => Math.min(HEAD_TOP, faceFor(safe[spec.layers[pl.index]!.asset]!).head.y / RIG.height);
     if (close.centre) return { ...close, cam: faceSafe(closeJointSafe(close.cam, people, keep, headTop), true, faces, true, bodies) };
     // Boş geniş çekim içeriğe yaklaşır; sahneye giren biri varsa yolu kadrajda kalsın diye yaklaşılmaz.
-    const filled = placed.some((pl) => moving(pl.index)) ? undefined : fillWide(close.cam, placed, (pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character");
+    const filled = placed.some((pl) => moving(pl.index)) ? undefined : fillWide(close.cam, framing, (pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character");
     const wide = filled ?? { cam: frameWide(close.cam, keep), centre: false };
     // Anlatılan nesne okunmuyorsa ona yaklaşılır (keyCamera). Sahneye giren biri, kayan kamera, Manim tahtası (ortada
     // durur) ve figüranlı kalabalık çekimi (kalabalığın kendisi anlatılır) hariç.
@@ -3023,7 +3090,7 @@ export function shotModel(vector: VectorShot, assets: Assets, lineStyle: LineSty
   // Haritada ve Manim tahtalı çekimde makro yok.
   const kindOf = (i: number) => safe[spec.layers[i]!.asset]!.kind;
   const macro = bg?.meta.exact || overlay ? undefined : macroOf(spec, placed, cam, centre, subject, (i) => kindOf(i) === "prop", (i) => kindOf(i) === "character");
-  return { spec, safe, placed, ...(bg ? { bg } : {}), keep, cam, centre, ...(subject === undefined ? {} : { subject }), fit, problems, ...(crowd ? { crowd } : {}), ...(macro === undefined ? {} : { macro }) };
+  return { spec, safe, placed, framing, ...(bg ? { bg } : {}), keep, cam, centre, ...(subject === undefined ? {} : { subject }), fit, problems, ...(crowd ? { crowd } : {}), ...(macro === undefined ? {} : { macro }) };
 }
 
 /** Çekimin bir karesi: katmanların hareketi, ekrandaki yazılar, elde tutulanların yeri ve büyütme balonu. */
@@ -3048,7 +3115,7 @@ export interface ShotFrame {
 
 /** Bir anın katman hareketleri (karenin çizimi; bilgi kartının yeri için örnek anlarda da). */
 function motionsAt(model: ShotModel, shotId: string, p: number, t: number, dur: number, fps: number, voice?: Voice): Map<number, Motion> {
-  const { spec, safe, placed } = model;
+  const { spec, safe, placed, framing } = model;
   return new Map(
     placed.map((pl) => {
       const layer = spec.layers[pl.index]!;
@@ -3057,7 +3124,7 @@ function motionsAt(model: ShotModel, shotId: string, p: number, t: number, dur: 
         asset.kind === "character"
           ? focusOf(
               spec,
-              placed,
+              framing,
               pl.index,
               (i) => safe[spec.layers[i]!.asset]?.kind,
               (o) => workTopOf(o, safe[spec.layers[o.index]!.asset]),
@@ -3364,6 +3431,7 @@ function ShotStage({
   ambience,
   grain,
   texture,
+  paper,
   c0,
   c1,
   accent,
@@ -3379,6 +3447,8 @@ function ShotStage({
     ambience: Visual["ambience"];
     grain: ReturnType<typeof textureLayer>;
     texture: Texture;
+    /** Kâğıt rengi (suluboya paketleri): sahnenin zemini ve kişi/nesne boyasının altı. */
+    paper: string | undefined;
     c0: string;
     c1: string;
     accent: string;
@@ -3399,8 +3469,9 @@ function ShotStage({
     ) : (
       el
     );
+  // Suluboyada odanın saydam boyası kâğıdın üstünde (koyu palet degradesi zemini çamur rengine çeviriyordu).
   const stage = (
-    <AbsoluteFill style={{ overflow: "hidden", background: `linear-gradient(160deg, ${c0}, ${c1})` }}>
+    <AbsoluteFill style={{ overflow: "hidden", background: paper ?? `linear-gradient(160deg, ${c0}, ${c1})` }}>
       {lineStyle === "sketch" && (
         // El çizimi titreşimi: sabit gürültüyle konturlar hafifçe dalgalanır.
         <svg width={0} height={0} style={{ position: "absolute" }}>
@@ -3449,6 +3520,7 @@ function ShotStage({
           </div>
         )}
         {BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} />}
+        {DEPTH.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} part="far" />}
         <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>
           {placed.flatMap((pl, n) => {
             const layer = spec.layers[pl.index]!;
@@ -3474,6 +3546,7 @@ function ShotStage({
                 blur={local(dof?.layers.get(pl.index) ?? 0)}
                 // Kişiler hareket bulanıklığı almaz: bacakları kendi adımıyla oynar, bütün gövdenin izi yüzü siliyordu.
                 streak={asset.kind === "character" ? undefined : motionBlur(motions.get(pl.index)!.shift, pl.height, lensScale(cam, k))}
+                paper={paper}
               />,
             ];
           })}
@@ -3495,9 +3568,9 @@ function ShotStage({
         />
       )}
       <AbsoluteFill style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.32) 100%)" }} />
-      {!BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} />}
-      {inset && <Callout {...inset} p={p} prefix={`${visual.shotId}-co-`} accent={readable(accent) ?? "#ffd84d"} />}
-      {macroView && macroView.q > 0 && <Macro {...macroView} prefix={`${visual.shotId}-mc-`} />}
+      {!BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} {...(DEPTH.has(ambience) ? { part: "near" as const } : {})} />}
+      {inset && <Callout {...inset} p={p} prefix={`${visual.shotId}-co-`} accent={readable(accent) ?? "#ffd84d"} paper={paper} />}
+      {macroView && macroView.q > 0 && <Macro {...macroView} prefix={`${visual.shotId}-mc-`} paper={paper} />}
       {/* Konuşma balonları kameranın dışında (yazı karede hep aynı boyda); konuşanın yüzünün yanında. */}
       {bubbles.length > 0 && (
         <svg data-bubbles width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }} dangerouslySetInnerHTML={{ __html: bubbles.map(bubbleSvg).join("") }} />

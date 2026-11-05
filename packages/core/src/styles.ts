@@ -355,7 +355,8 @@ export const STYLE_PACKS: readonly StylePack[] = [
     negativeRules: [...NO_TEXT, "hard vector edges", "heavy black outlines"],
     lineStyle: "sketch",
     texture: "watercolor",
-    designNotes: "Fills as 2–3 overlapping translucent shapes (opacity 0.5–0.7) with slightly irregular edges, thin light pencil-grey outlines that do not fully close, lots of paper white.",
+    designNotes:
+      "Fills as 2–3 overlapping translucent shapes (opacity 0.5–0.7) with slightly irregular edges, thin light pencil-grey outlines that do not fully close, lots of paper white. Characters and objects never let the room show through: give every body part and object a first, fully opaque base shape in a pale tint of its colour, then layer the translucent washes on top; only backgrounds may leave paper white.",
   },
   {
     id: "pixel",

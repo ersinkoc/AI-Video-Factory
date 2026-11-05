@@ -25,6 +25,8 @@ export interface DrawPlan {
   strokes: DrawStroke[];
   /** Mürekkep çizgisinin kalınlığı (görüntü kutusu birimi). */
   inkWidth: number;
+  /** Kâğıt zemininin gruplarına eklenen `data-draw` değeri (paperBase; zemin yoksa yok). */
+  paper?: string;
 }
 
 /** İlerlemenin bu kadarı kontur çizimine, kalanı son dolgunun gelmesine. */
@@ -103,7 +105,19 @@ function stroked(a: Record<string, string>): boolean {
 export function drawPlan(svg: string, prefix: string): DrawPlan {
   const strokes: Omit<DrawStroke, "from" | "to">[] = [];
   let skip = 0;
+  // Kâğıt zemininin silüetleri çizilmez (kontursuz dolgu, mürekkep çizgisi alırdı); zemin çizimle birlikte belirir.
+  let base = 0;
+  let paper: string | undefined;
   const out = svg.replace(/<(\/?)([a-zA-Z][\w:-]*)([^>]*?)(\/?)>/g, (tag, close: string, name: string, raw: string, self: string) => {
+    if (base) {
+      if (name === "g" && !self) base += close ? -1 : 1;
+      return tag;
+    }
+    if (name === "g" && !close && !self && /\sdata-paper=/.test(raw)) {
+      base = 1;
+      paper = `${prefix}p`;
+      return `<g${raw} data-draw="${paper}">`;
+    }
     if (SKIP.test(name)) {
       if (close) skip = Math.max(0, skip - 1);
       else if (!self) skip++;
@@ -127,12 +141,14 @@ export function drawPlan(svg: string, prefix: string): DrawPlan {
   });
   const box = points(/viewBox\s*=\s*"([^"]*)"/.exec(svg)?.[1]);
   const inkWidth = Math.max(box[2] ?? 0, box[3] ?? 0, 100) / 260;
-  return { svg: out, strokes: timed, inkWidth };
+  return { svg: out, strokes: timed, inkWidth, ...(paper ? { paper } : {}) };
 }
 
 /** draw_on ilerlemesi k'da (0–1) öğelerin kontur ve dolgu durumu; bitmiş öğe için kural yazılmaz (özgün görünüm). */
 export function drawCss(plan: DrawPlan, k: number): string {
-  return plan.strokes
+  // Kâğıt zemini çizim boyunca koyulaşır: önce kalem, boya geldikçe arkadaki oda kapanır.
+  const paper = plan.paper && k < 1 ? `[data-draw="${plan.paper}"]{opacity:${Math.max(0, k).toFixed(3)}}` : "";
+  const strokes = plan.strokes
     .map((s) => {
       const fill = Math.min(1, Math.max(0, (k - s.to) / FILL));
       if (fill >= 1) return "";
@@ -152,4 +168,5 @@ export function drawCss(plan: DrawPlan, k: number): string {
       return `${sel}{${rules.join(";")}}`;
     })
     .join("");
+  return paper + strokes;
 }

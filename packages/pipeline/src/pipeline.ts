@@ -24,6 +24,7 @@ import {
   likenessAnalyst,
   packager,
   pronouncer,
+  setDresser,
   type AgentImage,
   type VectorAssetOut,
   vectorDirector,
@@ -33,11 +34,13 @@ import {
   type EpisodeBrief,
   type ScriptOut,
   type ShotPlanOut,
+  type SetDressOut,
   type CastOut,
 } from "@ys/agents";
 import { createHash, randomUUID } from "node:crypto";
 import {
   AssetPlan,
+  baseBackgroundId,
   betterGate,
   FigureSpec,
   Likeness,
@@ -103,6 +106,7 @@ import { HISTORY, historyCredits, loadHistory, type Polity } from "./history.ts"
 import { boardAccent, cleanMath, renderBoard } from "./manim.ts";
 import { lintShot } from "@ys/video/lint";
 import { stillMoment } from "@ys/video/moment";
+import { withSets } from "./set-dressing.ts";
 import { LEXICON, restoreWords, sayPlan } from "./pronounce.ts";
 import { MUSIC_RATE, musicTrack } from "@ys/video/music";
 import { mixSfx, sfxEvents, wavFile } from "@ys/video/sfx";
@@ -1265,7 +1269,8 @@ export class EpisodePipeline {
     const characters = new Set(cast!.characters.map((c) => c.id));
     const locations = new Set(cast!.locations.map((l) => l.id));
     // Kapının reddettiği nesneler sunulmaz: yönetmen onları yeniden kullanıp sahneyi boş katmanla bırakıyordu.
-    const known = Object.fromEntries(Object.entries(props).filter(([, p]) => !p.rejected).map(([id, p]) => [id, p.description]));
+    // Set eşyaları da sunulmaz: yerleşimlerini kod yapar (@ys/video setDressing).
+    const known = Object.fromEntries(Object.entries(props).filter(([, p]) => !p.rejected && !p.set).map(([id, p]) => [id, p.description]));
     const out = await this.agent(
       state,
       "shots",
@@ -1497,7 +1502,7 @@ export class EpisodePipeline {
   private async vectorPreviews(state: EpisodeState, only?: Set<string>): Promise<boolean> {
     try {
       const dir = await this.draftDir(state);
-      const timeline = buildTimeline(state, (key) => key, await this.vectorAssets(state, "keyframes"));
+      const timeline = withSets(buildTimeline(state, (key) => key, await this.vectorAssets(state, "keyframes")), state);
       await this.storeStills(state, await this.renderShotStills(state, timeline, dir, only));
       /* v8 ignore next -- çekim yoksa buildTimeline daha önce fırlatır */
       const n = only?.size ?? state.shots?.length ?? 0;
@@ -1519,7 +1524,7 @@ export class EpisodePipeline {
     if (!script || !voice || !state.shots) return;
     const dir = await this.draftDir(state);
     const assets = await this.vectorAssets(state, "keyframes");
-    const timeline = buildTimeline(state, (key) => key, assets);
+    const timeline = withSets(buildTimeline(state, (key) => key, assets), state);
     const book = await loadLessons(this.deps.store);
     // Taslak denetimi bir kalite adımıdır: kareler çıkarılamazsa (tarayıcı açılamadı vb.) aşama durmaz, denetimsiz sürer.
     let critique: Awaited<ReturnType<typeof this.critiqueShots>>;
@@ -1735,7 +1740,7 @@ export class EpisodePipeline {
    */
   private async lintRevise(state: EpisodeState): Promise<void> {
     const check = async () => {
-      const timeline = buildTimeline(state, (key) => key, await this.vectorAssets(state, "keyframes"));
+      const timeline = withSets(buildTimeline(state, (key) => key, await this.vectorAssets(state, "keyframes")), state);
       return { shots: timeline.visuals.length, issues: timeline.visuals.flatMap((v) => lintShot(v, timeline.vectorAssets, { fps: timeline.fps })) };
     };
     try {
@@ -1830,14 +1835,17 @@ export class EpisodePipeline {
    * bitene kadar boş kalıyordu (Microsoft bölümü, 1 Kas: 39 nesne). Sonraki taslak denetimi/önizleme hepsini yeniler.
    */
   private async vectorPropsDraw(state: EpisodeState, preview = false): Promise<void> {
-    const props = state.vectorProps ?? {};
     // Yalnız güncel çekimlerin kullandığı nesneler çizilir: atılan/yeniden planlanan sahnelerin nesnelerine para gitmez.
     /* v8 ignore next -- iki çağıran da (kare aşaması, taslak denetimi) çekim ister */
     const shots = state.shots ?? [];
+    await this.setDressing(state, shots);
+    const props = state.vectorProps ?? {};
     const used = new Set(
       shots.flatMap((s) => (s.vector ? [s.vector.background, ...s.vector.layers.map((l) => l.asset)].filter(Boolean) : [])),
     );
-    const todo = Object.entries(props).filter(([id, p]) => !p.key && (!state.shots || used.has(id)));
+    // Set eşyası, mekânı çekimlerde kullanılıyorsa çizilir.
+    const rooms = new Set(shots.flatMap((s) => (s.vector?.background ? [baseBackgroundId(s.vector.background)] : [])));
+    const todo = Object.entries(props).filter(([id, p]) => !p.key && (!state.shots || used.has(id) || (p.set !== undefined && rooms.has(p.set))));
     const failed: Text[] = [];
     const waiting = new Set(todo.map(([id]) => id));
     const shown = new Set<string>();
@@ -1891,6 +1899,54 @@ export class EpisodePipeline {
     if (failed.length) this.log(msg("log.props.failed", { n: failed.length, list: joinTexts(failed, "log.join.indented") }));
     await this.vectorSideViews(state);
     await this.vectorBackgroundViews(state);
+  }
+
+  /**
+   * Set eşyası (input.setDressing, verilmezse açık): çekimlerin kullandığı ve henüz döşenmemiş mekânlar için set
+   * düzenleyiciye tek çağrı; seçtiği eşyalar vectorProps'a mekânıyla girer ve öbür nesnelerle birlikte referansla
+   * çizilip kapıdan geçer. Harita ve bayrak arka planı döşenmez. Çağrı düşerse günlüğe yazılır, mekânlar kaydedilmez
+   * (sonraki çalışmada yeniden sorulur).
+   */
+  private async setDressing(state: EpisodeState, planned: PlannedShotState[]): Promise<void> {
+    if (state.input.setDressing === false) return;
+    const props = state.vectorProps ?? {};
+    const sets = state.sets ?? {};
+    const shots = planned.filter((s) => s.vector?.background);
+    const roomOf = (s: (typeof shots)[number]) => baseBackgroundId(s.vector!.background!);
+    const rooms = new Set(shots.map(roomOf));
+    const places = [
+      ...(state.cast?.locations ?? []).map((l) => ({ id: l.id, name: l.name, description: l.visualDescription })),
+      ...Object.entries(props).flatMap(([id, p]) => (p.kind === "background" && !p.map && !p.flag ? [{ id, name: id, description: p.description }] : [])),
+    ].filter((p) => rooms.has(p.id) && !sets[p.id]);
+    if (!places.length) return;
+    // Yönetmenin o mekânda kullandığı nesneler: aynısı set eşyası olarak tekrarlanmasın.
+    const propsIn = (room: string) =>
+      [...new Set(shots.filter((s) => roomOf(s) === room).flatMap((s) => s.vector!.layers.map((l) => l.asset)))].flatMap((a) =>
+        props[a] && props[a]!.kind !== "background" ? [`${a}: ${props[a]!.description}`] : [],
+      );
+    const title = state.story?.title;
+    const topic = title && title !== state.input.topic ? `${title} (${state.input.topic})` : state.input.topic;
+    let out: SetDressOut;
+    try {
+      out = await this.agent(state, "keyframes", setDresser({ topic, places: places.map((p) => ({ ...p, props: propsIn(p.id) })) }, this.agentDeps));
+    } catch (e) {
+      this.log(msg("log.sets.skipped", { error: errorText(e) }));
+      return;
+    }
+    let n = 0;
+    state.vectorProps = props;
+    state.sets = sets;
+    for (const place of places) {
+      const pieces = out.locations.find((l) => l.id === place.id)?.pieces ?? [];
+      sets[place.id] = pieces.map((piece, i) => {
+        const id = `set-${place.id}-${i + 1}`;
+        props[id] = { description: piece.description, kind: "prop", reference: piece.reference, set: place.id };
+        return id;
+      });
+      n += pieces.length;
+    }
+    this.log(msg("log.sets.planned", { places: places.length, n }));
+    await this.save(state);
   }
 
   /**
@@ -2400,6 +2456,13 @@ export class EpisodePipeline {
           const now = fresh.get(id) as CastOut["characters"][number] | undefined;
           if (!now || now.kind === "person" || now.visualDescription !== p.description) delete state.vectorProps![id];
         }
+        // Adı ya da tarifi değişen mekânın set eşyaları da atılır: yeni mekâna kare aşamasında yeniden seçilir.
+        for (const l of oldCast.locations) {
+          const pieces = state.sets?.[l.id];
+          if (!pieces || same(l.id)) continue;
+          for (const id of pieces) delete state.vectorProps![id];
+          delete state.sets![l.id];
+        }
       }
       const reused = state.cast.characters.filter((c) => c.reuse && library.some((l) => l.id === c.reuse));
       if (reused.length) this.log(msg("log.cast.reuse", { names: reused.map((c) => c.name).join(", ") }));
@@ -2692,7 +2755,7 @@ export class EpisodePipeline {
       if (motionModeOf(state.input) === "vector") this.reverseShots(state);
       const vector = motionModeOf(state.input) === "vector" ? await this.vectorAssets(state, "timeline") : {};
       if (motionModeOf(state.input) === "vector") await this.mathBoards(state);
-      state.timeline = buildTimeline(state, (key) => key, vector);
+      state.timeline = withSets(buildTimeline(state, (key) => key, vector), state);
       if (motionModeOf(state.input) === "vector" && state.input.sfx !== false) await this.soundEffects(state, state.timeline);
       if (state.input.music !== false) await this.music(state, state.timeline);
       const sec = state.timeline.durationInFrames / state.timeline.fps;

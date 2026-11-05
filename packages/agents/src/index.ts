@@ -7,3 +7,4 @@ export * from "./package.ts";
 export * from "./figure.ts";
 export * from "./pronounce.ts";
 export * from "./likeness.ts";
+export * from "./set-dresser.ts";

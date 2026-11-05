@@ -38,6 +38,7 @@ export const AGENT_NAMES = [
   "packager",
   "figureDesigner",
   "pronouncer",
+  "setDresser",
 ] as const;
 export type AgentName = (typeof AGENT_NAMES)[number];
 
@@ -129,6 +130,8 @@ export function resetFakes(): void {
   handlers.clear();
   // Telaffuz ajanı her seslendirmede çağrılır: varsayılan olarak okunuşu değişecek terim yok.
   handlers.set("pronouncer", () => ({ terms: [] }));
+  // Set düzenleyici her kare aşamasında döşenmemiş mekânlara sorulur: varsayılan olarak eşya yok.
+  handlers.set("setDresser", () => ({ locations: [] }));
   agentCalls.length = 0;
   for (const group of [render, media, refs, geo]) for (const fn of Object.values(group)) fn.mockReset();
 }

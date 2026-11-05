@@ -83,7 +83,7 @@ describe("NewEpisodeForm", () => {
     expect(api.estimates).toHaveLength(0);
     await tick(1);
     expect(api.estimates).toEqual([
-      { lang: "tr", minutes: 3, tier: "standard", motionMode: "animated", voiceId: VOICES[0]!.id, budgetUsd: 20, vertical: false, qa: true, realism: true, sideViews: false, reverseViews: true },
+      { lang: "tr", minutes: 3, tier: "standard", motionMode: "animated", voiceId: VOICES[0]!.id, budgetUsd: 20, vertical: false, qa: true, realism: true, sideViews: false, reverseViews: true, setDressing: true },
     ]);
     expect(screen.getAllByText(fmtTr.usd(9))).toHaveLength(2); // özet + seçili kart
     expect(screen.getByText(`~${fmtTr.duration(estimates.animated.totalSeconds)}`)).toBeTruthy();
@@ -276,13 +276,15 @@ describe("NewEpisodeForm", () => {
     fireEvent.click(document.querySelector('input[name="sfx"]')!);
     // Ters açı da yalnız vektör modunda, varsayılan açık.
     fireEvent.click(document.querySelector('input[name="reverseViews"]')!);
+    // Set eşyası da yalnız vektör modunda, varsayılan açık.
+    fireEvent.click(document.querySelector('input[name="setDressing"]')!);
     // Müzik her modda, varsayılan açık.
     fireEvent.click(document.querySelector('input[name="music"]')!);
     fireEvent.click(document.querySelector('input[name="short"]')!);
     await submit();
     const button = screen.getByRole("button", { name: tr("form.submitting") }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(api.creates[0]).toMatchObject({ motionMode: "vector", lineStyle: "ink", qa: false, captions: true, sfx: false, reverseViews: false, music: false, short: false });
+    expect(api.creates[0]).toMatchObject({ motionMode: "vector", lineStyle: "ink", qa: false, captions: true, sfx: false, reverseViews: false, setDressing: false, music: false, short: false });
     await act(async () => finish(json({ id: "v1" })));
     expect(router.push).toHaveBeenCalledWith("/episodes/v1");
   });

@@ -66,7 +66,7 @@ vi.mock("pixi.js", () => {
 
 const { Episode } = await import("../src/index.ts");
 const { EpisodeAudio, CutIn } = await import("../src/Episode.tsx");
-const { Ambience } = await import("../src/Ambience.tsx");
+const { Ambience, FOG } = await import("../src/Ambience.tsx");
 const { Thumbnail } = await import("../src/Thumbnail.tsx");
 const { CROSSFADE, SCENE_CUT } = await import("../src/cut.ts");
 type ThumbnailProps = import("../src/Thumbnail.tsx").ThumbnailProps;
@@ -138,6 +138,24 @@ describe("atmosfer katmanları", () => {
     const offset = random("f-fog") * 100;
     expect(parseFloat(layers[0]!.style.transform.slice("translateX(".length))).toBeCloseTo(Math.sin((t + offset) * 0.07) * 12);
     expect(parseFloat(layers[1]!.style.transform.slice("translateX(".length))).toBeCloseTo(Math.sin((t + offset) * -0.05) * 12);
+  });
+
+  it("sisin uzak kısmı bankalar ve pus, yakın kısmı yalnız ayak hizasında ince yer sisi; ikisi birden durağan karede", () => {
+    const banks = (c: HTMLElement) => [...c.querySelectorAll("div")].filter((d) => d.style.width === "200%").length;
+    const far = draw(<Ambience kind="fog" seed="f" part="far" />, 30);
+    expect(banks(far)).toBe(2);
+    expect(far.querySelector('[data-fog="far"]')).not.toBeNull();
+    expect(far.querySelector('[data-fog="near"]')).toBeNull();
+    cleanup();
+    const near = draw(<Ambience kind="fog" seed="f" part="near" />, 30);
+    expect(banks(near)).toBe(0);
+    const mist = near.querySelector('[data-fog="near"]') as HTMLElement;
+    expect(mist.style.background).toContain(`${(FOG.near.band * 100).toFixed(0)}%`);
+    expect(mist.style.background).toContain(`${FOG.near.alpha}`);
+    cleanup();
+    const both = amb("fog", 30, "f");
+    expect(banks(both)).toBe(2);
+    expect(both.querySelector('[data-fog="near"]')).not.toBeNull();
   });
 
   it("titreme ışığı ve gölgeyi zıt yönde oynatır", () => {

@@ -163,6 +163,8 @@ export const PIPELINE_MESSAGES = {
   },
   "log.lessons.curated": { tr: "  dersler ({target}): {before} → {after} kural", en: "  lessons ({target}): {before} → {after} rules" },
   "log.lessons.curatorSkipped": { tr: "  ders küratörü atlandı: {error}", en: "  lesson curator skipped: {error}" },
+  "log.sets.planned": { tr: "  set eşyası: {places} mekân için {n} eşya seçildi", en: "  set dressing: {n} pieces chosen for {places} places" },
+  "log.sets.skipped": { tr: "  set düzenleyici atlandı: {error}", en: "  set dresser skipped: {error}" },
   "log.props.failed": {
     tr: "  {n} nesne çizilemedi, sahnelerden çıkarılacak:\n  {list}",
     en: "  {n} props could not be drawn and will be removed from the scenes:\n  {list}",

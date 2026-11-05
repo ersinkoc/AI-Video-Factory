@@ -36,6 +36,7 @@ function estimateInput(form: HTMLFormElement) {
     sideViews: f.get("sideViews") === "on",
     // Ters açı yalnız vektör modunda (anahtar yalnız orada görünür); yoksa açık sayılır.
     reverseViews: f.get("motionMode") !== "vector" || f.get("reverseViews") === "on",
+    setDressing: f.get("motionMode") !== "vector" || f.get("setDressing") === "on",
   };
 }
 
@@ -141,7 +142,7 @@ export function NewEpisodeForm({
           realism: form.get("realism") === "on",
           sideViews: form.get("sideViews") === "on",
           captions: form.get("captions") === "on",
-          ...(mode === "vector" ? { sfx: form.get("sfx") === "on", reverseViews: form.get("reverseViews") === "on" } : {}),
+          ...(mode === "vector" ? { sfx: form.get("sfx") === "on", reverseViews: form.get("reverseViews") === "on", setDressing: form.get("setDressing") === "on" } : {}),
           music: form.get("music") === "on",
           short: form.get("short") === "on",
           lineStyle: form.get("lineStyle") || undefined,
@@ -309,6 +310,7 @@ export function NewEpisodeForm({
             <Toggle name="sideViews" label={t("form.sideViews")} hint={t("form.sideViews.hint")} />
             {mode === "vector" && <Toggle name="sfx" defaultChecked label={t("form.sfx")} hint={t("form.sfx.hint")} />}
             {mode === "vector" && <Toggle name="reverseViews" defaultChecked label={t("form.reverseViews")} hint={t("form.reverseViews.hint")} />}
+            {mode === "vector" && <Toggle name="setDressing" defaultChecked label={t("form.setDressing")} hint={t("form.setDressing.hint")} />}
             <Toggle name="music" defaultChecked label={t("form.music")} hint={t("form.music.hint")} />
             <Toggle name="short" defaultChecked label={t("form.short")} hint={t("form.short.hint")} />
           </div>

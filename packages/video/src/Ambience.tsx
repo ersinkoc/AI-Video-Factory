@@ -8,7 +8,7 @@ import { PixiParticles } from "./PixiParticles.tsx";
  * `random(seed)` ile deterministik çizilir, böylece paralel render sekmeleri aynı sonucu verir. Parçacıklılar
  * (yağmur, kar, toz, kıvılcım, konfeti) PixiJS/WebGL'de (`PixiParticles`), ışık ve sis CSS gradyanıyla.
  */
-export function Ambience({ kind, seed, size }: { kind: AmbienceKind; seed: string; size?: readonly [number, number] }) {
+export function Ambience({ kind, seed, size, part }: { kind: AmbienceKind; seed: string; size?: readonly [number, number]; part?: FogPart }) {
   switch (kind) {
     case "rain":
       // Yağmurda sahne hafifçe kararır; damlalar ve sıçramalar Pixi'de.
@@ -21,7 +21,7 @@ export function Ambience({ kind, seed, size }: { kind: AmbienceKind; seed: strin
     case "confetti":
       return <PixiParticles kind={kind} seed={seed} size={size} />;
     case "fog":
-      return <Fog seed={seed} />;
+      return <Fog seed={seed} part={part} />;
     case "dust":
     case "embers":
       // Işık saçan zerreler ekranın üstüne eklenerek karışır.
@@ -39,7 +39,16 @@ export function Ambience({ kind, seed, size }: { kind: AmbienceKind; seed: strin
   }
 }
 
-function Fog({ seed }: { seed: string }) {
+/**
+ * Sisin derinliği (5 Kas: sisli çekimlerin %52'si incelemede "sisli, soluk, kişi neredeyse görünmüyor" notu aldı;
+ * atmosfersizlerde %6). Sis bütün sahnenin önündeydi, yüzleri de beyazlatıyordu. Gerçek siste uzaktaki daha çok
+ * kaybolur: vektör sahnede "far" (bankalar ve yükselen pus) oda ile kişilerin arasında, "near" yalnız ayak hizasında
+ * ince yer sisi (FOG.near: karenin alt payı ve opaklığı). part verilmezse ikisi birlikte (durağan kare).
+ */
+export type FogPart = "far" | "near";
+export const FOG = { near: { band: 0.24, alpha: 0.3 } } as const;
+
+function Fog({ seed, part }: { seed: string; part?: FogPart | undefined }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame / fps;
@@ -56,11 +65,19 @@ function Fog({ seed }: { seed: string }) {
       "radial-gradient(ellipse 30% 45% at 20% 50%, rgba(235,240,245,0.75), rgba(235,240,245,0.35) 40%, transparent 72%), radial-gradient(ellipse 25% 40% at 55% 45%, rgba(235,240,245,0.65), rgba(235,240,245,0.3) 40%, transparent 72%), radial-gradient(ellipse 30% 50% at 85% 55%, rgba(235,240,245,0.7), rgba(235,240,245,0.32) 40%, transparent 72%)",
     transform: `translateX(${Math.sin((t + offset) * speed) * 12}%)`,
   });
+  const near = (
+    <AbsoluteFill
+      data-fog="near"
+      style={{ background: `linear-gradient(to top, rgba(220,226,235,${FOG.near.alpha}), rgba(220,226,235,0) ${(FOG.near.band * 100).toFixed(0)}%)` }}
+    />
+  );
+  if (part === "near") return <AbsoluteFill style={{ overflow: "hidden" }}>{near}</AbsoluteFill>;
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
-      <AbsoluteFill style={{ background: "linear-gradient(to top, rgba(220,226,235,0.35), rgba(220,226,235,0.08) 70%)" }} />
+      <AbsoluteFill data-fog="far" style={{ background: "linear-gradient(to top, rgba(220,226,235,0.35), rgba(220,226,235,0.08) 70%)" }} />
       <div style={layer(0.07, "30%", 0.55)} />
       <div style={layer(-0.05, "50%", 0.45)} />
+      {part === undefined && near}
     </AbsoluteFill>
   );
 }

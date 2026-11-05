@@ -76,4 +76,13 @@ describe("sahnenin parça parça kurulması", () => {
     expect(visualVector(visual({}), ASSETS, FPS)).toBeUndefined();
     expect(visualVector(visual({ vector, enter: true }), ASSETS, FPS)!.layers[0]!.anims.map((a) => a.type)).toEqual(["fade_in"]);
   });
+
+  it("set eşyası (dressing) odanın parçasıdır: odayla gelir, sıraya girmez", () => {
+    const vector = VectorShot.parse({ layers: [{ asset: "hero", x: 900 }, { asset: "lamp", x: 300, depth: 0.9 }] });
+    const visual = TimelineVisual.parse({ shotId: "s2-sh1", assetUrl: "", kind: "motion_graphic", fromFrame: 0, durationInFrames: 300, vector, enter: true, dressing: ["lamp"] });
+    const out = visualVector(visual, ASSETS, FPS)!;
+    expect(out.layers.map((l) => l.anims.map((a) => a.type))).toEqual([["fade_in"], []]);
+    // Kişi ilk sırada belirir: eşya sıra tutmaz.
+    expect(out.layers[0]!.anims[0]!.start).toBeCloseTo(after / 10);
+  });
 });

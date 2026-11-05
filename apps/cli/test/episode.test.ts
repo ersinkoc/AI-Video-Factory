@@ -103,6 +103,7 @@ describe("episode new", () => {
       realism: true,
       sideViews: false,
       reverseViews: true,
+      setDressing: true,
       captions: true,
       lineStyle: undefined,
       stylePack: STYLE_AUTO,

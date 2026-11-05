@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderAdapter } from "@ys/media-gateway";
-import { formatText, trText } from "@ys/core";
+import { formatText, SET_PIECES, trText } from "@ys/core";
 import { estimateEpisode as estimateRaw, progressOf as progressRaw, runStatusOf, STALL_AFTER_MS } from "../src/estimate.ts";
 import type { EpisodeState, PlannedShotState } from "../src/state.ts";
 import { REVERSE } from "../src/variety.ts";
@@ -70,8 +70,8 @@ describe("tahmin: vektör modu", () => {
     expect(rows("concept")).toEqual([expect.objectContaining({ providerId: "claude", via: "SVG", quantity: 3, unit: "varlık" })]);
     expect(rows("concept")[0]!.basis).not.toContain("kadro tahmini");
     expect(rows("shots")).toEqual([expect.objectContaining({ providerId: "claude", unit: "sahne", quantity: 2 })]);
-    // Nesneler, odaların ters açısı (verilmezse açık), taslak denetimi.
-    expect(rows("keyframes").map((r) => [r.providerId, r.via])).toEqual([["claude", "SVG"], ["claude", "SVG"], ["claude", "taslak denetimi"]]);
+    // Nesneler, odaların ters açısı ve set eşyası (verilmezse açık), taslak denetimi.
+    expect(rows("keyframes").map((r) => [r.providerId, r.via])).toEqual([["claude", "SVG"], ["claude", "SVG"], ["claude", "SVG"], ["claude", "taslak denetimi"]]);
     expect(rows("keyframes")[0]!.quantity).toBe(4);
     expect(rows("render")[0]).toMatchObject({ seconds: 30 + 60 * 1.9 });
     expect(rows("render")[0]!.basis).toContain("vektör");
@@ -93,6 +93,17 @@ describe("tahmin: vektör modu", () => {
     expect(reverseRow(state({ cast: many }))!.quantity).toBe(REVERSE.max);
     expect(reverseRow(state({ cast, backgroundViews: { l1: { key: "k", ok: true }, l2: { key: "k2", ok: false } } }))!.quantity).toBe(2);
     expect(reverseRow(state({ cast }, { reverseViews: false }))).toBeUndefined();
+  });
+
+  it("set eşyası: planlamadan önce mekân başına en çok SET_PIECES, sonra seçilenler; kapalıysa satır yok", () => {
+    const setRow = (s: EpisodeState) => estimateEpisode(s, { providers, latency: {} }, "vector").rows.find((r) => r.basis.includes("set eşyası"));
+    const before = setRow(state({ cast }))!;
+    expect(before).toMatchObject({ stage: "keyframes", providerId: "claude", via: "SVG", quantity: 2 * SET_PIECES, unit: "nesne" });
+    // Bir set düzenleyici çağrısı + eşya başına nesne çizimi (plan, çizim, kapı, hazır SVG denetimi).
+    expect(before.costUsd).toBeCloseTo(0.02 + 2 * SET_PIECES * (0.015 + 0.017 * 1.6 + 0.002 * 1.6 + 0.005));
+    expect(before.basis).toBe(`mekân başına en çok ${SET_PIECES} set eşyası (set düzenleyici + nesne çizimi); kütüphanede olanlar ücretsiz`);
+    expect(setRow(state({ cast, sets: { l1: ["set-l1-1"], l2: [] } }))!.quantity).toBe(1);
+    expect(setRow(state({ cast }, { setDressing: false }))).toBeUndefined();
   });
 
   it("yan görünüş açıksa yürüyen karakter başına satır: planlamadan önce bütün kadro, sonra çizilenler", () => {

@@ -21,7 +21,7 @@ vi.mock("../src/Globe3D.tsx", () => ({
 
 // Atmosfer ayrı testte (episode.test.tsx): burada yalnız sahnenin hangi katmanında, hangi boyda çizildiği.
 vi.mock("../src/Ambience.tsx", () => ({
-  Ambience: ({ kind, size }: { kind: string; size?: number[] }) => (kind === "none" ? null : <div data-ambience={kind} data-size={size?.join("x")} />),
+  Ambience: ({ kind, size, part }: { kind: string; size?: number[]; part?: string }) => (kind === "none" ? null : <div data-ambience={kind} data-size={size?.join("x")} data-part={part} />),
 }));
 
 // 3D figür ayrı testte (figure3d-view.test.tsx); burada yalnız katmana hangi tarif, poz ve SVG yedeğiyle konduğu.
@@ -40,7 +40,7 @@ const { BURST } = await import("../src/staging.ts");
 const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -176,6 +176,8 @@ interface Opts {
   ambience?: string;
   insets?: boolean;
   overlay?: string;
+  /** Varsayılan varlıkların üstüne eklenen ya da yerlerine geçen varlıklar. */
+  assets?: Record<string, VectorAsset>;
 }
 
 function scene(shot: object, o: Opts = {}) {
@@ -191,7 +193,7 @@ function scene(shot: object, o: Opts = {}) {
   });
   const props = {
     visual,
-    assets: ASSETS,
+    assets: o.assets ? { ...ASSETS, ...o.assets } : ASSETS,
     palette: o.palette ?? [],
     ...(o.speech ? { speech: o.speech } : {}),
     ...(o.texture ? { texture: o.texture } : {}),
@@ -1920,6 +1922,16 @@ describe("vektör sahne: büyütme balonu ve atmosfer katmanı", () => {
     const rain = order("rain");
     expect(rain.amb).toBeGreaterThan(rain.layer);
     expect(rain.amb).toBeLessThan(rain.text);
+    // Sis derinlikli: uzak kısmı oda ile kişiler arasında, yakın yer sisi önde.
+    cleanup();
+    const c = scene(held, { frame: 150, ambience: "fog" });
+    const html = c.innerHTML;
+    const far = html.indexOf('data-part="far"');
+    const near = html.indexOf('data-part="near"');
+    const layer = html.indexOf('id="s1-0-body"');
+    expect(far).toBeGreaterThan(-1);
+    expect(far).toBeLessThan(layer);
+    expect(near).toBeGreaterThan(layer);
   });
 });
 
@@ -3283,5 +3295,55 @@ describe("vektör sahne: sinematografi (alan derinliği, kameranın nefesi, ekra
     expect(board.style.boxShadow).toBe("");
     expect(board.style.borderRadius).toBe("");
     expect(LENS.drift.amp).toBeLessThan(5);
+  });
+});
+
+describe("vektör sahne: kâğıt zemini (suluboya)", () => {
+  const WASH = ["#355070", "#6d597a", "#b56576", "#e56b6f", "#eaac8b", "#fdf6ec"];
+  const washy = asset("washy", "character", `<svg viewBox="0 0 400 800">${PARTS.map((p) => `<g id="${p}"><rect width="40" height="40" fill="#b56576" opacity="0.6"/></g>`).join("")}</svg>`, 400, 800);
+  const glassDesk = asset("desk", "prop", '<svg viewBox="0 0 200 100"><rect id="desk" width="200" height="100" fill="#eaac8b" opacity="0.6"/></svg>', 200, 100, { realHeight: 0.75, surface: 1, grounded: true });
+  const glassPhone = asset("phone", "prop", '<svg viewBox="0 0 100 180"><rect width="100" height="180" rx="12" fill="#6d597a" opacity="0.6"/><rect id="phone-screen" x="8" y="16" width="84" height="148" fill="#1b2430"/></svg>', 100, 180, { realHeight: 0.14 });
+  const glassCup = asset("cup", "prop", '<svg viewBox="0 0 100 100"><rect id="cup" width="100" height="100" fill="#e56b6f" opacity="0.55"/></svg>', 100, 100, { realHeight: 0.3 });
+  const assets = { washy, desk: glassDesk, phone: glassPhone, cup: glassCup };
+  const wall = { asset: "panorama", x: 960, y: 1080, height: 1080 };
+
+  it("yarı saydam kişinin her parçasının, nesnenin bütün çiziminin altında kâğıt; sahnenin zemini de kâğıt", () => {
+    const shot = { layers: [{ asset: "washy", x: 700, depth: 0.5 }, { asset: "desk", x: 1300, depth: 0.5 }] };
+    const c = scene(shot, { frame: 150, texture: "watercolor", palette: WASH, assets });
+    const arm = c.querySelector('[id="s1-0-arm-l"]')!;
+    expect(arm.firstElementChild!.getAttribute("data-paper")).toBe("");
+    expect(arm.firstElementChild!.innerHTML).toContain('fill="#fdf6ec"');
+    const desk = layerBox(c, "desk");
+    expect(desk.querySelectorAll("[data-paper]")).toHaveLength(1);
+    const stage = c.firstElementChild as HTMLElement;
+    expect(stage.style.background).toMatch(/#fdf6ec|253, 246, 236/);
+    cleanup();
+    // Dokusu suluboya olmayan pakette zemin yok, sahne paletin degradesinde.
+    const plain = scene(shot, { frame: 150, palette: WASH, assets });
+    expect(plain.querySelector("[data-paper]")).toBeNull();
+    expect((plain.firstElementChild as HTMLElement).style.background).toContain("linear-gradient");
+    cleanup();
+    // Opak çizim zemin almaz (gereksiz şekil eklenmez).
+    expect(scene({ layers: [{ asset: "hero", x: 700, depth: 0.5 }] }, { frame: 150, texture: "watercolor", palette: WASH }).querySelector("[data-paper]")).toBeNull();
+  });
+
+  it("makro ek çekimde ve büyütme balonunda da; çizim varlık ve renk başına bir kez hazırlanır", () => {
+    const cam = { zoomFrom: 1.6, zoomTo: 1.8, panX: 0, focusX: 700, focusY: 700 };
+    const macro = scene({ layers: [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "phone", x: 700, on: 0 }], camera: cam, key: 1 }, { frame: 150, texture: "watercolor", palette: WASH, assets });
+    expect(macro.querySelector('[data-macro="phone"] [data-paper]')).not.toBeNull();
+    expect(macro.querySelector('[data-macro-surface="desk"] [data-paper]')).not.toBeNull();
+    cleanup();
+    const held = { layers: [{ asset: "washy", x: 1300, depth: 0.5 }, { asset: "cup", x: 0, heldBy: 0 }, wall] };
+    expect(scene(held, { frame: 150, texture: "watercolor", palette: WASH, assets }).querySelector('[data-callout="cup"] [data-paper]')).not.toBeNull();
+    expect(paperedFor(glassCup, "#fdf6ec")).toBe(paperedFor(glassCup, "#fdf6ec"));
+    expect(paperedFor(glassCup, "#fff1e6")).toContain('fill="#fff1e6"');
+    expect(paperedFor(glassCup, undefined)).not.toContain("data-paper");
+  });
+
+  it("elle çizilen kişide zemin çizimle birlikte koyulaşır, silüet çizilmez", () => {
+    const c = scene({ layers: [{ asset: "washy", x: 700, depth: 0.5, anims: [{ type: "draw_on", start: 0, end: 1 }] }] }, { frame: 150, texture: "watercolor", palette: WASH, assets });
+    const css = [...c.querySelectorAll("style")].map((s) => s.textContent).join("");
+    expect(css).toMatch(/\[data-draw="s1-0-dp"\]\{opacity:0\.[45]\d\d\}/);
+    expect(c.querySelector("[data-paper] [data-draw]")).toBeNull();
   });
 });

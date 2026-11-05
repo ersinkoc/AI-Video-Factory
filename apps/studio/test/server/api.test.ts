@@ -184,6 +184,7 @@ describe("/api/episodes", () => {
       captions: true,
       sfx: true,
       reverseViews: true,
+      setDressing: true,
       music: true,
       short: true,
       stylePack: "auto",
@@ -216,6 +217,7 @@ describe("/api/episodes", () => {
         captions: false,
         sfx: false,
         reverseViews: false,
+        setDressing: false,
         music: false,
         short: false,
         lineStyle: "ink",
@@ -224,7 +226,7 @@ describe("/api/episodes", () => {
       }),
     );
     const s = await load(((await res.json()) as { id: string }).id);
-    expect(s.input).toMatchObject({ lang: "en-US", targetSec: 90, budgetUsd: 7, tier: "premium", motionMode: "vector", voiceId: "v1", qa: false, realism: false, captions: false, sfx: false, reverseViews: false, music: false, short: false, lineStyle: "ink", stylePack: STYLE_PACK_IDS[0], width: 1080, height: 1920 });
+    expect(s.input).toMatchObject({ lang: "en-US", targetSec: 90, budgetUsd: 7, tier: "premium", motionMode: "vector", voiceId: "v1", qa: false, realism: false, captions: false, sfx: false, reverseViews: false, setDressing: false, music: false, short: false, lineStyle: "ink", stylePack: STYLE_PACK_IDS[0], width: 1080, height: 1920 });
     expect(s.input.styleHint).toHaveLength(300);
     expect(s.input.series).toBe("Osmanlı Tarihi");
 
@@ -314,6 +316,7 @@ describe("GET /api/episodes/[id]", () => {
     const res = await episode.GET(new Request("http://x", { headers: TR }), params({ id }));
     return { res, body: (await res.json()) as Record<string, any> };
   };
+
 
   it("geçersiz kimlik 400, olmayan bölüm 404", async () => {
     const bad = await episode.GET(new Request("http://x"), params({ id: "../x" }));

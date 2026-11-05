@@ -120,7 +120,7 @@ export function lintShot(visual: Visual, assets: Assets, o: { fps?: number; step
   const fps = o.fps ?? 30;
   const step = o.step ?? LINT.step;
   const dur = visual.durationInFrames / fps;
-  const model = shotModel(visualVector(visual, assets, fps)!, assets, "outline", 1920, 1080, Boolean(visual.overlay), dur);
+  const model = shotModel(visualVector(visual, assets, fps)!, assets, "outline", 1920, 1080, Boolean(visual.overlay), dur, visual.dressing);
   const { spec, safe, placed } = model;
   const shotId = visual.shotId;
   const issues = new Map<string, LintIssue>();

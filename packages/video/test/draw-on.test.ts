@@ -83,6 +83,20 @@ describe("elle çizim (paper.js uzunlukları)", () => {
     expect(drawCss(plan, 1)).toBe("");
   });
 
+  it("kâğıt zemininin silüetleri çizilmez, zemin çizim boyunca koyulaşır", () => {
+    const svg = '<svg><g id="body"><g data-paper=""><g transform="rotate(5)"><rect width="9" height="9" fill="#fff"/></g><path d="M0 0H9" fill="#fff"/></g><rect width="50" height="50" fill="#e56b6f" opacity="0.6"/></g></svg>';
+    const plan = drawPlan(svg, "k");
+    // Yalnız çizimin kendi kare şekli çizilir; zeminin iki şekli işaretsiz, grubu tek anahtarla.
+    expect(plan.strokes.map((s) => s.key)).toEqual(["k0"]);
+    expect(plan.paper).toBe("kp");
+    expect(plan.svg).toContain('<g data-paper="" data-draw="kp">');
+    expect(plan.svg).toContain('<rect width="9" height="9" fill="#fff"/>');
+    expect(rule(drawCss(plan, 0.4), "kp")).toEqual({ opacity: "0.400" });
+    expect(drawCss(plan, 1)).toBe("");
+    // Zeminsiz çizimde kural yok.
+    expect(drawPlan("<svg><rect width='5' height='5'/></svg>", "q").paper).toBeUndefined();
+  });
+
   it("uzunluğu ölçülemeyen öğe sırası gelince bütünüyle belirir", () => {
     const plan = drawPlan('<svg><path d="L 10 10"/></svg>', "z");
     expect(rule(drawCss(plan, 0), "z0")).toEqual({ opacity: "0.000" });

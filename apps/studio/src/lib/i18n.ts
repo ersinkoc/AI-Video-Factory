@@ -218,6 +218,9 @@ const tr = {
   "form.reverseViews": "Odaya ters açı",
   "form.reverseViews.hint":
     "Çok kullanılan odalara (en çok 3) aynı yerin karşı tarafı bir kez çizilir; aynı odada art arda gelen çekimler iki açı arasında gider (oda başına ~$0.11, kütüphanede olan ücretsiz).",
+  "form.setDressing": "Odalara set eşyası",
+  "form.setDressing.hint":
+    "Her mekâna o yere ve döneme uygun en çok 2 büyük eşya (kitaplık, dolap, uzun saksı) seçilir ve bir kez çizilir; geniş ve orta çekimlerde eylemin arkasında hep aynı yerde durur (eşya başına ~$0.05, kütüphanede olan ücretsiz).",
   "form.sideViews": "Yürürken yan görünüş",
   "form.sideViews.hint":
     "Vektör modunda yürüyen karakterlere ikinci (yandan) çizim yapılır, yürürken ona döner. Karakter başına bir çizim + kalite denetimi (~$0,15–0,35 Claude), kütüphanede saklanır.",
@@ -535,6 +538,7 @@ const tr = {
   "models.role.vector-designer:prop": "Tasarımcı: nesne çizimi",
   "models.role.vector-designer:redraw": "Tasarımcı: kapının istediği yeniden çizim",
   "models.role.prop-physics": "Nesne boyu: hazır SVG'nin gerçek ölçüsü",
+  "models.role.set-dresser": "Set düzenleyici: mekân başına döneme uygun set eşyası",
   "models.role.figure-designer": "3D figür: onaylı çizimden figür ayarları",
   "models.role.asset-guess": "Kör tahmin: adı bilmeden ne gördüğünü söyler",
   "models.role.asset-gate": "Kalite kapısı: puan ve kusurlar",
@@ -785,6 +789,9 @@ const en: Record<MessageKey, string> = {
   "form.reverseViews": "Reverse angle of rooms",
   "form.reverseViews.hint":
     "Rooms used in many shots (at most 3) get the opposite side of the same place drawn once; consecutive shots in one room cut between the two angles (~$0.11 per room, free when it is already in the library).",
+  "form.setDressing": "Set dressing for rooms",
+  "form.setDressing.hint":
+    "Every place gets up to 2 large pieces that fit the place and period (a bookcase, a cabinet, a tall plant), drawn once; in wide and medium shots they stand behind the action, always in the same spot (~$0.05 per piece, free when it is already in the library).",
   "form.sideViews": "Side view when walking",
   "form.sideViews.hint":
     "In vector mode, walking characters get a second (profile) drawing and turn to it while walking. One drawing + quality check per character (~$0.15–0.35 Claude), kept in the library.",
@@ -1101,6 +1108,7 @@ const en: Record<MessageKey, string> = {
   "models.role.vector-designer:prop": "Designer: prop drawing",
   "models.role.vector-designer:redraw": "Designer: redraw requested by the gate",
   "models.role.prop-physics": "Prop size: real dimensions of a ready-made SVG",
+  "models.role.set-dresser": "Set dresser: period furniture for every place",
   "models.role.figure-designer": "3D figure: figure settings from the approved drawing",
   "models.role.asset-guess": "Blind guess: says what it sees without the name",
   "models.role.asset-gate": "Quality gate: scores and defects",

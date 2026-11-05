@@ -55,7 +55,7 @@ Komutlar:
   episode approve <id> script|concept|preview
   episode select <id> <varlık>=<sıra>      örn. c1=2 (konsept adayı seç)
   episode preview <id>              seçilen referanslarla deneme kareleri
-              new için: [--motion animated|mixed|still|vector] [--manual: onaylarda dur] [--no-qa: kare kontrolü kapalı] [--no-realism: gerçeklik denetimi kapalı] [--side-views: yürüyen karakterlere yan görünüş] [--no-reverse-views: odalara ters açı çizilmez] [--no-captions: altyazı videoya gömülmez, yalnız .srt] [--line outline|flat|sketch|ink]
+              new için: [--motion animated|mixed|still|vector] [--manual: onaylarda dur] [--no-qa: kare kontrolü kapalı] [--no-realism: gerçeklik denetimi kapalı] [--side-views: yürüyen karakterlere yan görünüş] [--no-reverse-views: odalara ters açı çizilmez] [--no-set-dressing: odalara set eşyası konmaz] [--no-captions: altyazı videoya gömülmez, yalnız .srt] [--line outline|flat|sketch|ink]
               [--series "Seri adı"] [--style-pack auto|custom|<paket>]  (paketler: pnpm ys styles)
               [--presenter <banka kimliği>] [--with <kimlik,kimlik>]  bankadan sunucu/karakter (vektör; bölüm onların stiline geçer)
   render-demo                       API'siz yerel Remotion testi (FFmpeg görselleri)
@@ -131,6 +131,7 @@ async function main(): Promise<void> {
       "side-views": { type: "boolean", default: false },
       "no-captions": { type: "boolean", default: false },
       "no-reverse-views": { type: "boolean", default: false },
+      "no-set-dressing": { type: "boolean", default: false },
       presenter: { type: "string" },
       with: { type: "string" },
       name: { type: "string" },
@@ -276,6 +277,7 @@ async function main(): Promise<void> {
       sideViews: values["side-views"],
       noCaptions: values["no-captions"],
       noReverseViews: values["no-reverse-views"],
+      noSetDressing: values["no-set-dressing"],
       stylePack: values["style-pack"],
       gate: positionals[3],
       pick: positionals[3],

@@ -19,16 +19,16 @@ const OWN = new Set<VectorAnimType>(["fade_in", "slide_in", "pop", "draw_on", "w
  * getirme gibi şeyler, daha video olduğu belli edecek şeyler"; her çekim ilk karesinden bütün katmanlarıyla hazır
  * başlıyordu). Geçişte oda boş gelir; önce üstünde bir şey duran eşya (masa), sonra öteki nesneler (küçükse yerinde büyüyerek, pop),
  * en son kişiler (solarak) belirir; aynı türde arkadan öne, soldan sağa. Elde tutulan nesne tutanla birlikte solarak gelir.
- * Kendi girişi olan katmana dokunulmaz.
+ * Kendi girişi olan katmana dokunulmaz. Set eşyası (fixed, varlık kimlikleri) odanın parçasıdır: odayla birlikte gelir.
  */
-export function buildIn(spec: VectorShot, assets: Assets, dur: number, fps: number): VectorShot {
+export function buildIn(spec: VectorShot, assets: Assets, dur: number, fps: number, fixed: readonly string[] = []): VectorShot {
   const kind = (i: number) => assets[spec.layers[i]!.asset]?.kind;
   const bases = new Set(spec.layers.flatMap((l) => (l.on === undefined ? [] : [l.on])));
   const rank = (i: number) => (kind(i) === "character" ? 2 : bases.has(i) ? 0 : 1);
   const own = (i: number) => spec.layers[i]!.anims.some((a) => OWN.has(a.type));
   const order = spec.layers
     .map((_, i) => i)
-    .filter((i) => kind(i) !== undefined && spec.layers[i]!.heldBy === undefined && !own(i))
+    .filter((i) => kind(i) !== undefined && spec.layers[i]!.heldBy === undefined && !own(i) && !fixed.includes(spec.layers[i]!.asset))
     .sort((a, b) => rank(a) - rank(b) || (spec.layers[b]!.depth ?? 0) - (spec.layers[a]!.depth ?? 0) || spec.layers[a]!.x - spec.layers[b]!.x);
   if (!order.length) return spec;
   const after = SCENE_CUT.frames / fps + ENTER.pause;
@@ -48,5 +48,5 @@ export function buildIn(spec: VectorShot, assets: Assets, dur: number, fps: numb
 
 /** Çekimin çizilen tarifi: sahnenin ilk çekimiyse (enter) kurulma girişleriyle. Render, denetim, inceleme anı ve sesler bunu kullanır. */
 export function visualVector(visual: Visual, assets: Assets, fps: number): VectorShot | undefined {
-  return visual.vector && visual.enter ? buildIn(visual.vector, assets, visual.durationInFrames / fps, fps) : visual.vector;
+  return visual.vector && visual.enter ? buildIn(visual.vector, assets, visual.durationInFrames / fps, fps, visual.dressing) : visual.vector;
 }

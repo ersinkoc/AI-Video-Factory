@@ -10,6 +10,7 @@
     "./render": "./src/render.ts",
     "./music": "./src/music.ts",
     "./sfx": "./src/sfx.ts",
+    "./sets": "./src/setDressing.ts",
     "./tools": "./src/tools.ts"
   },
   "dependencies": {

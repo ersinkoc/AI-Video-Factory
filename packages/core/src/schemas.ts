@@ -152,6 +152,11 @@ export const TimelineVisual = z.object({
   overlay: z.string().optional(),
   /** Sahnenin ilk çekimi (bölümün ilki değil): katmanlar geçişten sonra sırayla belirir (video/src/entrance.ts). */
   enter: z.boolean().optional(),
+  /**
+   * Set eşyası (video/src/setDressing.ts): koddan eklenen set eşyalarının varlık kimlikleri (katmanların sonunda). Odanın
+   * parçası sayılırlar: kamera geçişleri onları görmez (kadraj yönetmenin planına göre kurulur), girişte ayrıca belirmezler.
+   */
+  dressing: z.array(z.string()).optional(),
   playbackRate: z.number().min(0.5).max(2).default(1),
 });
 

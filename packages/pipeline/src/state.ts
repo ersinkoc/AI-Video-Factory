@@ -79,6 +79,12 @@ export interface EpisodeInput {
    */
   reverseViews?: boolean;
   /**
+   * Vektör modunda her mekâna döneme uygun, yere basan en çok iki set eşyası seçilir ve çizilir (kare aşamasında bir
+   * set düzenleyici çağrısı + eşya başına tasarımcı ve kapı); kod onları o mekânın geniş/orta çekimlerinde eylemin
+   * arkasına koyar (@ys/video setDressing). Verilmezse açık.
+   */
+  setDressing?: boolean;
+  /**
    * Altyazı videoya gömülsün mü. Verilmezse (eski bölümler, CLI) gömülür; Stüdyo formu açıkça seçtirir. Her durumda
    * videonun yanına .srt yazılır (YouTube'a ayrı altyazı olarak yüklenebilir).
    */
@@ -286,8 +292,15 @@ export interface EpisodeState {
       rejected?: boolean;
       /** Ana nesne (birden çok çekimde) reddedildi ve sade, ikon gibi bir çizimle bir kez daha denendi. */
       retried?: boolean;
+      /** Set eşyası: bu mekânı döşer (set düzenleyici seçti, yönetmene sunulmaz; yerleşimi kod yapar). */
+      set?: string;
     }
   >;
+  /**
+   * Set düzenleyicinin döşediği mekânlar: mekân kimliği → set eşyalarının kimlikleri (vectorProps'ta; boş liste: o
+   * yerde yere basan bir şey durmaz). Kayıtlı mekân yeniden sorulmaz.
+   */
+  sets?: Record<string, string[]>;
   /**
    * Yürüyen karakterlerin yan görünüşleri (input.sideViews): karakter kimliği → ön çizimden türeyen SVG anahtarı;
    * ok false: kapıdan geçemedi (karakter önden yürür, aynı ön çizim için yeniden çizilmez).

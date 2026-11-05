@@ -96,3 +96,6 @@ export function betterGate(kind: GatedKind, a: GateScores, b: GateScores | undef
   if (pa !== pb) return pa;
   return a.recognizable + (a.fidelity ?? 0) + (a.limbs ?? 0) > b.recognizable + (b.fidelity ?? 0) + (b.limbs ?? 0);
 }
+
+/** Set eşyası (input.setDressing): mekân başına en çok bu kadar set eşyası seçilir ve çizilir. */
+export const SET_PIECES = 2;

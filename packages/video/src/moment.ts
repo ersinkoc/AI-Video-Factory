@@ -29,7 +29,7 @@ const TEXT = new Set<VectorAnimType>(["typewriter", "count_up", "kinetic"]);
 export function stillMoment(visual: Visual, assets: Assets, fps: number): number {
   if (!visual.vector) return STILL.at;
   const dur = visual.durationInFrames / fps;
-  const { spec, safe } = shotModel(visualVector(visual, assets, fps)!, assets, "outline", 1920, 1080, Boolean(visual.overlay), dur);
+  const { spec, safe } = shotModel(visualVector(visual, assets, fps)!, assets, "outline", 1920, 1080, Boolean(visual.overlay), dur, visual.dressing);
   const layerAnims = spec.layers.flatMap((l) => l.anims);
   const texts = spec.texts.flatMap((t) => t.anims.filter((a) => TEXT.has(a.type)).map((a) => revealWindow(a, t.text, dur)));
   const ready = Math.max(STILL.from, ...layerAnims.filter((a) => ENTRANCE.has(a.type)).map((a) => a.end), ...texts.map((a) => a.end));

@@ -1,4 +1,4 @@
-import { msg, type Capability, type Msg, type Text } from "@ys/core";
+import { msg, SET_PIECES, type Capability, type Msg, type Text } from "@ys/core";
 import { billing, rankProviders, type GenerationRequest, type ProviderAdapter } from "@ys/media-gateway";
 import { gateBefore, isApproved, motionModeOf, STAGES, type EpisodeState, type MotionMode, type Stage } from "./state.ts";
 import { SHORT } from "./short.ts";
@@ -75,6 +75,11 @@ const GATE = { checkUsd: 0.002, extraDraws: 0.6, planUsd: 0.015, readyMadeUsd: 0
 const SIDE_VIEW = { drawUsd: 0.13, redrawUsd: 0.18, checkUsd: 0.028, sec: 40 };
 /** Ters açı (input.reverseViews): çok kullanılan oda başına bir arka plan çizimi (Sonnet, VECTOR.backgroundUsd) + kapı. */
 const REVERSE_VIEW = { drawUsd: 0.04, checkUsd: 0.028, sec: 40 };
+/**
+ * Set eşyası (input.setDressing): bölüm başına bir set düzenleyici çağrısı (Sonnet, kısa JSON; henüz ölçülmedi) ve mekân
+ * başına en çok SET_PIECES nesne çizimi (nesne gibi: plan + çizim + kapı).
+ */
+const SET_DRESSING = { agentUsd: 0.02, agentSec: 20 };
 
 const withReality = (drawUsd: number) => GATE.planUsd + drawUsd * (1 + GATE.extraDraws) + GATE.checkUsd * (1 + GATE.extraDraws);
 
@@ -266,6 +271,20 @@ export function estimateEpisode(state: EpisodeState, ctx: EstimateContext, modeO
       seconds: Math.ceil(props / PARALLEL) * VECTOR.propSec,
       basis: msg("cost.basis.props"),
     });
+    if (input.setDressing !== false) {
+      // Kaç eşya seçileceği önceden bilinmez: üst sınır, mekân başına SET_PIECES (seçildiyse kayıttaki sayı).
+      const pieces = state.sets ? Object.values(state.sets).reduce((n, ids) => n + ids.length, 0) : locs * SET_PIECES;
+      add({
+        stage: "keyframes",
+        providerId: "claude",
+        via: msg("cost.via.svg"),
+        quantity: pieces,
+        unit: msg("unit.object"),
+        costUsd: SET_DRESSING.agentUsd + pieces * (withReality(VECTOR.propUsd) + GATE.readyMadeUsd),
+        seconds: SET_DRESSING.agentSec + Math.ceil(pieces / PARALLEL) * VECTOR.propSec,
+        basis: msg("cost.basis.setDressing", { max: SET_PIECES }),
+      });
+    }
     if (input.sideViews) {
       // Kaç karakterin yürüyeceği çekim planından önce bilinmez: üst sınır olarak bütün karakterler.
       const walkers = state.sideViews ? Object.keys(state.sideViews).length : chars;
