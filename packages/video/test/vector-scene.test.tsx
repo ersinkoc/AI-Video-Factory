@@ -418,7 +418,8 @@ describe("vektör sahne: karakter iskeleti", () => {
       0.6,
     ]);
     expect([g("arm-l").ty, g("arm-r").ty]).toEqual([-STARTLE.shoulders, -STARTLE.shoulders]);
-    expect(g("torso").rotate).toBeLessThan(-STARTLE.lean + 3);
+    // Kaynak yoksa soldadır: gövde kalkan elin karşısına, sağa çekilir.
+    expect(g("torso").rotate).toBeGreaterThan(STARTLE.lean - 3);
     g = at("shrug");
     expect([g("arm-l").rotate, g("arm-l").ty, g("forearm-l").rotate, g("forearm-r").rotate, g("head").rotate]).toEqual([16, -7, 62, -62, -6]);
     const t = 5;
@@ -966,6 +967,26 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(talker([{ text: "aaa", startMs: 4900, endMs: 5300 }], { anims: [{ type: "talk", start: 0.6, end: 0.9 }] }).css).not.toContain("visibility:hidden");
   });
 
+  it("irkilmede kalkan el kaynağın tarafında: sağdaki kişiye irkilen poz aynalanır, gövde soldan geri çekilir; sağ eli doluysa aynalanmaz", () => {
+    const startle = (layers: object[], index: number) => {
+      const c = scene({ layers }, { frame: 150 });
+      const css = [...c.querySelectorAll("style")].map((x) => x.textContent).join("");
+      cleanup();
+      return (part: string) => pose(css, part, `s1-${index}-`);
+    };
+    const surprised = { anims: [{ type: "surprised", start: 0.4, end: 0.6 }] };
+    const g = startle([{ asset: "hero", x: 600, depth: 0, ...surprised }, { asset: "walker", x: 1300, depth: 0 }], 0);
+    expect([g("arm-r").rotate, g("forearm-r").rotate, g("hand-r").rotate]).toEqual([-STARTLE.arm, -STARTLE.forearm, -STARTLE.hand]);
+    expect([g("forearm-l").rotate, g("forearm-l").sy]).toEqual([-134, 0.55]);
+    expect(g("torso").rotate).toBeLessThan(-STARTLE.lean + 3);
+    // Soldaki kişiye irkilen: sol el kalkar.
+    const left = startle([{ asset: "walker", x: 600, depth: 0 }, { asset: "hero", x: 1300, depth: 0, ...surprised }], 1);
+    expect(left("arm-l").rotate).toBe(STARTLE.arm);
+    // Sağ elinde nesne: tutan el göğse, sol el kalkar.
+    const holding = startle([{ asset: "hero", x: 600, depth: 0, ...surprised }, { asset: "walker", x: 1300, depth: 0 }, { asset: "cup", x: 600, heldBy: 0 }], 0);
+    expect(holding("forearm-r").rotate).toBe(134);
+  });
+
   it("konuşmayan kişinin ağzı tepkiyle açılır: irkilmede yuvarlak o, sevinçte geniş; şaşkın yüzde küçük o; konuşan sesini izler", () => {
     const shown = (layer: object, speech: { text: string; startMs: number; endMs: number }[] = []) => {
       const c = scene({ layers: [{ asset: "talker", x: 960, depth: 0, ...layer }] }, { frame: 150, speech });
@@ -1425,7 +1446,8 @@ describe("vektör sahne: dikkat (işaret ve bakış)", () => {
     const c = scene({ layers: [{ asset: "hero", x: 960, depth: 0.3, anims: [{ type: "surprised", start: 0.4, end: 0.6 }] }] }, { frame: 150 });
     expect(c.querySelector("style")!.textContent).toContain("transform-origin:200px 520px");
     expect(c.querySelector('[id="s1-0-torso"] > [id="s1-0-body"]')).not.toBeNull();
-    expect(pose(c, "torso").rotate).toBeLessThan(-4);
+    // Kaynak yoksa soldadır (kalkan el solda): gövde sağa, ondan geri çekilir.
+    expect(pose(c, "torso").rotate).toBeGreaterThan(4);
     expect(pose(c, "torso").sy).toBeGreaterThan(1);
     // Yanında biri varken ondan geri çekilir (soldaki kişiden sağa).
     const away = withOthers({ anims: [{ type: "surprised", start: 0.4, end: 0.6 }] }, [{ asset: "walker", x: 300, depth: 0 }]);

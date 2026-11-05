@@ -978,19 +978,24 @@ function rigPose(
         mix("torso", "rotate", Math.sin(phase) * 2.5);
         break;
       }
-      case "surprised":
-        // İrkilme: sağ el göğse gider (ön kol kameraya uzanır, kısalır), sol el aşağıda yana açılır. Eskiden iki el omuz
-        // hizasında açılıyordu; izleyici bunu sevinç/zafer diye okuyordu (3 Kas, C# incelemesi: "endişeli değil, kollarını
-        // kaldırmış neşeli").
-        mix("arm-r", "rotate", 10);
-        mix("forearm-r", "rotate", 134);
-        mix("forearm-r", "sy", FORESHORTEN);
-        mix("hand-r", "rotate", 10);
-        const guard = keepInSpace("l", STARTLE.arm, STARTLE.forearm, attention);
-        mix("arm-l", "rotate", guard.arm);
-        mix("forearm-l", "rotate", guard.forearm);
+      case "surprised": {
+        // İrkilme: bir el göğse gider (ön kol kameraya uzanır, kısalır), öbürü avucu dışa omuz hizasında kalkar. Eskiden
+        // iki el omuz hizasında açılıyordu; izleyici bunu sevinç/zafer diye okuyordu (3 Kas, C# incelemesi: "endişeli değil,
+        // kollarını kaldırmış neşeli"). Kalkan el kaynağın (baktığı kişinin) tarafında; kaynak sağdaysa poz aynalanır (5 Kas:
+        // hep soldaki el kalkıyordu, sağdaki kişiye irkilen arkasını kolluyor gibiydi). Sağ el bir şey tutuyorsa aynalanmaz:
+        // tutan el göğse gider. Kaynak yoksa soldadır.
+        const guardSide = attention.lookDir === 1 && !attention.holding ? "r" : "l";
+        const chestSide = guardSide === "l" ? "r" : "l";
+        const out = guardSide === "l" ? 1 : -1;
+        mix(`arm-${chestSide}`, "rotate", out * 10);
+        mix(`forearm-${chestSide}`, "rotate", out * 134);
+        mix(`forearm-${chestSide}`, "sy", FORESHORTEN);
+        mix(`hand-${chestSide}`, "rotate", out * 10);
+        const guard = keepInSpace(guardSide, out * STARTLE.arm, out * STARTLE.forearm, attention);
+        mix(`arm-${guardSide}`, "rotate", guard.arm);
+        mix(`forearm-${guardSide}`, "rotate", guard.forearm);
         // Avuç dışa, kaynağa doğru.
-        mix("hand-l", "rotate", STARTLE.hand);
+        mix(`hand-${guardSide}`, "rotate", out * STARTLE.hand);
         // Omuzlar kalkar, baş omuzların arasında geri çekilir.
         mix("arm-l", "ty", -STARTLE.shoulders);
         mix("arm-r", "ty", -STARTLE.shoulders);
@@ -999,10 +1004,11 @@ function rigPose(
         mix("eyes", "sy", 1.25);
         mix("mouth", "sy", 0.3);
         mix("mouth", "sx", 0.6);
-        // Şaşkınlıkta geri çekilir (baktığı yönün tersine) ve dikleşir.
-        mix("torso", "rotate", -STARTLE.lean * (attention.lookDir ?? 1));
+        // Şaşkınlıkta kaynaktan (kalkan elin yanından) geri çekilir ve dikleşir.
+        mix("torso", "rotate", out * STARTLE.lean);
         mix("torso", "sy", 1.02);
         break;
+      }
       case "shrug":
         // Omuzlar kalkar, ön kollar dışa yatay açılır (avuç yukarı), baş yana eğilir. Yanındakinin tarafındaki el onun
         // alanına girmez (keepInSpace).
