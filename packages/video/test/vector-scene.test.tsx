@@ -40,7 +40,7 @@ const { BURST } = await import("../src/staging.ts");
 const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, STARTLE, exclaimOf, opensMouth, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -406,8 +406,19 @@ describe("vektör sahne: karakter iskeleti", () => {
     }
     g = at("surprised");
     // Şaşkın ağız küçük, dar bir "o": büyük gülümseme sevinç gibi okunuyordu.
-    // İrkilme: sağ el göğüste (kısalan ön kol), sol el aşağıda yana açık.
-    expect([g("arm-l").rotate, g("forearm-l").rotate, g("forearm-r").rotate, g("forearm-r").sy, g("eyes").sy, g("mouth").sy, g("mouth").sx]).toEqual([22, 38, 134, 0.55, 1.25, 0.3, 0.6]);
+    // İrkilme: sağ el göğüste (kısalan ön kol), sol el avucu dışa omuz hizasında kalkık; omuzlar kalkar, gövde geri çekilir.
+    expect([g("arm-l").rotate, g("forearm-l").rotate, g("hand-l").rotate, g("forearm-r").rotate, g("forearm-r").sy, g("eyes").sy, g("mouth").sy, g("mouth").sx]).toEqual([
+      STARTLE.arm,
+      STARTLE.forearm,
+      STARTLE.hand,
+      134,
+      0.55,
+      1.25,
+      0.3,
+      0.6,
+    ]);
+    expect([g("arm-l").ty, g("arm-r").ty]).toEqual([-STARTLE.shoulders, -STARTLE.shoulders]);
+    expect(g("torso").rotate).toBeLessThan(-STARTLE.lean + 3);
     g = at("shrug");
     expect([g("arm-l").rotate, g("arm-l").ty, g("forearm-l").rotate, g("forearm-r").rotate, g("head").rotate]).toEqual([16, -7, 62, -62, -6]);
     const t = 5;
@@ -953,6 +964,30 @@ describe("vektör sahne: karakter iskeleti", () => {
     expect(talker([{ text: "aaa", startMs: 4900, endMs: 5300 }], {}).shapes).toEqual([]);
     // Konuşma penceresi dışında (yarıdan az girmiş) çizimin ağzı.
     expect(talker([{ text: "aaa", startMs: 4900, endMs: 5300 }], { anims: [{ type: "talk", start: 0.6, end: 0.9 }] }).css).not.toContain("visibility:hidden");
+  });
+
+  it("konuşmayan kişinin ağzı tepkiyle açılır: irkilmede yuvarlak o, sevinçte geniş; şaşkın yüzde küçük o; konuşan sesini izler", () => {
+    const shown = (layer: object, speech: { text: string; startMs: number; endMs: number }[] = []) => {
+      const c = scene({ layers: [{ asset: "talker", x: 960, depth: 0, ...layer }] }, { frame: 150, speech });
+      const css = c.querySelector("style")!.textContent!;
+      const shapes = c.querySelectorAll("[id^='s1-0-viseme-']").length;
+      cleanup();
+      return { visible: /#s1-0-viseme-([A-H])\{display:inline/.exec(css)?.[1], hidden: css.includes("#s1-0-mouth{visibility:hidden}"), shapes };
+    };
+    expect(shown({ anims: [{ type: "surprised", start: 0.4, end: 0.6 }] })).toEqual({ visible: "E", hidden: true, shapes: 8 });
+    expect(shown({ anims: [{ type: "cheer", start: 0.4, end: 0.6 }] })).toEqual({ visible: "D", hidden: true, shapes: 8 });
+    expect(shown({ anims: [], expression: "surprised" })).toEqual({ visible: "F", hidden: true, shapes: 8 });
+    // Jest henüz girmemişse çizimin ağzı (şekiller yine de konur).
+    expect(shown({ anims: [{ type: "cheer", start: 0.7, end: 0.9 }] })).toEqual({ visible: undefined, hidden: false, shapes: 8 });
+    // Konuşan sesin şeklini gösterir; konuşmanın sessizliğinde tepkinin ağzı.
+    expect(shown({ anims: [{ type: "talk" }, { type: "surprised", start: 0.4, end: 0.6 }] }, [{ text: "aaa", startMs: 4900, endMs: 5300 }]).visible).toBe("D");
+    expect(shown({ anims: [{ type: "talk" }, { type: "surprised", start: 0.4, end: 0.6 }] }, [{ text: "aaa", startMs: 6000, endMs: 6400 }]).visible).toBe("E");
+    expect(opensMouth({ anims: [], expression: "happy" })).toBe(false);
+    expect(exclaimOf([], 0.5, 10, undefined)).toBeUndefined();
+    // Ağzı ölçülemeyen çizimde şekil yok.
+    const c = scene({ layers: [{ asset: "hero", x: 960, depth: 0, anims: [{ type: "surprised", start: 0.4, end: 0.6 }] }] }, { frame: 150 });
+    expect(c.querySelector("[id^='s1-0-viseme-']")).toBeNull();
+    cleanup();
   });
 
   it("konuşulana dönme: dinleyen tam, konuşan kısmen döner; kendi bakışı olan jest ve yürüyüş dönüşü söndürür; kimse yoksa yok", () => {

@@ -540,6 +540,25 @@ function quizzical(pose: (k: PosePart) => PartPose, seed: string, k: number): vo
 }
 
 /**
+ * Ağzı açan tepkiler: konuşmuyorken jest yarıdan fazla girmişse çizimin ağzı gizlenir, yerine konuşan ağzın koddan
+ * çizilen şekli görünür (ifadenin köşeleriyle): irkilmede yuvarlak açık "o" (E), sevinçte geniş açık ağız (D). Şaşkın
+ * ifadede jest yokken küçük yuvarlak ağız (F). 5 Kas: tepki notlarının kareleri tek tek açıldı ("irkilmiyor", "şaşkın
+ * görünmüyor"); çizimin ağzı bir gülümseme eğrisi, ölçeklenince "o" olmuyor, düz bir çizgiye iniyordu: yüz sakin okunuyordu.
+ */
+export const EXCLAIM: Partial<Record<VectorAnimType, Viseme>> = { surprised: "E", cheer: "D" };
+const SURPRISED_MOUTH: Viseme = "F";
+
+/** Katman ağız şekli isteyebilir mi: konuşuyor, ağzı açan bir jesti ya da şaşkın ifadesi var (şekiller bir kez konur). */
+export const opensMouth = (layer: Pick<VectorLayer, "anims" | "expression">) =>
+  layer.expression === "surprised" || layer.anims.some((a) => a.type === "talk" || EXCLAIM[a.type] !== undefined);
+
+/** Konuşmayan kişinin tepkiden açılan ağzı (yoksa undefined): yarıdan fazla girmiş ilk ağız açan jest, yoksa şaşkın ifade. */
+export function exclaimOf(anims: VectorAnim[], p: number, dur: number, expression: VectorExpression | undefined): Viseme | undefined {
+  const open = anims.find((a) => EXCLAIM[a.type] !== undefined && gestureWeight(p, a, dur) >= 0.5);
+  return open ? EXCLAIM[open.type] : expression === "surprised" ? SURPRISED_MOUTH : undefined;
+}
+
+/**
  * Ağzı koddan çizilemeyen yüzde (3D figür, ağzı ölçülemeyen çizim) vizemin ağız ölçeği: [genişlik, açıklık]. Sessizlik
  * (X) kapalı ağızdır; D en açık, F en dar.
  */
@@ -941,18 +960,21 @@ function rigPose(
         mix("forearm-r", "rotate", 134);
         mix("forearm-r", "sy", FORESHORTEN);
         mix("hand-r", "rotate", 10);
-        const low = keepInSpace("l", 22, 38, attention);
-        mix("arm-l", "rotate", low.arm);
-        mix("forearm-l", "rotate", low.forearm);
-        // Açık avuç dışa.
-        mix("hand-l", "rotate", 24);
-        mix("head", "ty", -3);
+        const guard = keepInSpace("l", STARTLE.arm, STARTLE.forearm, attention);
+        mix("arm-l", "rotate", guard.arm);
+        mix("forearm-l", "rotate", guard.forearm);
+        // Avuç dışa, kaynağa doğru.
+        mix("hand-l", "rotate", STARTLE.hand);
+        // Omuzlar kalkar, baş omuzların arasında geri çekilir.
+        mix("arm-l", "ty", -STARTLE.shoulders);
+        mix("arm-r", "ty", -STARTLE.shoulders);
+        mix("head", "ty", STARTLE.head);
         mix("brows", "ty", -10);
         mix("eyes", "sy", 1.25);
         mix("mouth", "sy", 0.3);
         mix("mouth", "sx", 0.6);
         // Şaşkınlıkta geri çekilir (baktığı yönün tersine) ve dikleşir.
-        mix("torso", "rotate", -6 * (attention.lookDir ?? 1));
+        mix("torso", "rotate", -STARTLE.lean * (attention.lookDir ?? 1));
         mix("torso", "sy", 1.02);
         break;
       case "shrug":
@@ -1214,6 +1236,7 @@ export function nearness(p: number, a: VectorAnim, dur: number, lead: number, ta
 
 /** Kameraya doğru uzanan ön kolun önden görünen boyu (klavye, yazı, okuma). */
 const FORESHORTEN = 0.55;
+export const STARTLE = { arm: 24, forearm: 118, hand: 45, shoulders: 5, head: 2, lean: 10 };
 
 /** Nesne tutan sağ kolun duruşu (derece, dışa): üst kol hafif açık, ön kol yataya yakın. */
 export const HOLD_POSE = { arm: 12, forearm: 72 };
@@ -2039,10 +2062,12 @@ function motionOf(
   // Konuşma yarıdan fazla girmişken ses varsa şekil koddan çizilir; sessizlikte (X) çizimin kendi ağzı görünür.
   const viseme = voice?.viseme;
   const talking = face.mouth && viseme && viseme !== "X" && anims.some((a) => a.type === "talk" && gestureWeight(p, a, dur) >= 0.5);
+  // Konuşmuyorken tepkiden açılan ağız (EXCLAIM); konuşmanın sessizliğinde de (çizimin gülümsemesi yerine "o").
+  const speak = talking ? viseme : face.mouth ? exclaimOf(anims, p, dur, layer.expression) : undefined;
   // Çeneyi tutan kol (sağ; sağ el nesne tutuyorsa sol) çekim boyunca başın önünde çizilir: kol yandayken başla
   // örtüşmez. Başını kaşıyan el başın arkasında kalır (saçın içinde), kavuşuk kollar başa değmez.
   const front = anims.some((a) => a.type === "think") && thinkPoseOf(prefix, focus.holding) === "chin" ? (focus.holding ? "arm-l" : "arm-r") : undefined;
-  return { tr, flip: layer.flip, squash, turn, pose, ...(talking ? { speak: viseme } : {}), ...(front ? { front } : {}), ...(strains.length ? { strains } : {}) };
+  return { tr, flip: layer.flip, squash, turn, pose, ...(speak ? { speak } : {}), ...(front ? { front } : {}), ...(strains.length ? { strains } : {}) };
 }
 
 /**
@@ -2249,7 +2274,7 @@ function Layer({
   const drawnSvg = plan?.svg ?? shaped;
   // Konuşan ağız: şekiller bir kez ağzın yanına gizli konur; konuşurken çizimin ağzı gizlenir, o anın şekli görünür.
   // Yan çizimin ve 3D figürün ağzı ölçülmez.
-  const mouth = !figure && !motion.side && layer.anims.some((a) => a.type === "talk") ? faceFor(asset).mouth : undefined;
+  const mouth = !figure && !motion.side && opensMouth(layer) ? faceFor(asset).mouth : undefined;
   const mood = EXPRESSIONS[layer.expression ?? "neutral"].mood;
   const mouths = useMemo(() => (mouth ? withMouths(drawnSvg, prefix, mouth, mood) : undefined), [drawnSvg, prefix, mouth, mood]);
   const svg = mouths ?? drawnSvg;
