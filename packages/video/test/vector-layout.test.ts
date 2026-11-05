@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { stripBackdrop, VectorText } from "@ys/core";
-import { layoutTexts, readable } from "../src/Vector.tsx";
+import { layoutTexts, readable, textBoxOf } from "../src/Vector.tsx";
 
 const text = (t: string, y: number, style: "title" | "label" | "number" = "label", x = 960) => VectorText.parse({ text: t, x, y, style });
 
@@ -24,6 +24,47 @@ describe("yazı yerleşimi: bilgi kartı karakteri örtmez", () => {
     expect(layoutTexts([text("1970", 0, "title")], false, anchor, all, both)[0]).not.toHaveProperty("right");
     // Kart yoksa (yalnız etiket) hiçbir şey kaymaz.
     expect(layoutTexts([text("Wirth", 100, "label", 300)], false, anchor, all, both)[0]).toMatchObject({ card: false });
+  });
+
+  it("gövdeler birkaç anın kutularıysa bir anın ağırlığıyla sayılır: tek anda kenara değen kol kartı geçirmez", () => {
+    const left = [{ x: 0, y: 0, w: 700, h: 600 }];
+    expect(layoutTexts([text("1970", 0, "title")], false, anchor, all, left, [], 0.1)[0]).not.toHaveProperty("right");
+  });
+
+  // "1970" başlık kartı: 64 px, plaka ~205 px genişlik, x 72'den; kart bloğu y 64–169.
+  const face = (x: number) => ({ x, y: 100, w: 120, h: 130 });
+  const title = () => [text("1970", 0, "title")];
+
+  it("iki üst köşede birer yüz varsa kart aralarındaki boşluğa, köşeye en yakın yere kayar, sola yaslı", () => {
+    const [card] = layoutTexts(title(), false, anchor, all, [], [face(100), face(1600)]);
+    expect(card).toMatchObject({ card: true, x: 220 + 24 });
+    expect(card).not.toHaveProperty("right");
+  });
+
+  it("yalnız sol köşedeki yüzü örtüyorsa boş sağ köşe aradaki boşluktan önce gelir", () => {
+    expect(layoutTexts(title(), false, anchor, all, [], [face(100)])[0]).toMatchObject({ right: true, x: 1920 - 72 });
+  });
+
+  it("gövde kuralının seçtiği sağ köşe bir yüzü örtüyorsa kart yüzün soluna kayar, sola yaslı", () => {
+    const [card] = layoutTexts(title(), false, anchor, all, [{ x: 0, y: 0, w: 700, h: 600 }], [face(1600)]);
+    expect(card!.x).toBeCloseTo(1600 - 24 - (4 * 64 * 0.55 + 64));
+    expect(card).not.toHaveProperty("right");
+  });
+
+  it("kenarına ancak değen yüz kartı oynatmaz; her yer aynı ölçüde örtülüyorsa kart yerinde kalır", () => {
+    expect(layoutTexts(title(), false, anchor, all, [], [face(270)])[0]).toMatchObject({ x: 72 });
+    const band = { x: 0, y: 64, w: 1920, h: 104.8 };
+    expect(layoutTexts(title(), false, anchor, all, [], [band])[0]).toMatchObject({ x: 72 });
+  });
+
+  it("yazının ekran kutusu: soldaki kartta x sol kenar, sağdaki kartta sağ kenar, etikette orta", () => {
+    const w = 4 * 64 * 0.56 + 40;
+    const [right] = layoutTexts(title(), false, anchor, all, [], [face(100)]);
+    expect(textBoxOf(right!)).toEqual({ x: 1920 - 72 - w, y: 64, w, h: 64 * 1.4 });
+    const [left, tag] = layoutTexts([...title(), text("Wirth", 500, "label", 1000)]);
+    expect(textBoxOf(left!)).toEqual({ x: 72, y: 64, w, h: 64 * 1.4 });
+    const tw = 5 * 40 * 0.56 + 40;
+    expect(textBoxOf(tag!)).toEqual({ x: 1000 - tw / 2, y: 500 - 40 * 0.7, w: tw, h: 40 * 1.4 });
   });
 });
 

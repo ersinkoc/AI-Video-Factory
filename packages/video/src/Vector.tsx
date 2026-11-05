@@ -2212,7 +2212,17 @@ function Layer({
  */
 const TEXT_SIZE: Record<VectorText["style"], number> = { title: 64, number: 72, subtitle: 44, quote: 44, label: 40 };
 const FONT = "Inter, 'Noto Sans', 'Segoe UI', sans-serif";
-export const CARD = { x: 72, verticalX: 300, top: 64, width: 960, gap: 12 };
+export const CARD = {
+  x: 72,
+  verticalX: 300,
+  top: 64,
+  width: 960,
+  gap: 12,
+  /** Kartın yeri bu anlarda (çekimin kesri) görünen yüzlere ve etiketlere bakılarak bir kez seçilir (cardAvoid). */
+  samples: [0, 0.25, 0.5, 0.75, 1],
+  /** Bir yüzün (ya da etiket yerinin) bundan fazlasını örten kart yer değiştirir. */
+  face: 0.1,
+};
 
 /** Kukla tuvalinde kafanın tepesi kutunun üstünden bu oranda aşağıda (RIG: kaşlar 140, gözler 170 → tepe ~80/800). */
 const HEAD_TOP = 0.1;
@@ -2302,6 +2312,10 @@ export function layoutTexts(
   bounds: { left: number; right: number } = { left: 0, right: W },
   /** Ekranda karakterlerin kafa ve üst gövdesi: bilgi kartı onları örtecekse karşı üst köşeye geçer. */
   occupied: Box[] = [],
+  /** Kartın örtmemesi gereken yerler: yüzler ve etiketlerin kafa üstündeki yeri (cardAvoid). */
+  faces: Box[] = [],
+  /** occupied birkaç anın kutularıysa bir anın ağırlığı (cardAvoid: 1 / örnek sayısı). */
+  weight = 1,
 ): PlacedText[] {
   // Dayanağı olmayan etiket (adı geçen kişi bu çekimde yok) gösterilmez ve sınırdan yer kapmaz: ayıklama sınırdan önce.
   const anchors = new Map(texts.filter((text) => text.style === "label").map((text) => [text, anchor(text)]));
@@ -2321,25 +2335,39 @@ export function layoutTexts(
   const margin = vertical ? CARD.verticalX : CARD.x;
   const blockWidth = Math.max(0, ...card.map((c) => plateWidth(c.text.text, c.size, CARD.width)));
   const block = (x: number): Box => ({ x, y: CARD.top, w: blockWidth, h: cardBottom - CARD.top });
-  const covered = (b: Box) => occupied.reduce((n, o) => n + overlap(b, o), 0);
+  const covered = (b: Box) => occupied.reduce((n, o) => n + overlap(b, o), 0) * weight;
   // Solda kayda değer bir örtüşme varsa (kartın %15'i; kenara değen kol sayılmaz) ve sağ belirgin biçimde boşsa
   // (örtülen alan yarıdan az) geçer; eşitlikte yerinde kalır.
-  const leftCovered = covered(block(margin));
-  const right = card.length > 0 && leftCovered > blockWidth * (cardBottom - CARD.top) * 0.15 && covered(block(W - margin - blockWidth)) < leftCovered / 2;
-  // Sağdaki kartta x satırın sağ kenarıdır.
-  if (right) for (const c of card) c.x = W - margin;
+  const lo = margin;
+  const hi = Math.max(lo, W - margin - blockWidth);
+  const leftCovered = covered(block(lo));
+  let right = card.length > 0 && leftCovered > blockWidth * (cardBottom - CARD.top) * 0.15 && covered(block(hi)) < leftCovered / 2;
+  // Köşedeki kart bir yüzü (ya da bir etiketin kafa üstündeki yerini) örtüyorsa yüzlerin arasındaki boşluğa kayar (5 Kas:
+  // iki kişilik yakın çekimde yüzler iki üst köşedeydi, kart hangi köşeye geçse birini örtüyordu; 8 text_on_face'in 7'si).
+  // Adaylar iki köşe ve her yüzün iki yanı; en az yüz örten, eşitlikte en az gövde örten, sonra köşe, sonra en yakını.
+  const onFaces = (x: number) =>
+    Math.round(
+      faces.reduce((n, f) => {
+        const share = overlap(block(x), f) / Math.max(1, f.w * f.h);
+        return share > CARD.face ? n + share : n;
+      }, 0) * 1000,
+    ) / 1000;
+  let cardX = right ? hi : lo;
+  if (card.length > 0 && onFaces(cardX) > 0) {
+    const best = [lo, hi, ...faces.flatMap((f) => [f.x + f.w + TEXT_GAP, f.x - TEXT_GAP - blockWidth])]
+      .filter((x) => x >= lo && x <= hi)
+      .map((x) => ({ x, face: onFaces(x), body: Math.round(covered(block(x))), side: x === lo || x === hi ? 0 : 1, move: Math.abs(x - cardX) }))
+      .sort((a, b) => a.face - b.face || a.body - b.body || a.side - b.side || a.move - b.move)[0]!;
+    if (best.face < onFaces(cardX)) {
+      cardX = best.x;
+      right = cardX === hi && hi > lo;
+    }
+  }
+  // Sağdaki kartta x satırın sağ kenarıdır; aradaki kart sola yaslı.
+  for (const c of card) c.x = right ? W - margin : cardX;
   const tags = shown
     .filter((text) => text.style === "label")
-    .map((text) => {
-      const at = anchors.get(text)!;
-      const { size, lines } = fit(text.text, TEXT_SIZE.label, TAG_WIDTH);
-      const height = lines * size * 1.15;
-      // Kafaya bağlı etiket kafanın hemen üstünde durur (y kafanın tepesi); değilse y etiketin ortasıdır.
-      const y = at.head ? at.y - height / 2 - TAG_LIFT : at.y;
-      // Kenar sınırı yazının kendi genişliğiyle: kenardaki kişinin etiketi ondan uzağa itilmesin.
-      const half = plateWidth(text.text, size, TAG_WIDTH) / 2;
-      return { text, x: Math.min(bounds.right - half - 24, Math.max(bounds.left + half + 24, at.x)), y: Math.min(TEXT_BOTTOM, Math.max(TEXT_TOP, y)), size, height, half, card: false };
-    })
+    .map((text) => ({ text, ...tagSpot(text, anchors.get(text)!, bounds), card: false }))
     .sort((a, b) => a.y - b.y);
   // Etiket yalnız yatayda örtüştüğü karta ya da etikete binmesin diye onun altına iner: yan yana iki kişinin etiketi
   // kendi kafalarının üstünde kalır (eskiden ikincisi her durumda alta itilip yüzün üstüne düşüyordu; inceleme
@@ -2364,6 +2392,24 @@ export function layoutTexts(
     ...card.map(({ text, x, y, size }) => ({ text, x, y, size, card: true, ...(right ? { right } : {}) })),
     ...tags.map(({ text, x, y, size }) => ({ text, x, y, size, card: false })),
   ];
+}
+
+/** Etiketin yeri (kart ve öteki etiketler itmeden önce): kafaya bağlıysa kafanın hemen üstünde, sınırların içinde. */
+function tagSpot(text: VectorText, at: TagAnchor, bounds: { left: number; right: number }) {
+  const { size, lines } = fit(text.text, TEXT_SIZE.label, TAG_WIDTH);
+  const height = lines * size * 1.15;
+  // Kafaya bağlı etiket kafanın hemen üstünde durur (y kafanın tepesi); değilse y etiketin ortasıdır.
+  const y = at.head ? at.y - height / 2 - TAG_LIFT : at.y;
+  // Kenar sınırı yazının kendi genişliğiyle: kenardaki kişinin etiketi ondan uzağa itilmesin.
+  const half = plateWidth(text.text, size, TAG_WIDTH) / 2;
+  return { x: Math.min(bounds.right - half - 24, Math.max(bounds.left + half + 24, at.x)), y: Math.min(TEXT_BOTTOM, Math.max(TEXT_TOP, y)), size, height, half };
+}
+
+/** Yazının ekrandaki kaba kutusu (büyütme balonu ve animasyon denetimi): sağdaki kartta x satırın sağ kenarıdır. */
+export function textBoxOf(tx: PlacedText): Box {
+  const w = Math.min(CARD.width, tx.text.text.length * tx.size * 0.56) + 40;
+  if (!tx.card) return { x: tx.x - w / 2, y: tx.y - tx.size * 0.7, w, h: tx.size * 1.4 };
+  return { x: tx.right ? tx.x - w : tx.x, y: tx.y, w, h: tx.size * 1.4 };
 }
 
 /** Yazı plakasının kaba genişliği: harf başına ~0,55 em (en çok kutu genişliği) + iki yanda 0,5 em dolgu. */
@@ -2845,17 +2891,10 @@ export interface ShotFrame {
   macroView?: { asset: VectorAsset; box: Box; q: number; screen?: VectorScreen; person?: ScreenPerson };
 }
 
-export function shotFrame(
-  model: ShotModel,
-  o: { shotId: string; frame: number; fps: number; durationInFrames: number; voice?: Voice; width: number; height: number; insets: boolean; overlay: boolean },
-): ShotFrame {
-  const { spec, safe, placed, bg, cam, centre, fit, subject, macro } = model;
-  const { shotId, frame, fps, voice, width, height, insets } = o;
-  const p = Math.min(1, frame / Math.max(1, o.durationInFrames));
-  const t = frame / fps;
-  const k = interpolate(p, [0, 1], [0, 1], { easing: ease });
-  const dur = o.durationInFrames / fps;
-  const motions = new Map(
+/** Bir anın katman hareketleri (karenin çizimi; bilgi kartının yeri için örnek anlarda da). */
+function motionsAt(model: ShotModel, shotId: string, p: number, t: number, dur: number, fps: number, voice?: Voice): Map<number, Motion> {
+  const { spec, safe, placed } = model;
+  return new Map(
     placed.map((pl) => {
       const layer = spec.layers[pl.index]!;
       const asset = safe[layer.asset]!;
@@ -2875,28 +2914,43 @@ export function shotFrame(
       return [pl.index, { ...motion, shift: layerShift(layer, asset, pl, p, t, prefix, dur, 1 / fps) }] as const;
     }),
   );
-  // Kişi etiketi yazı katmanında (kamera dışında) çizilir ama kişiye aittir: yönetmenin noktasına en yakın kafaya
-  // bağlanır, kişi yürüdükçe ve kamera yaklaştıkça onunla gider. Eskiden tuval noktası ekran noktası sayılıyordu;
-  // zoom'da etiket kafadan kopuyordu (Bilgisayarlar bölümü incelemesi: "etiket kafanın üstünde değil", 1 Kas).
-  // Önce adı etikette geçen kişi ("Babbage" → Charles Babbage), yoksa noktaya yeterince yakın kafa.
-  const heads = placed
+}
+
+/** Kadrajdaki kişi: kafasının tepesi ve ayağı (tuval px), kalite kapısı kaydındaki adı. */
+interface Head {
+  at: readonly [number, number];
+  foot: readonly [number, number];
+  name: string;
+}
+
+/** Kişilerin kafa tepesi ve ayağı: kafanın tepesi kutunun tepesinden biraz aşağıda (kukla tuvali). */
+function headsOf({ spec, safe, placed }: ShotModel, motions: Map<number, Motion>): Head[] {
+  return placed
     .filter((pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character")
     .map((pl) => {
       const tr = motions.get(pl.index)!.tr;
       const name = safe[spec.layers[pl.index]!.asset]!.meta.check?.name ?? "";
-      // Kafanın tepesi kutunun tepesinden biraz aşağıda (kukla tuvali): etiket çizilen kafanın hemen üstüne oturur.
       return { at: [pl.x + tr.x, pl.y + tr.y - pl.height * tr.scale * (1 - HEAD_TOP)] as const, foot: [pl.x + tr.x, pl.y + tr.y] as const, name };
     });
-  // Ekranda kafalar ve üst gövdeler (kaldırılan kollar dahil): bilgi kartı bunları örtmesin.
-  const bodies: Box[] = heads.map((h) => {
-    const [x, y] = cameraPoint(cam, k, centre, h.at);
-    const tall = cameraPoint(cam, k, centre, h.foot)[1] - y;
-    return { x: x - tall * 0.3, y: y - tall * 0.15, w: tall * 0.6, h: tall * 0.6 };
-  });
+}
+
+/** Kişinin yüzünün ekrandaki kutusu (faceCorners; gövde eğilmesi ve katman dönüşümü dahil). */
+export function faceBox(model: ShotModel, motions: Map<number, Motion>, k: number, pl: PlacedLayer): Box {
+  const layer = model.spec.layers[pl.index]!;
+  return boxOf(faceCorners(model.safe[layer.asset]!).map((c) => cameraPoint(model.cam, k, model.centre, rigToCanvas(pl, layer, motions.get(pl.index)!, c))));
+}
+
+/**
+ * Kişi etiketinin dayanağı. Etiket yazı katmanında (kamera dışında) çizilir ama kişiye aittir: yönetmenin noktasına
+ * en yakın kafaya bağlanır, kişi yürüdükçe ve kamera yaklaştıkça onunla gider. Eskiden tuval noktası ekran noktası
+ * sayılıyordu; zoom'da etiket kafadan kopuyordu (Bilgisayarlar bölümü incelemesi: "etiket kafanın üstünde değil", 1 Kas).
+ * Önce adı etikette geçen kişi ("Babbage" → Charles Babbage), yoksa noktaya yeterince yakın kafa.
+ */
+function tagAnchor({ spec, safe, placed, cam, centre }: ShotModel, heads: Head[], k: number): (text: VectorText) => TagAnchor | undefined {
   const present = new Set(placed.map((pl) => spec.layers[pl.index]!.asset));
   const absent = Object.entries(safe).flatMap(([id, a]) => (a.kind === "character" && !present.has(id) && a.meta.check?.name ? [a.meta.check.name] : []));
-  const texts = layoutTexts(spec.texts, height > width, (text) => {
-    const gap = (h: (typeof heads)[number]) => Math.hypot(h.at[0] - text.x, h.at[1] - text.y);
+  return (text) => {
+    const gap = (h: Head) => Math.hypot(h.at[0] - text.x, h.at[1] - text.y);
     const named = heads.find((h) => namesMatch(h.name, text.text));
     // Bölümün başka bir karakterinin adı ama o bu çekimde yok (ör. kopyası atıldı): etiket boşlukta asılı kalmasın.
     if (!named && absent.some((name) => namesMatch(name, text.text))) return undefined;
@@ -2906,7 +2960,67 @@ export function shotFrame(
     // üst kenarına yapışıyordu (Apple s6-sh6, 1 Kas).
     if (near && !faceOnScreen([x, y], cameraPoint(cam, k, centre, near.foot))) return undefined;
     return { x, y, head: near !== undefined };
-  }, tagBounds(width, height, fit), bodies);
+  };
+}
+
+/** Bilgi kartının kaçındığı yerler (ekran px): yüzler ve etiketlerin kafa üstündeki yeri örtülmez; üst gövdeler. */
+interface CardAvoid {
+  faces: Box[];
+  bodies: Box[];
+}
+const avoided = new WeakMap<ShotModel, CardAvoid>();
+
+/**
+ * Bilgi kartının çekim boyunca kaçınacağı yerler, CARD.samples anlarından (çekim başına bir kez; modelle önbellekte).
+ * Kartın yeri kare kare seçilseydi kişi yürürken ya da kamera yaklaşırken kart köşeden köşeye atlardı. Kafalar ve
+ * kaldırılan kollar (üst gövde) kartı karşı köşeye geçirir; yüzler ve etiket yerleri onu aradaki boşluğa da kaydırır.
+ */
+function cardAvoid(model: ShotModel, shotId: string, dur: number, fps: number, width: number, height: number): CardAvoid {
+  const hit = avoided.get(model);
+  if (hit) return hit;
+  const { spec, safe, placed, cam, centre } = model;
+  const bounds = tagBounds(width, height, model.fit);
+  const faces: Box[] = [];
+  const bodies: Box[] = [];
+  for (const p of CARD.samples) {
+    const k = interpolate(p, [0, 1], [0, 1], { easing: ease });
+    const motions = motionsAt(model, shotId, p, p * dur, dur, fps);
+    const heads = headsOf(model, motions);
+    for (const pl of placed) if (safe[spec.layers[pl.index]!.asset]!.kind === "character") faces.push(faceBox(model, motions, k, pl));
+    for (const h of heads) {
+      const [x, y] = cameraPoint(cam, k, centre, h.at);
+      const tall = cameraPoint(cam, k, centre, h.foot)[1] - y;
+      bodies.push({ x: x - tall * 0.3, y: y - tall * 0.15, w: tall * 0.6, h: tall * 0.6 });
+    }
+    const anchor = tagAnchor(model, heads, k);
+    for (const text of spec.texts) {
+      const at = text.style === "label" ? anchor(text) : undefined;
+      if (!at?.head) continue;
+      // Etiket kartla yatayda TEXT_GAP'ten yakınsa kartın altına itilir (layoutTexts): yeri o pay kadar geniş.
+      const s = tagSpot(text, at, bounds);
+      faces.push({ x: s.x - s.half - TEXT_GAP, y: s.y - s.height / 2, w: 2 * (s.half + TEXT_GAP), h: s.height });
+    }
+  }
+  const avoid = { faces, bodies };
+  avoided.set(model, avoid);
+  return avoid;
+}
+
+export function shotFrame(
+  model: ShotModel,
+  o: { shotId: string; frame: number; fps: number; durationInFrames: number; voice?: Voice; width: number; height: number; insets: boolean; overlay: boolean },
+): ShotFrame {
+  const { spec, safe, placed, bg, cam, centre, fit, subject, macro } = model;
+  const { shotId, frame, fps, voice, width, height, insets } = o;
+  const p = Math.min(1, frame / Math.max(1, o.durationInFrames));
+  const t = frame / fps;
+  const k = interpolate(p, [0, 1], [0, 1], { easing: ease });
+  const dur = o.durationInFrames / fps;
+  const motions = motionsAt(model, shotId, p, t, dur, fps, voice);
+  const heads = headsOf(model, motions);
+  // Bilgi kartının yeri çekim boyunca bir kez seçilir (örnek anlardaki yüzler, etiketler ve üst gövdeler).
+  const avoid = cardAvoid(model, shotId, dur, fps, width, height);
+  const texts = layoutTexts(spec.texts, height > width, tagAnchor(model, heads, k), tagBounds(width, height, fit), avoid.bodies, avoid.faces, 1 / CARD.samples.length);
   // Katmanların bu karedeki yeri: elde tutulan nesne tutan karakterin elini izler (avucun ortasından tutulur).
   const drawnAt = new Map(
     placed.map((pl) => {
@@ -2958,10 +3072,7 @@ export function shotFrame(
       // Nesnenin kendisi, yüzler ve yazılar.
       { x: target[0] - (at.width * scale) / 2, y: target[1] - (at.height * scale) / 2, w: at.width * scale, h: at.height * scale },
       ...faces,
-      ...texts.map((tx) => {
-        const w = Math.min(CARD.width, tx.text.text.length * tx.size * 0.56) + 40;
-        return tx.card ? { x: tx.x, y: tx.y, w, h: tx.size * 1.4 } : { x: tx.x - w / 2, y: tx.y - tx.size * 0.7, w, h: tx.size * 1.4 };
-      }),
+      ...texts.map(textBoxOf),
     ];
     const spot = calloutSpot(target, avoid);
     // Yakın çekimde yüz büyük: balon bir yüzü örtecekse açılmaz.
@@ -3055,8 +3166,10 @@ function ShotStage({
           // (haritada yok: veri sabit durur).
           transform: `${bg?.meta.exact ? "" : `${cameraDrift(visual.shotId, t)} `}${cameraTransform(cam, k, centre)}`,
           transformOrigin: "0 0",
-          // Makro ek çekimde netlik nesneye çekilir: sahne bulanıklaşır ve kararır.
-          ...(macroView && macroView.q > 0 ? { filter: `blur(${(MACRO.blur * macroView.q).toFixed(2)}px) brightness(${(1 - MACRO.dim * macroView.q).toFixed(3)})` } : {}),
+          // Makro ek çekimde netlik nesneye çekilir: sahne bulanıklaşır ve kararır. Filtre ölçeklenen kamera div'inde
+          // kameranın ölçeğiyle büyür (5 Kas: 10 px, 2,5 kat yakın çekimde ekranda 25 px'ti, kişiler "bulanık hayalet"):
+          // MACRO.blur ekran px'idir.
+          ...(macroView && macroView.q > 0 ? { filter: `blur(${local(MACRO.blur * macroView.q).toFixed(2)}px) brightness(${(1 - MACRO.dim * macroView.q).toFixed(3)})` } : {}),
         }}
       >
         {bg?.meta.globe && (

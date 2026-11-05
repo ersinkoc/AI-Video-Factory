@@ -2,7 +2,7 @@ import { RIG, type PlacedLayer, type Timeline, type VectorAnim } from "@ys/core"
 import { visualVector } from "./entrance.ts";
 import { FAST_GESTURES } from "./motion.ts";
 import type { StagingCode } from "./staging.ts";
-import { boxOf, CARD, cameraPoint, faceCorners, rigToCanvas, shotFrame, shotModel, type Motion, type ShotFrame, type ShotModel } from "./Vector.tsx";
+import { cameraPoint, faceBox, shotFrame, shotModel, textBoxOf, type Motion, type ShotFrame, type ShotModel } from "./Vector.tsx";
 
 /**
  * Çekim denetimi (3 Kas, kullanıcı: "SVG ve animasyonda sıfır hata, anlamsız hata olmasın; gerekirse sahneyi yeniden
@@ -96,22 +96,6 @@ function screenBox(m: ShotModel, f: ShotFrame, pl: PlacedLayer, person: boolean)
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
-/**
- * Kişinin yüzünün ekrandaki kutusu: ölçülen başın ortadaki %70'i, gözlerin üstünden (baş kutusunun üst %30'u saç,
- * şapka: yakın çekimde tepenin kesilmesi olağan kadrajdır) çeneye kadar; gövde eğilmesi ve katman dönüşümü dahil.
- */
-function headBox(m: ShotModel, f: ShotFrame, pl: PlacedLayer): Box {
-  const layer = m.spec.layers[pl.index]!;
-  const motion = f.motions.get(pl.index)!;
-  return boxOf(faceCorners(m.safe[layer.asset]!).map((c) => cameraPoint(m.cam, f.k, m.centre, rigToCanvas(pl, layer, motion, c))));
-}
-
-/** Yazının ekrandaki kutusu (büyütme balonunun kaçındığıyla aynı hesap). */
-function textBox(tx: ShotFrame["texts"][number]): Box {
-  const w = Math.min(CARD.width, tx.text.text.length * tx.size * 0.56) + 40;
-  return tx.card ? { x: tx.x, y: tx.y, w, h: tx.size * 1.4 } : { x: tx.x - w / 2, y: tx.y - tx.size * 0.7, w, h: tx.size * 1.4 };
-}
-
 /** Bir çekimin bütün nesnel hataları (her tür ve katman için bir kez, ilk görüldüğü kareyle). */
 export function lintShot(visual: Visual, assets: Assets, o: { fps?: number; step?: number } = {}): LintIssue[] {
   if (!visual.vector) return [];
@@ -161,10 +145,10 @@ export function lintShot(visual: Visual, assets: Assets, o: { fps?: number; step
             x: pl.x + tr.x,
             z: pl.z,
             width: pl.width,
-            ...(person(pl) ? { face: headBox(model, f, pl) } : {}),
+            ...(person(pl) ? { face: faceBox(model, f.motions, f.k, pl) } : {}),
           };
         }),
-        texts: f.texts.map((tx) => ({ text: tx.text.text, box: textBox(tx) })),
+        texts: f.texts.map((tx) => ({ text: tx.text.text, box: textBoxOf(tx) })),
       },
       (code, detail, layer) => {
         if (code !== "face_cut") return add(code, detail, true, layer, frame);

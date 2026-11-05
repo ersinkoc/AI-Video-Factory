@@ -37,10 +37,10 @@ const { clapClosed, penDown, typingTaps } = await import("../src/gesture-timing.
 const { tip } = await import("../src/ik.ts");
 const { flexion } = await import("../src/anatomy.ts");
 const { BURST } = await import("../src/staging.ts");
-const { CALLOUT } = await import("../src/callout.ts");
+const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -1498,6 +1498,35 @@ describe("vektör sahne: bilgi kartı", () => {
     expect(busy.bar).toContain("6px solid");
     expect(card(1500)).toMatchObject({ align: "left", left: "72px", bar: "" });
   });
+
+  it("iki kişilik yakın çekimde kart hiçbir yüzü ve etiketin yerini örtmez, çekim boyunca yerinde durur", () => {
+    // Yüzler iki üst köşede (yerinde yürüyenleri kamera portre kadrajına almaz); Babbage'ın adı başının üstünde.
+    const spec = VectorShot.parse({
+      layers: [
+        { asset: "ada", x: 670, depth: 0, anims: [{ type: "walk" }] },
+        { asset: "babbage", x: 1250, depth: 0, anims: [{ type: "walk" }] },
+      ],
+      texts: [
+        { text: "1843", style: "title", x: 0, y: 0 },
+        { text: "Charles Babbage", style: "label", x: 1250, y: 200 },
+      ],
+      camera: { zoomFrom: 2.75, zoomTo: 2.8, panX: 0, focusX: 960, focusY: 700 },
+    });
+    const m = shotModel(spec, ASSETS, "outline", 1920, 1080, false, 10);
+    const frames = [0, 150, 299].map((frame) => shotFrame(m, { shotId: "s1", frame, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: false, overlay: false }));
+    const cards = frames.map((f) => f.texts.find((t) => t.card)!);
+    // Sol köşe Ada'nın yüzünü örtüyordu: kart aradaki boşlukta, sola yaslı, her karede aynı yerde.
+    expect(cards[0]!.x).toBeGreaterThan(CARD.x);
+    expect(cards[0]!.right).toBeUndefined();
+    expect(new Set(cards.map((c) => c.x)).size).toBe(1);
+    for (const f of frames) {
+      expect(f.texts).toHaveLength(2);
+      for (const pl of m.placed) {
+        const face = faceBox(m, f.motions, f.k, pl);
+        for (const t of f.texts) expect(overlap(textBoxOf(t), face) / (face.w * face.h)).toBeLessThan(CARD.face);
+      }
+    }
+  });
 });
 
 describe("vektör sahne: makro ek çekim", () => {
@@ -1567,7 +1596,12 @@ describe("vektör sahne: makro ek çekim", () => {
     const macro = c.querySelector('[data-macro="phone"]') as HTMLElement;
     expect(macro).not.toBeNull();
     expect(macro.querySelector("[data-screen]")!.innerHTML).toContain("print");
-    expect([...c.querySelectorAll("div")].some((d) => d.style.filter.startsWith(`blur(${MACRO.blur.toFixed(2)}px)`))).toBe(true);
+    // Bulanıklık ekran px'i: ölçeklenen kamera div'inde kameranın ölçeğine bölünür (filtre ölçekle büyür).
+    const blurred = [...c.querySelectorAll("div")].find((d) => d.style.filter.startsWith("blur("))!;
+    const px = Number(/blur\(([\d.]+)px\)/.exec(blurred.style.filter)![1]);
+    const scale = Number(/ scale\(([\d.]+)\) translateX/.exec(blurred.style.transform)![1]);
+    expect(scale).toBeGreaterThan(1.5);
+    expect(px * scale).toBeCloseTo(MACRO.blur, 1);
     cleanup();
     const start = scene(props, { frame: 0 });
     expect(start.querySelector("[data-macro]")).toBeNull();
