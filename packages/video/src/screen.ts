@@ -94,6 +94,19 @@ export function shapesOf(svg: string): { vb: [number, number, number, number]; s
   return { vb: vb as [number, number, number, number], shapes };
 }
 
+/**
+ * Çizimin görünen tabanı (viewBox'ın y'si): düz dolgulu şekillerin en altı; degrade dolgulu gölge ve parlamalar sayılmaz
+ * (Commons'tan dizüstü: radyal gölgesi kutunun %96'sına, kasası %91'ine iniyor). Düz dolgu yoksa bütün şekillerin, şekil
+ * yoksa viewBox'ın altı; viewBox okunamazsa undefined.
+ */
+export function drawnBottom(svg: string): { vb: [number, number, number, number]; bottom: number } | undefined {
+  const found = shapesOf(svg);
+  if (!found) return undefined;
+  const plain = found.shapes.filter((s) => plainFill(s.fill));
+  const pick = plain.length ? plain : found.shapes;
+  return { vb: found.vb, bottom: pick.length ? Math.max(...pick.map((s) => s.y + s.h)) : found.vb[1] + found.vb[3] };
+}
+
 /** Çizimin ekranı (viewBox koordinatında): id'si "screen" olan öğe, yoksa çerçevesinin içindeki en büyük dikdörtgensi şekil. */
 export function screenOf(svg: string): ScreenRect | undefined {
   const found = shapesOf(svg);

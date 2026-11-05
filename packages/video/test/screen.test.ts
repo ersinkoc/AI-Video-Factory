@@ -1,6 +1,6 @@
 import { VectorAsset, VectorScreen } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { luminance, SCREEN_LINES, SCREEN_READ, screenBox, screenFor, screenOf, screenSvg } from "../src/screen.ts";
+import { drawnBottom, luminance, SCREEN_LINES, SCREEN_READ, screenBox, screenFor, screenOf, screenSvg } from "../src/screen.ts";
 
 // Monitör: kasa (dış dikdörtgen), ekran (içinde, koyu), altta ayak.
 const MONITOR = `<svg viewBox="0 0 200 180"><rect x="0" y="0" width="200" height="140" rx="10" fill="#ddd"/><rect x="20" y="15" width="160" height="105" rx="6" fill="#1b2430"/><rect x="40" y="30" width="20" height="10" fill="#fff"/><rect x="80" y="140" width="40" height="40" fill="#999"/></svg>`;
@@ -50,6 +50,13 @@ describe("ekranın bulunması", () => {
     // 400×180 kutuda çizim 200×180 boyunda kalır (k = 1), 100 px sağa ortalanır.
     expect(screenBox(MONITOR, rect, 400, 180)).toEqual({ x: 120, y: 15, w: 160, h: 105, k: 1 });
     expect(screenBox(MONITOR, rect, 100, 90)).toEqual({ x: 10, y: 7.5, w: 80, h: 52.5, k: 0.5 });
+  });
+
+  it("çizimin görünen tabanı: düz dolgulu şekillerin en altı (degrade gölge sayılmaz); yoksa bütün şekillerin, şekil yoksa viewBox'ın altı", () => {
+    expect(drawnBottom('<svg viewBox="0 0 100 100"><rect width="100" height="80" fill="#888"/><ellipse cx="50" cy="95" rx="50" ry="5" fill="url(#g)"/></svg>')).toEqual({ vb: [0, 0, 100, 100], bottom: 80 });
+    expect(drawnBottom('<svg viewBox="0 0 100 100"><ellipse cx="50" cy="90" rx="50" ry="5" fill="url(#g)"/></svg>')!.bottom).toBe(95);
+    expect(drawnBottom('<svg viewBox="0 10 100 100"></svg>')!.bottom).toBe(110);
+    expect(drawnBottom("<svg/>")).toBeUndefined();
   });
 });
 

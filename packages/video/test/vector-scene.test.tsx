@@ -40,7 +40,7 @@ const { BURST } = await import("../src/staging.ts");
 const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -1697,6 +1697,15 @@ describe("vektör sahne: makro ek çekim", () => {
   const prop = (i: number) => i !== 2;
   const person = (i: number) => i === 2;
 
+  it("görünen taban kutunun hangi yüksekliğinde: oranı korunan çizim kutuda ortalanır; ölçülemeyen çizimde kutunun altı", () => {
+    const gappy = asset("gappy-b", "prop", '<svg viewBox="0 0 100 100"><rect width="100" height="80" fill="#888888"/></svg>', 100, 100);
+    expect(baseShare(gappy, 100, 100)).toBeCloseTo(0.8);
+    expect(baseShare(gappy, 200, 100)).toBeCloseTo(0.8);
+    // Uzun kutuda çizim (100 px) ortada: 50 px üst boşluk + 80.
+    expect(baseShare(gappy, 100, 200)).toBeCloseTo(0.65);
+    expect(baseShare(asset("bare", "prop", "<svg/>", 10, 10), 10, 10)).toBe(1);
+  });
+
   it("yönetmen yakın çekimde odağını küçük nesneye koyduysa makro olur; yüze, geniş çekime, büyük nesneye, yüzeye değil", () => {
     expect(macroOf(shot(), [chip, face], cam, true, 1, prop, person)).toBe(1);
     // Odak verilmemişse karenin ortası.
@@ -1737,6 +1746,21 @@ describe("vektör sahne: makro ek çekim", () => {
     expect(box.w / box.h).toBeCloseTo(4, 6);
     expect(Math.sqrt(box.w * box.h)).toBeCloseTo(MACRO.target * 1080, 6);
     expect(frame(150, false).macroView).toBeUndefined();
+    // Çek masada: masanın üst şeridi aynı büyütmeyle altında, üstü çekin tabanında; şerit tabanın iki yanına uzanır.
+    const { surface } = end.macroView!;
+    expect(surface!.asset.id).toBe("desk");
+    expect(surface!.box.y).toBeCloseTo(box.y + box.h, 6);
+    expect(surface!.box.w / box.w).toBeCloseTo(model.placed.find((p) => p.index === 0)!.width / model.placed.find((p) => p.index === 1)!.width, 6);
+    expect(surface!.clip.x + surface!.clip.w / 2).toBeCloseTo(960, 6);
+    expect(surface!.clip.w).toBeCloseTo(2 * box.w * MACRO.spread, 6);
+    // Çizimin görünen tabanı kutunun altında değilse (degrade gölge sayılmaz) yüzey o kadar yukarıda.
+    const gappy = asset("gappy", "prop", '<svg viewBox="0 0 400 100"><rect width="400" height="80" fill="#888888"/><ellipse cx="200" cy="95" rx="200" ry="5" fill="url(#shade)"/></svg>', 400, 100, { realHeight: 0.04 });
+    const lifted = shotModel(shot({ layers: [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "gappy", x: 700, on: 0 }, { asset: "hero", x: 1300, depth: 0.4 }] }), { ...ASSETS, gappy }, "outline", 1920, 1080, false, 10);
+    const lv = shotFrame(lifted, { shotId: "s1", frame: 150, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).macroView!;
+    expect(lv.surface!.box.y).toBeCloseTo(lv.box.y + lv.box.h * 0.8, 6);
+    // Elde tutulan nesnenin yüzeyi yok.
+    const held = shotModel(shot({ layers: [{ asset: "hero", x: 700, depth: 0.4 }, { asset: "check", x: 700, heldBy: 0 }], key: 1 }), ASSETS, "outline", 1920, 1080, false, 10);
+    expect(held.macro === undefined || shotFrame(held, { shotId: "s1", frame: 150, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).macroView!.surface === undefined).toBe(true);
     // Giriş animasyonu bitmeden açılmaz; dik telefon da oranını korur.
     const entering = shotModel(shot({ layers: [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "phone", x: 700, on: 0, anims: [{ type: "pop", start: 0, end: 0.3 }] }] }), ASSETS, "outline", 1920, 1080, false, 10);
     const at = (n: number) => shotFrame(entering, { shotId: "s1", frame: n, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).macroView!;
@@ -1744,7 +1768,8 @@ describe("vektör sahne: makro ek çekim", () => {
     expect(at(140).q).toBeGreaterThan(0);
     const tall = at(200).box;
     expect(tall.h / tall.w).toBeCloseTo(1.8, 6);
-    expect(Math.sqrt(tall.w * tall.h)).toBeCloseTo(MACRO.target * 1080, 6);
+    // Dik telefon karenin yüksekliğine sığar (maxH).
+    expect(tall.h).toBeCloseTo(MACRO.maxH * 1080, 6);
     // Haritada ve Manim tahtalı çekimde yok.
     expect(shotModel(spec, ASSETS, "outline", 1920, 1080, true, 10).macro).toBeUndefined();
   });
@@ -1755,6 +1780,11 @@ describe("vektör sahne: makro ek çekim", () => {
     const c = scene(props, { frame: 150 });
     const macro = c.querySelector('[data-macro="phone"]') as HTMLElement;
     expect(macro).not.toBeNull();
+    // Telefonun altında masanın şeridi: önce çizilir, kenarları karışır, telefonla birlikte belirir.
+    const strip = c.querySelector('[data-macro-surface="desk"]') as HTMLElement;
+    expect(strip.style.opacity).toBe("1");
+    expect(strip.style.overflow).toBe("hidden");
+    expect(c.innerHTML.indexOf("data-macro-surface")).toBeLessThan(c.innerHTML.indexOf('data-macro="phone"'));
     expect(macro.querySelector("[data-screen]")!.innerHTML).toContain("print");
     // Bulanıklık ekran px'i: ölçeklenen kamera div'inde kameranın ölçeğine bölünür (filtre ölçekle büyür).
     const blurred = [...c.querySelectorAll("div")].find((d) => d.style.filter.startsWith("blur("))!;

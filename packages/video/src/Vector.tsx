@@ -39,7 +39,7 @@ import {
 import { useMemo, type CSSProperties, type ReactElement } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
-import { screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
+import { drawnBottom, screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
 import { cameraDrift, depthOfField, lensScale, motionBlur, screenGlow } from "./lens.ts";
 import { keyLight, lightOf } from "./light.ts";
 import { visualVector } from "./entrance.ts";
@@ -2678,14 +2678,28 @@ function PropView({ asset, w, h, prefix, screen, person }: { asset: VectorAsset;
 }
 
 /** Makro ek çekimin nesnesi: o anki kutusunda, altında ilerledikçe koyulaşan yumuşak gölge. */
-function Macro({ asset, box, q, screen, person, prefix }: NonNullable<ShotFrame["macroView"]> & { prefix: string }) {
+function Macro({ asset, box, q, screen, person, surface, prefix }: NonNullable<ShotFrame["macroView"]> & { prefix: string }) {
+  // Yüzey şeridi: kenarları ve altı bulanık sahneye yumuşakça karışır.
+  const fade = "linear-gradient(to right, transparent, #000 22%, #000 78%, transparent), linear-gradient(to bottom, #000 45%, transparent)";
   return (
-    <div
-      data-macro={asset.id}
-      style={{ position: "absolute", left: box.x, top: box.y, width: box.w, height: box.h, filter: `drop-shadow(0 ${(24 * q).toFixed(1)}px ${(30 * q).toFixed(1)}px rgba(0,0,0,${(0.45 * q).toFixed(2)}))` }}
-    >
-      <PropView asset={asset} w={box.w} h={box.h} prefix={prefix} screen={screen} person={person} />
-    </div>
+    <>
+      {surface && (
+        <div
+          data-macro-surface={surface.asset.id}
+          style={{ position: "absolute", left: surface.clip.x, top: surface.clip.y, width: surface.clip.w, height: surface.clip.h, overflow: "hidden", opacity: q, maskImage: fade, maskComposite: "intersect", WebkitMaskImage: fade, WebkitMaskComposite: "source-in" }}
+        >
+          <div style={{ position: "absolute", left: surface.box.x - surface.clip.x, top: surface.box.y - surface.clip.y }}>
+            <PropView asset={surface.asset} w={surface.box.w} h={surface.box.h} prefix={`${prefix}sf-`} />
+          </div>
+        </div>
+      )}
+      <div
+        data-macro={asset.id}
+        style={{ position: "absolute", left: box.x, top: box.y, width: box.w, height: box.h, filter: `drop-shadow(0 ${(24 * q).toFixed(1)}px ${(30 * q).toFixed(1)}px rgba(0,0,0,${(0.45 * q).toFixed(2)}))` }}
+      >
+        <PropView asset={asset} w={box.w} h={box.h} prefix={prefix} screen={screen} person={person} />
+      </div>
+    </>
   );
 }
 
@@ -2838,9 +2852,24 @@ export interface ShotModel {
  * olan nesne çekim sonunda √alanıyla kare yüksekliğinin below'undan küçükse: nesnenin girişi bittikten (en erken start sn)
  * sonra sec sn içinde arka plan blur px bulanıklaşır ve dim kadar kararır (netlik nesneye çekilir), nesne sahnedeki
  * yerinden büyüyerek karenin ortasına (y) gelir, √alanı target olur (en çok maxW × maxH). Balon açılmaz. Nesnenin girişi
- * çekimin late kesrinden sonra bitiyorsa makro yok (açılacak zaman kalmaz; inceleme karesi de ondan önce alınır).
+ * çekimin late kesrinden sonra bitiyorsa makro yok (açılacak zaman kalmaz; inceleme karesi de ondan önce alınır). Nesne
+ * bir yüzeyde duruyorsa yüzeyin aynı büyütmedeki çizimi altında görünür: nesnenin iki yanında genişliğinin spread katı,
+ * altında boyunun under katı, kenarları sahneye karışarak (5 Kas inceleme: makro çekimlerde "dizüstü küçük, ortada
+ * havada süzülüyor"; target 0,45'ten büyüdü).
  */
-export const MACRO = { below: 0.25, target: 0.45, focus: 0.8, late: 0.6, start: 0.3, sec: 0.7, blur: 10, dim: 0.25, y: 0.54, maxW: 0.72, maxH: 0.66 } as const;
+export const MACRO = { below: 0.25, target: 0.6, focus: 0.8, late: 0.6, start: 0.3, sec: 0.7, blur: 10, dim: 0.25, y: 0.52, maxW: 0.72, maxH: 0.66, spread: 0.95, under: 0.4 } as const;
+
+const bottoms = new WeakMap<VectorAsset, ReturnType<typeof drawnBottom> | null>();
+
+/** Çizimin w × h kutuda ("meet") görünen tabanının kutu yüksekliğine oranı (drawnBottom; ölçülemezse 1). */
+export function baseShare(asset: VectorAsset, w: number, h: number): number {
+  let b = bottoms.get(asset);
+  if (b === undefined) bottoms.set(asset, (b = drawnBottom(asset.svg) ?? null));
+  if (!b) return 1;
+  const [, vy, vw, vh] = b.vb;
+  const k = Math.min(w / vw, h / vh);
+  return Math.min(1, ((h - vh * k) / 2 + (b.bottom - vy) * k) / h);
+}
 
 /** Katmanın giriş animasyonları: makro nesne girişini bitirmeden açılmaz. */
 const ENTRANCE_ANIMS = new Set<VectorAnimType>(["fade_in", "pop", "slide_in", "draw_on"]);
@@ -2975,8 +3004,11 @@ export interface ShotFrame {
   texts: ReturnType<typeof layoutTexts>;
   drawnAt: Map<number, PlacedLayer>;
   inset?: { asset: VectorAsset; target: [number, number]; at: [number, number]; screen?: VectorScreen; person?: ScreenPerson; from?: number };
-  /** Makro ek çekim: nesnenin o anki kutusu (ekran px) ve ilerleme (0–1: arka planın bulanıklığı). */
-  macroView?: { asset: VectorAsset; box: Box; q: number; screen?: VectorScreen; person?: ScreenPerson };
+  /**
+   * Makro ek çekim: nesnenin o anki kutusu (ekran px) ve ilerleme (0–1: arka planın bulanıklığı); nesne bir yüzeyde
+   * duruyorsa yüzeyin aynı büyütmedeki çizimi (box) ve görünen şeridi (clip).
+   */
+  macroView?: { asset: VectorAsset; box: Box; q: number; screen?: VectorScreen; person?: ScreenPerson; surface?: { asset: VectorAsset; box: Box; clip: Box } };
   /** Bu karede açık konuşma/düşünce balonları (ekran px; bubble.ts). */
   bubbles: BubbleView[];
 }
@@ -3215,7 +3247,25 @@ export function shotFrame(
     const mix = (a: number, b: number) => a + (b - a) * q;
     const box = { x: mix(x0, W / 2 - w / 2), y: mix(y0, MACRO.y * H - h / 2), w: mix(x1 - x0, w), h: mix(y1 - y0, h) };
     const person = screenPersonOf(safe, layer.screen?.person);
-    return { asset: safe[layer.asset]!, box, q, ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}) };
+    // Nesne bir yüzeyde (masa) duruyorsa yüzeyin üst şeridi aynı büyütmeyle altında: dizüstü havada süzülmez (5 Kas
+    // inceleme: makro çekimlerde "dizüstü küçük, ortada havada"). Başta gerçek yerinde, nesneyle birlikte büyür.
+    const surface = (() => {
+      const on = layer.on === undefined ? undefined : drawnAt.get(layer.on);
+      if (!on) return undefined;
+      const s = motions.get(on.index)!.tr;
+      const f = box.w / (at.width * tr.scale);
+      const [bx, by] = [box.x + box.w / 2, box.y + box.h];
+      const [px, py] = [at.x + tr.x, at.y + tr.y];
+      const sw = on.width * s.scale;
+      const sh = on.height * s.scale;
+      // Çizimin görünen tabanı kutunun altında değilse (Commons çizimlerinde boşluk) yüzey o kadar yukarı alınır: sahnede
+      // birkaç px'lik boşluk büyütmede nesneyi yüzeyin üstünde asılı gösteriyordu.
+      const lift = box.h - box.h * baseShare(safe[layer.asset]!, box.w, box.h);
+      const sbox = { x: bx + (on.x + s.x - sw / 2 - px) * f, y: by - lift + (on.y + s.y - sh - py) * f, w: sw * f, h: sh * f };
+      const clip = { x: bx - box.w * MACRO.spread, y: by - lift - box.h * 0.15, w: 2 * box.w * MACRO.spread, h: box.h * (0.15 + MACRO.under) };
+      return { asset: safe[spec.layers[on.index]!.asset]!, box: sbox, clip };
+    })();
+    return { asset: safe[layer.asset]!, box, q, ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}), ...(surface ? { surface } : {}) };
   })();
   // Büyütme balonu: anlatılan küçük nesne yuvarlak pencerede büyük; yüzleri ve yazıları örtmeyen yerde. Makro varsa
   // nesne zaten büyük: balon açılmaz (inceleme: "balon aynı nesneyi tekrar ediyor").
