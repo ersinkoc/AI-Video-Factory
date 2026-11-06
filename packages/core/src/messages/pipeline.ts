@@ -161,6 +161,27 @@ export const PIPELINE_MESSAGES = {
     tr: "  ⚠ taslak kareler çıkarılamadı, taslak denetimi atlandı: {reason}",
     en: "  ⚠ draft frames could not be extracted, draft review skipped: {reason}",
   },
+  "log.draft.recheck": {
+    tr: "  son kontrol (tur {round}): {scenes} sahnesinin yeni kareleri denetleniyor",
+    en: "  final check (round {round}): reviewing the new frames of scene {scenes}",
+  },
+  "log.draft.kept": { tr: "  {scene}: yeni plan kaldı ({before} → {after}/10)", en: "  {scene}: new plan kept ({before} → {after}/10)" },
+  "log.draft.reverted": {
+    tr: "  {scene}: yeni plan daha kötü ({before} → {after}/10), eski plan geri alındı",
+    en: "  {scene}: new plan scored lower ({before} → {after}/10), the previous plan is back",
+  },
+  "log.draft.recheckSkipped": {
+    tr: "  ⚠ son kontrol yapılamadı, yeni planlar olduğu gibi kaldı: {error}",
+    en: "  ⚠ final check could not run, the new plans stay as they are: {error}",
+  },
+  "log.draft.final": {
+    tr: "  son kontrol: ortalama {avg}/10, {kept} sahnenin yeni planı kaldı",
+    en: "  final check: average {avg}/10, new plan kept for {kept} scenes",
+  },
+  "log.replan.checked": {
+    tr: "  son kontrol: yeniden planlanan {n} kare, ortalama {avg}/10",
+    en: "  final check: {n} re-planned frames, average {avg}/10",
+  },
   "log.draft.summary": {
     tr: "  taslak: {frames} kare, ortalama {avg}/10; yeniden planlanacak sahne: {scenes}",
     en: "  draft: {frames} frames, average {avg}/10; scenes to replan: {scenes}",

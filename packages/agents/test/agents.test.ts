@@ -351,6 +351,14 @@ describe("vektör ajanları", () => {
     expect(b.prompt).toContain("Fix these problems in your new plan:\nyazılar üst üste");
     // Sistem talimatı düzeltme notundan bağımsız (önek önbelleği).
     expect(b.system).not.toContain("yazılar üst üste");
+    expect(b.images).toEqual([]);
+    expect(b.prompt).not.toContain("attached images");
+    // Yeniden planlarken taslak kareler görsel olarak gider, istem onları çekim sırasıyla anlatır.
+    const frame = { data: new Uint8Array([1, 2, 3]), mimeType: "image/jpeg" };
+    const seen = await capture((d) => vectorDirector({ ...input, feedback: "boş duvar", images: [frame, frame] }, style, d));
+    expect(seen.images).toHaveLength(2);
+    expect(seen.prompt).toContain("The attached images are that draft, one frame per shot in order (shot 1 first)");
+    expect(seen.prompt).toContain("Fix these problems in your new plan:\nboş duvar");
     expect(a.system).toContain("the narrator is off-screen");
     // Ekrandaki sunucu: varlık listesinde işaretli, anlatımı o konuşur.
     const p = await capture((d) => vectorDirector({ ...input, presenter: "c1" }, style, d));

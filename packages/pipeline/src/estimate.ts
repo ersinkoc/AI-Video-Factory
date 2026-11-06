@@ -1,4 +1,4 @@
-import { msg, SET_PIECES, type Capability, type Msg, type Text } from "@ys/core";
+import { DRAFT_REVIEW, msg, SET_PIECES, type Capability, type Msg, type Text } from "@ys/core";
 import { billing, rankProviders, type GenerationRequest, type ProviderAdapter } from "@ys/media-gateway";
 import { gateBefore, isApproved, motionModeOf, STAGES, type EpisodeState, type MotionMode, type Stage } from "./state.ts";
 import { SHORT } from "./short.ts";
@@ -57,7 +57,7 @@ const QA = { usd: 0.0012, ms: 3_000, redrawRate: 0.45 };
  * sahne yönetmeni ~$0.14/sahne (10 dk bölümde ~$0.04); ikisinin arası alındı. Üçüncü ölçüm (30 Eki, Pony Express, referans
  * görselli): karakter ilk çizimi (Opus) $0.10–0.21, ort. ~$0.15; mekân (Sonnet) ~$0.04; kapı denetimi çizim başı ~$0.002.
  */
-const VECTOR = { characterUsd: 0.15, backgroundUsd: 0.04, assetSec: 30, sceneUsd: 0.1, sceneSec: 36, propUsd: 0.017, propSec: 12, propsPerScene: 2, renderX: 1.9, reviseRate: 0.4 };
+const VECTOR = { characterUsd: 0.15, backgroundUsd: 0.04, assetSec: 30, sceneUsd: 0.1, sceneSec: 36, propUsd: 0.017, propSec: 12, propsPerScene: 2, renderX: 1.9, reviseRate: 0.4, retryRate: 0.5 };
 
 /**
  * Kalite kapısı (30 Eki): her SVG kullanılmadan önce iki ucuz görsel çağrıyla (kör tahmin + kapı, Haiku) denetlenir;
@@ -313,18 +313,24 @@ export function estimateEpisode(state: EpisodeState, ctx: EstimateContext, modeO
         basis: msg("cost.basis.reverseViews", { max: REVERSE.max, usd: REVERSE_VIEW.drawUsd }),
       });
     }
-    // Render öncesi taslak denetimi: her çekime bir kare + ucuz eleştiri, sorunlu sahneler bir kez yeniden planlanır.
+    // Render öncesi taslak denetimi: her çekime bir kare + ucuz eleştiri, sorunlu sahneler yeniden planlanır; her turdan
+    // sonra yeniden planlanan sahnelerin kareleri yeniden denetlenir (son kontrol). İkinci tura kötü kalanların retryRate'i.
     const draftBatches = Math.ceil(shotCount / REVIEW.perBatch);
-    const replans = Math.ceil(scenes * VECTOR.reviseRate);
+    const replans = Math.ceil(scenes * VECTOR.reviseRate) * (1 + (DRAFT_REVIEW.rounds - 1) * VECTOR.retryRate);
+    const rechecked = Math.ceil((replans * shotCount) / Math.max(1, scenes));
+    const rechecks = Math.ceil(rechecked / REVIEW.perBatch);
     add({
       stage: "keyframes",
       providerId: "claude",
       via: msg("cost.via.draftReview"),
       quantity: shotCount,
       unit: msg("unit.frame"),
-      costUsd: draftBatches * REVIEW.batchUsd + replans * VECTOR.sceneUsd,
-      seconds: shotCount * REVIEW.stillSec + Math.ceil(draftBatches / PARALLEL) * REVIEW.batchSec + Math.ceil(replans / PARALLEL) * VECTOR.sceneSec,
-      basis: msg("cost.basis.draft", { pct: Math.round(VECTOR.reviseRate * 100) }),
+      costUsd: (draftBatches + rechecks) * REVIEW.batchUsd + replans * VECTOR.sceneUsd,
+      seconds:
+        (shotCount + rechecked) * REVIEW.stillSec +
+        (Math.ceil(draftBatches / PARALLEL) + Math.ceil(rechecks / PARALLEL)) * REVIEW.batchSec +
+        Math.ceil(replans / PARALLEL) * VECTOR.sceneSec,
+      basis: msg("cost.basis.draft", { pct: Math.round(VECTOR.reviseRate * 100), rounds: DRAFT_REVIEW.rounds }),
     });
   }
 

@@ -245,6 +245,35 @@ export const firstLine = (e: unknown): Text => {
   return msg(t.key, Object.fromEntries(params));
 };
 
+/** Sahnenin denetlenen karelerinin ortalama puanı; hiçbiri denetlenmediyse undefined. */
+export function sceneScore(review: EpisodeReview, shots: { id: string }[]): number | undefined {
+  const scores = shots.flatMap((s) => (review.shots[s.id] ? [review.shots[s.id]!.score] : []));
+  return scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : undefined;
+}
+
+/** Kodun yaptığı yerleşim düzeltmeleri, çekim başına: yönetmene söylenir (bir dahaki planda kendisi doğru versin). */
+function layoutFixes(timeline: Timeline, assets: Record<string, VectorAsset>): Map<string, string[]> {
+  const fixes = new Map<string, string[]>();
+  for (const v of timeline.visuals) {
+    if (!v.vector) continue;
+    const notes = resolveLayout(v.vector, assets).flatMap((p) => p.fixes.map((f) => `layer ${p.index}: ${f}`));
+    if (notes.length) fixes.set(v.shotId, notes);
+  }
+  return fixes;
+}
+
+/** Taslak düzeltme isteği: çekim başına bulgular ve kod düzeltmeleri, ardından atılan önceki denemelerin sonucu. */
+function draftFeedback(shots: { id: string }[], review: EpisodeReview, fixes: Map<string, string[]>, tried: string[] = []): string {
+  const lines = shots
+    .map((s, n) => {
+      const r = review.shots[s.id];
+      const notes = [...(r?.issues ?? []).map((i) => `${i.type}: ${i.detail}`), ...(fixes.get(s.id) ?? []).map((f) => `code had to fix: ${f}`)];
+      return notes.length ? `- shot ${n + 1} (score ${r?.score ?? "?"}): ${notes.join("; ")}` : "";
+    })
+    .filter(Boolean);
+  return [...lines, ...tried].join("\n");
+}
+
 /** Metinleri tek metinde birleştirir (her biri seçili dilde biçimlenir); `key` ayırıcıyı belirler. */
 export const joinTexts = (items: Text[], key: "log.join.line" | "log.join.indented"): Text =>
   items.reduce((a, b) => msg(key, { a, b }));
@@ -1263,6 +1292,7 @@ export class EpisodePipeline {
     durationSec: number,
     lessons: string[],
     feedback?: string,
+    images: AgentImage[] = [],
   ): Promise<ShotPlanOut["scenes"][number]["shots"]> {
     const { style, cast } = state;
     const props = (state.vectorProps ??= {});
@@ -1283,6 +1313,7 @@ export class EpisodePipeline {
           lang: state.input.lang,
           lessons,
           feedback,
+          ...(images.length ? { images } : {}),
           vertical: state.input.height > state.input.width,
           presenter: state.input.presenter && cast!.characters.find((c) => c.reuse === state.input.presenter)?.id,
         },
@@ -1398,10 +1429,12 @@ export class EpisodePipeline {
     timeline: Timeline,
     dir: string,
     known: string[],
+    /** Yalnız bu çekimler (son kontrol: yeniden planlanan sahneler); yoksa hepsi. */
+    only?: Set<string>,
   ): Promise<{ files: Record<string, string>; review: EpisodeReview; unreviewed?: Text }> {
     /* v8 ignore next -- iki çağıran da (taslak denetimi, inceleme) çekimleri önceden denetler */
-    const shots = state.shots ?? [];
-    const files = await this.renderShotStills(state, timeline, dir);
+    const shots = (state.shots ?? []).filter((s) => !only || only.has(s.id));
+    const files = await this.renderShotStills(state, timeline, dir, only);
     const subtitles = state.input.captions !== false;
     // Bölümün stili ve paleti: paketin bilerek seçtiği renkler (tek renkli, sepya) kusur sayılmasın.
     const style = state.style && { artStyle: state.style.artStyle, palette: state.style.palette };
@@ -1552,14 +1585,6 @@ export class EpisodePipeline {
       return;
     }
 
-    // Kodun yaptığı fizik düzeltmeleri de yönetmene söylenir (bir dahaki planda kendisi doğru versin).
-    const fixes = new Map<string, string[]>();
-    for (const v of timeline.visuals) {
-      if (!v.vector) continue;
-      const notes = resolveLayout(v.vector, assets).flatMap((p) => p.fixes.map((f) => `layer ${p.index}: ${f}`));
-      if (notes.length) fixes.set(v.shotId, notes);
-    }
-
     // Yalnız izleyicinin hemen fark edeceği bozukluklar; "dağınık", "konu dışı" gibi yargılar tek başına yeniden plan
     // gerektirmez (yeniden plan da çoğu zaman aynı puanı alıyordu).
     const severe = new Set(["character_floating", "text_on_subtitles", "backdrop_box", "character_cut_off", "empty"]);
@@ -1579,26 +1604,119 @@ export class EpisodePipeline {
     this.log(msg("log.draft.summary", { frames: scores.length, avg: avg.toFixed(1), scenes: scenesToFix.length }));
     state.draftReview = { ...review, avg, revisedScenes: scenesToFix.map((s) => s.id) };
     if (!scenesToFix.length) return;
+    await this.reviseRounds(state, scenesToFix, review, bad, book, dir, layoutFixes(timeline, assets));
+  }
 
-    await this.replanScenes(state, scenesToFix, topLessons(book, "director"), (shots) =>
-      shots
-        .map((s, n) => {
-          const r = review.shots[s.id];
-          const lines = [
-            ...(r?.issues ?? []).map((i) => `${i.type}: ${i.detail}`),
-            ...(fixes.get(s.id) ?? []).map((f) => `code had to fix: ${f}`),
-          ];
-          return lines.length ? `- shot ${n + 1} (score ${r?.score ?? "?"}): ${lines.join("; ")}` : "";
-        })
-        .filter(Boolean)
-        .join("\n"),
-    );
-    // Yeniden planlanan sahnelerin eski kareleri artık geçersiz: yeni planla yeniden çıkarılır.
-    const revised = new Set(scenesToFix.map((s) => s.id));
-    const redo = new Set(state.shots!.filter((s) => revised.has(s.sceneId)).map((s) => s.id));
-    const live = new Set(state.shots!.map((s) => s.id));
-    for (const id of Object.keys(/* v8 ignore next -- kareler yukarıda state.stills'e yazıldı */ state.stills ?? {})) if (redo.has(id) || !live.has(id)) delete state.stills![id];
-    await this.vectorPreviews(state, redo);
+  /**
+   * Taslak düzeltme turları ve render öncesi son kontrol (6 Kas, kullanıcı: "render öncesi son bir AI kontrolü; yeniden
+   * oluşturmayı daha iyi besleyelim"; yeniden planlanan sahneler bir daha denetlenmiyordu, kötüleşen plan geri alınmıyor,
+   * Stüdyodaki puanlar eski plana ait kalıyordu; yönetmen yalnız eleştiri metnini görüyordu). Her turda sahneler taslak
+   * kareleri ve bulgularıyla (önceki denemenin sonucu dahil) yeniden planlanır; yeni planın kareleri yeniden denetlenir;
+   * ortalama puanı düşen sahnenin eski planı, çekimleri ve kareleri geri gelir. Hâlâ kötü olanlar DRAFT_REVIEW.rounds
+   * tura kadar yeniden denenir. Son kontrol yapılamazsa yeni planlar olduğu gibi kalır.
+   */
+  private async reviseRounds(
+    state: EpisodeState,
+    first: NonNullable<EpisodeState["script"]>["scenes"],
+    review: EpisodeReview,
+    bad: (shotId: string) => boolean,
+    book: Awaited<ReturnType<typeof loadLessons>>,
+    dir: string,
+    firstFixes: Map<string, string[]>,
+  ): Promise<void> {
+    const script = state.script!;
+    const known = book.lessons.map((l) => l.rule);
+    const tried = new Map<string, string[]>();
+    const kept = new Set<string>();
+    let fixes = firstFixes;
+    let toFix = first;
+    for (let round = 1; toFix.length; round++) {
+      const before = new Map(
+        toFix.map((sc) => {
+          const shots = state.shots!.filter((s) => s.sceneId === sc.id);
+          return [sc.id, { plan: structuredClone(state.shotPlan!.scenes.find((e) => e.sceneId === sc.id)?.shots), shots: structuredClone(shots), score: sceneScore(review, shots) }];
+        }),
+      );
+      await this.replanScenes(
+        state,
+        toFix,
+        topLessons(book, "director"),
+        (shots, scene) => draftFeedback(shots, review, fixes, tried.get(scene.id)),
+        (shots) => this.stillImages(state, shots),
+      );
+      // Son kontrol: yalnız yeniden planlanan sahnelerin yeni kareleri.
+      const redo = new Set(state.shots!.filter((s) => before.has(s.sceneId)).map((s) => s.id));
+      this.log(msg("log.draft.recheck", { round, scenes: toFix.map((s) => s.id).join(", ") }));
+      const assets = await this.vectorAssets(state, "keyframes");
+      const timeline = withSets(buildTimeline(state, (key) => key, assets), state);
+      let check: Awaited<ReturnType<typeof this.critiqueShots>> | undefined;
+      try {
+        check = await this.critiqueShots(state, "keyframes", timeline, dir, known, redo);
+      } catch (e) {
+        this.log(msg("log.draft.recheckSkipped", { error: firstLine(e) }));
+      }
+      if (!check || check.unreviewed) {
+        if (check?.unreviewed) this.log(msg("log.draft.recheckSkipped", { error: check.unreviewed }));
+        for (const sc of toFix) kept.add(sc.id);
+        await this.vectorPreviews(state, redo);
+        break;
+      }
+      const reverted = new Set<string>();
+      for (const sc of toFix) {
+        const old = before.get(sc.id)!;
+        const now = state.shots!.filter((s) => s.sceneId === sc.id);
+        const after = sceneScore(check.review, now);
+        // Düzeltmeye seçilen sahnenin en az bir denetlenmiş (kötü) karesi var: eski puan hep bilinir.
+        const was = old.score!.toFixed(1);
+        const is = after === undefined ? "?" : after.toFixed(1);
+        if (after !== undefined && after < old.score!) {
+          // Geri al: eski plan ve çekimler; eski kareleri ve incelemesi hiç silinmedi.
+          reverted.add(sc.id);
+          state.shotPlan!.scenes.find((e) => e.sceneId === sc.id)!.shots = old.plan!;
+          const issues = now.flatMap((s, n) => (check.review.shots[s.id]?.issues ?? []).map((i) => `shot ${n + 1} ${i.type}: ${i.detail}`));
+          tried.set(sc.id, [
+            ...(tried.get(sc.id) ?? []),
+            `An earlier re-plan scored ${is} against the current plan's ${was} and was discarded. It planned: ${now.map((s, n) => `shot ${n + 1}: ${s.description}`).join(" | ")}.${issues.length ? ` Its problems: ${issues.join("; ")}.` : ""} Take a different approach.`,
+          ]);
+          this.log(msg("log.draft.reverted", { scene: sc.id, before: was, after: is }));
+          continue;
+        }
+        kept.add(sc.id);
+        for (const s of old.shots) delete review.shots[s.id];
+        for (const s of now) {
+          const r = check.review.shots[s.id];
+          if (r) review.shots[s.id] = r;
+        }
+        const ids = new Set(now.map((s) => s.id));
+        await this.storeStills(state, Object.fromEntries(Object.entries(check.files).filter(([id]) => ids.has(id))));
+        this.log(msg("log.draft.kept", { scene: sc.id, before: was, after: is }));
+      }
+      if (reverted.size) {
+        state.shots = script.scenes.flatMap((sc) => (reverted.has(sc.id) ? before.get(sc.id)!.shots : state.shots!.filter((s) => s.sceneId === sc.id)));
+      }
+      // Ölen çekimlerin kareleri silinir.
+      const live = new Set(state.shots!.map((s) => s.id));
+      for (const id of Object.keys(state.stills!)) if (!live.has(id)) delete state.stills![id];
+      for (const id of Object.keys(review.shots)) if (!live.has(id)) delete review.shots[id];
+      await this.save(state);
+      if (round >= DRAFT_REVIEW.rounds) break;
+      fixes = layoutFixes(timeline, assets);
+      toFix = toFix.filter((sc) => state.shots!.some((s) => s.sceneId === sc.id && bad(s.id)));
+    }
+    const scores = Object.values(review.shots).map((s) => s.score);
+    const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+    state.draftReview = { ...review, avg, revisedScenes: script.scenes.filter((sc) => kept.has(sc.id)).map((sc) => sc.id) };
+    this.log(msg("log.draft.final", { avg: avg.toFixed(1), kept: kept.size }));
+  }
+
+  /** Çekimlerin depodaki taslak kareleri, sırayla (yönetmene görsel olarak verilir); karesi olmayan atlanır. */
+  private async stillImages(state: EpisodeState, shots: PlannedShotState[]): Promise<AgentImage[]> {
+    const out: AgentImage[] = [];
+    for (const s of shots) {
+      const still = state.stills?.[s.id];
+      if (still) out.push({ data: await this.bytes(still.key), mimeType: still.mimeType });
+    }
+    return out;
   }
 
   /**
@@ -1619,7 +1737,8 @@ export class EpisodePipeline {
       delete state.review?.shots[s.id];
       delete state.draftReview?.shots[s.id];
     }
-    await this.replanScenes(state, scenes, topLessons(await loadLessons(this.deps.store), "director"), (shots, scene) => {
+    const book = await loadLessons(this.deps.store);
+    await this.replanScenes(state, scenes, topLessons(book, "director"), (shots, scene) => {
       const ask = asks[scene.id]!;
       const plan = shots.map((s, n) => `- shot ${n + 1}${ask.shots.includes(s.id) ? " (pointed at)" : ""}: ${s.description}`).join("\n");
       const asked = [
@@ -1629,11 +1748,39 @@ export class EpisodePipeline {
         "Keep what works and is not mentioned. To change how an existing prop, background or map looks, give it under a new id with a new description (an existing id keeps its old drawing).",
       ].filter(Boolean);
       return asked.join("\n");
-    });
+    }, (shots) => this.stillImages(state, shots));
     delete state.replans;
     await this.restageMissing(state);
     state.stills = {};
     await this.vectorPreviews(state);
+    if (state.input.qa !== false) await this.checkReplanned(state, new Set(scenes.map((s) => s.id)), book);
+  }
+
+  /**
+   * Yapımcının notuyla yeniden planlanan sahnelerin son kontrolü: yeni kareleri denetlenir, puanları taslak incelemesine
+   * yazılır (Stüdyo yeni planın puanını gösterir, "zayıf çekimleri seç" doğru çalışır). Not geri alınmaz, otomatik
+   * yeniden plan yapılmaz. Denetim yapılamazsa üretim sürer.
+   */
+  private async checkReplanned(state: EpisodeState, sceneIds: Set<string>, book: Awaited<ReturnType<typeof loadLessons>>): Promise<void> {
+    const redo = new Set(state.shots!.filter((s) => sceneIds.has(s.sceneId)).map((s) => s.id));
+    try {
+      const dir = await this.draftDir(state);
+      const timeline = withSets(buildTimeline(state, (key) => key, await this.vectorAssets(state, "keyframes")), state);
+      const { files, review, unreviewed } = await this.critiqueShots(state, "keyframes", timeline, dir, book.lessons.map((l) => l.rule), redo);
+      await this.storeStills(state, files);
+      if (unreviewed) {
+        this.log(msg("log.draft.recheckSkipped", { error: unreviewed }));
+        return;
+      }
+      const shots = { ...state.draftReview?.shots, ...review.shots };
+      const scores = Object.values(shots).map((s) => s.score);
+      const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+      state.draftReview = { at: review.at, lessons: state.draftReview?.lessons ?? [], revisedScenes: state.draftReview?.revisedScenes ?? [], shots, avg };
+      const mine = Object.values(review.shots).map((s) => s.score);
+      this.log(msg("log.replan.checked", { n: mine.length, avg: (mine.length ? mine.reduce((a, b) => a + b, 0) / mine.length : 0).toFixed(1) }));
+    } catch (e) {
+      this.log(msg("log.draft.recheckSkipped", { error: firstLine(e) }));
+    }
   }
 
   private async replanScenes(
@@ -1641,13 +1788,17 @@ export class EpisodePipeline {
     scenes: NonNullable<EpisodeState["script"]>["scenes"],
     lessons: string[],
     feedbackOf: (shots: PlannedShotState[], scene: NonNullable<EpisodeState["script"]>["scenes"][number]) => string,
+    /** Sahnenin taslak kareleri (yönetmen görsel olarak görür); yoksa yalnız metin. */
+    imagesOf?: (shots: PlannedShotState[]) => Promise<AgentImage[]>,
   ): Promise<void> {
     const script = state.script!;
     const voice = state.voice!;
     const durations = Object.fromEntries(script.scenes.map((s) => [s.id, (voice[s.id]?.durationMs ?? 0) / 1000]));
     await mapLimit(scenes, this.deps.concurrency ?? 3, async (scene) => {
-      const feedback = feedbackOf(state.shots!.filter((s) => s.sceneId === scene.id), scene);
-      const replanned = await this.planVectorScene(state, scene, /* v8 ignore next -- süreler senaryonun bütün sahnelerinden kurulur */ durations[scene.id] ?? 0, lessons, feedback);
+      const shots = state.shots!.filter((s) => s.sceneId === scene.id);
+      const feedback = feedbackOf(shots, scene);
+      const images = imagesOf ? await imagesOf(shots) : [];
+      const replanned = await this.planVectorScene(state, scene, /* v8 ignore next -- süreler senaryonun bütün sahnelerinden kurulur */ durations[scene.id] ?? 0, lessons, feedback, images);
       const entry = state.shotPlan!.scenes.find((s) => s.sceneId === scene.id);
       if (entry) entry.shots = replanned;
     });

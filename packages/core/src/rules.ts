@@ -48,6 +48,11 @@ export const DRAFT_REVIEW = {
   badAtMost: 4,
   /** En çok sahnelerin bu payı (en az 1) yeniden planlanır; en kötüden başlanır. */
   maxShare: 0.25,
+  /**
+   * Düzeltme turu: her turdan sonra yeniden planlanan sahnelerin kareleri yeniden denetlenir (render öncesi son kontrol),
+   * puanı düşen sahnenin eski planı geri gelir, hâlâ kötü olanlar bir sonraki turda yeniden denenir.
+   */
+  rounds: 2,
 } as const;
 
 /**

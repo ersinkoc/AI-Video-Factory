@@ -312,6 +312,11 @@ export interface VectorSceneInput {
   lessons?: string[];
   /** Taslak karelerin incelemesinden gelen, bu sahneye özel düzeltme istekleri. */
   feedback?: string;
+  /**
+   * Bu sahnenin taslak kareleri, çekim sırasıyla (6 Kas): yönetmen yeniden planlarken yalnız eleştiri metnini görüyordu,
+   * neyin yanlış durduğunu göremiyordu; yeniden plan çoğu zaman aynı puanı alıyordu.
+   */
+  images?: AgentImage[];
   /** Dikey (9:16) video: sahne ortadan kırpılır, kenarlar görünmez. */
   vertical?: boolean;
   /** Ekrandaki sunucunun kadro kimliği (karakter bankasından): anlatımı o konuşur. */
@@ -389,8 +394,11 @@ ${assets}
 Visual intent: ${input.scene.visualIntent}
 Narration: ${annotated}${
         // Düzeltme isteği kullanıcı isteminde: sistem talimatı sahneler arasında aynı kalsın (önek önbelleği bozulmasın).
-        input.feedback ? `\n\nA reviewer looked at the rendered draft of this scene. Fix these problems in your new plan:\n${input.feedback}` : ""
+        input.feedback
+          ? `\n\nA reviewer looked at the rendered draft of this scene.${input.images?.length ? " The attached images are that draft, one frame per shot in order (shot 1 first): look at what is wrong in them." : ""} Fix these problems in your new plan:\n${input.feedback}`
+          : ""
       }`,
+      ...(input.images?.length ? { images: input.images } : {}),
     },
     deps,
   );

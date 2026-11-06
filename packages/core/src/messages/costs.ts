@@ -135,8 +135,8 @@ export const COSTS_MESSAGES = {
     en: "estimate: new objects only; those already in the library are free",
   },
   "cost.basis.draft": {
-    tr: "tahmin: taslak kare eleştirisi + sahnelerin ~%{pct}'i yeniden planlanır",
-    en: "estimate: draft frame critique + ~{pct}% of scenes re-planned",
+    tr: "tahmin: taslak kare eleştirisi + sahnelerin ~%{pct}'i yeniden planlanır, her turdan sonra son kontrol (en çok {rounds} tur)",
+    en: "estimate: draft frame critique + ~{pct}% of scenes re-planned, a final check after each round (at most {rounds} rounds)",
   },
   "cost.basis.qa": {
     tr: "kare kontrolü: ~%{pct} yeniden çizim, ~${usd}/kontrol (ölçüm 30 Eki)",
