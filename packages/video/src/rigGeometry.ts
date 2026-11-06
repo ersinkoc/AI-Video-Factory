@@ -1,5 +1,6 @@
 import { RIG } from "@ys/core";
 import paper from "paper/dist/paper-core";
+import { luminance } from "./screen.ts";
 
 /**
  * Çizimin gerçek yüz geometrisi (3 Kas): iskelet dönme noktaları sabit ama tasarımcılar başı farklı yüksekliğe, ağzı
@@ -133,6 +134,8 @@ interface Shape {
   at: number;
   len: number;
   self: boolean;
+  /** Dolgu rengi (kendisinin ya da içinde bulunduğu grubun; renk değilse undefined). */
+  fill?: string;
 }
 
 function shapesOf(svg: string, rig: { width: number; height: number }): Shape[] {
@@ -141,7 +144,7 @@ function shapesOf(svg: string, rig: { width: number; height: number }): Shape[] 
   const [vx, vy, vw, vh] = box.length === 4 ? box : [0, 0, rig.width, rig.height];
   const k = Math.min(rig.width / vw!, rig.height / vh!);
   const root = new g.Matrix().translate((rig.width - vw! * k) / 2, (rig.height - vh! * k) / 2).scale(k).translate(-vx!, -vy!);
-  const stack: { matrix: paper.Matrix; ids: string[]; id?: string }[] = [{ matrix: root, ids: [] }];
+  const stack: { matrix: paper.Matrix; ids: string[]; id?: string; fill?: string }[] = [{ matrix: root, ids: [] }];
   const out: Shape[] = [];
   let skip = 0;
   for (const m of svg.matchAll(/<(\/?)([a-zA-Z][\w:-]*)([^>]*?)(\/?)>/g)) {
@@ -161,12 +164,14 @@ function shapesOf(svg: string, rig: { width: number; height: number }): Shape[] 
     if (name === "g" || name === "svg") {
       if (self) continue;
       const matrix = name === "svg" || (a.id && POSED.has(a.id)) ? top.matrix : top.matrix.appended(transformOf(a.transform));
-      stack.push({ matrix, ids: a.id ? [...top.ids, a.id] : top.ids, ...(a.id ? { id: a.id } : {}) });
+      const fill = paintOf(a, "fill") ?? top.fill;
+      stack.push({ matrix, ids: a.id ? [...top.ids, a.id] : top.ids, ...(a.id ? { id: a.id } : {}), ...(fill ? { fill } : {}) });
       continue;
     }
     if (!SHAPE.test(name!)) continue;
     const b = shapeBounds(name!, a, top.matrix);
-    if (b) out.push({ b, ids: a.id ? [...top.ids, a.id] : top.ids, ...(top.id ? { parent: top.id } : {}), at: m.index!, len: m[0].length, self: Boolean(self) });
+    const fill = paintOf(a, "fill") ?? top.fill;
+    if (b) out.push({ b, ids: a.id ? [...top.ids, a.id] : top.ids, ...(top.id ? { parent: top.id } : {}), at: m.index!, len: m[0].length, self: Boolean(self), ...(fill ? { fill } : {}) });
   }
   return out;
 }
@@ -245,19 +250,104 @@ export function noseShift(eyes: number, room: Nose["room"]): number {
  * arkasında kalan), ortada, dar ve çenenin altına uzanan ardışık şekillerdir (119 çizimde bulundu, hepsi gözle
  * denetlendi). Yüz: başın ağzı içine alan en büyük şekli. Bulunamazsa undefined.
  */
-export function neckOf(svg: string, rig: { width: number; height: number } = { width: 400, height: 800 }): { from: number; to: number } | undefined {
-  const shapes = shapesOf(svg, rig);
+/** Yüz: başın ağzı içine alan en büyük şekli (göz, kaş ve ağız grupları hariç); bulunamazsa undefined. */
+function faceShape(shapes: Shape[]): { face: Shape; head: Shape[] } | undefined {
   const mouth = union(shapes.filter((s) => s.ids.includes("mouth")));
   if (!mouth) return undefined;
   const head = shapes.filter((s) => s.ids.includes("head") && !["eyes", "brows", "mouth"].some((id) => s.ids.includes(id)));
   const covers = (b: Bounds) => b.x <= mouth.x && b.x + b.w >= mouth.x + mouth.w && b.y <= mouth.y && b.y + b.h >= mouth.y + mouth.h;
   const face = head.filter((s) => covers(s.b)).sort((a, b) => b.b.w * b.b.h - a.b.w * a.b.h)[0];
-  if (!face) return undefined;
+  return face && { face, head };
+}
+
+export function neckOf(svg: string, rig: { width: number; height: number } = { width: 400, height: 800 }): { from: number; to: number } | undefined {
+  const shapes = shapesOf(svg, rig);
+  const found = faceShape(shapes);
+  if (!found) return undefined;
+  const { face, head } = found;
   const { x, y, w, h } = face.b;
   const chin = y + h;
   const parts = head.filter((s) => s.at < face.at && s.b.y < chin && s.b.y + s.b.h > chin + 4 && Math.abs(s.b.x + s.b.w / 2 - (x + w / 2)) < w * 0.2 && s.b.w < w * 0.6);
   if (!parts.length || !parts.every((s) => s.self && s.parent === "head") || !siblings(svg, parts)) return undefined;
   return { from: parts[0]!.at, to: parts.at(-1)!.at + parts.at(-1)!.len };
+}
+
+/** Yüz parçasının yüzün çizgisinden taşmadan sola (l) ve sağa (r) kayabileceği en büyük px (iskelet). */
+export interface Side {
+  l: number;
+  r: number;
+}
+
+/** Gözler, kaşlar ve ağız yüzün kenarına margin kadar (iskelet px) yaklaşabilir; yüz parçadan en az taller kat uzun olmalı (test çizimlerinde baş, göz ve ağız aynı kare). */
+export const INSIDE = { margin: 2, taller: 2 } as const;
+
+/**
+ * Yüzün içinde kalma payı (6 Kas, kullanıcı: "halen burun şikko yerde durabiliyor, gözler de öyle"; Antik Mısır yüz
+ * sayfası: dar yüzlü işçi konuşulana dönünce o yandaki göz yüzün çizgisine, kulağın dibine çıkıyordu, profilden çizilmiş
+ * katibin gözü yüzün önüne kayıyordu). Bakış, konuşulana dönüş ve baş sallama gözleri sabit px kaydırıyordu; gözlerin
+ * yüzün kenarına uzaklığı çizimden çizime 0–30 px. Yüz şekli (faceShape) bir elips sayılır: parçanın dikey aralığında
+ * yüzün en dar yerindeki yarı genişliği, parçanın kenarıyla yüzün kenarı arası (INSIDE.margin payıyla) kayma payıdır.
+ * Yüzü bulunamayan çizimde ya da parçası olmayanda o parça yok (eskisi gibi sınırsız).
+ */
+export function insideOf(svg: string, rig: { width: number; height: number } = { width: 400, height: 800 }): { eyes?: Side; mouth?: Side } {
+  const shapes = shapesOf(svg, rig);
+  const found = faceShape(shapes);
+  if (!found) return {};
+  const { x, y, w, h } = found.face.b;
+  const [cx, cy] = [x + w / 2, y + h / 2];
+  const room = (id: string): Side | undefined => {
+    const b = union(shapes.filter((s) => s.ids.includes(id)));
+    // Yüz parçadan belirgin uzun değilse (yüz değil, parçanın kendisi gibi bir şekil) ölçü yok.
+    if (!b || h < b.h * INSIDE.taller) return undefined;
+    // Parçanın merkezden en uzak dikey ucunda elipsin yarı genişliği.
+    const far = Math.max(Math.abs(b.y - cy), Math.abs(b.y + b.h - cy)) / (h / 2);
+    const half = (w / 2) * Math.sqrt(Math.max(0, 1 - far * far));
+    const gap = (v: number) => Math.max(0, v - INSIDE.margin);
+    return { l: gap(b.x - (cx - half)), r: gap(cx + half - (b.x + b.w)) };
+  };
+  const eyes = room("eyes");
+  const mouth = room("mouth");
+  return { ...(eyes ? { eyes } : {}), ...(mouth ? { mouth } : {}) };
+}
+
+/** Göz bebeği: gözün beyazının bu kesrine kadar kayar (badem gözün köşesi daralır, bebek taşmasın). */
+export const PUPIL = { share: 0.5, dark: 0.35, light: 0.6 } as const;
+
+/** Göz bebekleri (ve üstlerindeki parıltılar): metindeki yeri ve beyazın içinde kayabileceği pay (iskelet px). */
+export interface Pupils {
+  from: number;
+  to: number;
+  room: Side;
+}
+
+/**
+ * Göz bebekleri (6 Kas): gözleri yüzün kenarına çizilmiş yüzde (insideOf payı yok; 149 çizimin 23'ünde 0) bakış gözü
+ * kaydıramaz; gerçek göz de bakarken yerinde durur, bebek kayar. Göz grubunda açık renk bir beyazın içinde kalan koyu
+ * şekiller bebek, bebeğin içindeki açık küçük şekiller parıltıdır. Hepsi ardışık kardeş olmalı (tek grupta toplanabilsin);
+ * değilse ya da bebek yoksa undefined. Pay: her bebeğin beyazının kenarına uzaklığının en küçüğü × PUPIL.share.
+ */
+export function pupilsOf(svg: string, rig: { width: number; height: number } = { width: 400, height: 800 }): Pupils | undefined {
+  if (/\sid\s*=\s*["']pupils["']/.test(svg)) return undefined;
+  const eyes = shapesOf(svg, rig).filter((s) => s.ids.includes("eyes") && !s.ids.includes("brows") && s.fill);
+  const lum = (s: Shape) => luminance(s.fill!);
+  const within = (a: Bounds, b: Bounds) => a.x >= b.x - 1 && a.y >= b.y - 1 && a.x + a.w <= b.x + b.w + 1 && a.y + a.h <= b.y + b.h + 1;
+  const whites = eyes.filter((s) => lum(s) >= PUPIL.light);
+  const dark = eyes.flatMap((s) => {
+    const white = lum(s) < PUPIL.dark ? whites.find((w) => w !== s && within(s.b, w.b) && s.b.w < w.b.w * 0.7) : undefined;
+    return white ? [{ s, white }] : [];
+  });
+  if (!dark.length) return undefined;
+  const shine = eyes.filter((s) => lum(s) >= PUPIL.light && dark.some((d) => within(s.b, d.s.b)));
+  const parts = [...dark.map((d) => d.s), ...shine].sort((a, b) => a.at - b.at);
+  if (!parts.every((s) => s.self) || !siblings(svg, parts)) return undefined;
+  const room = (side: "l" | "r") =>
+    Math.min(...dark.map(({ s, white }) => (side === "l" ? s.b.x - white.b.x : white.b.x + white.b.w - s.b.x - s.b.w))) * PUPIL.share;
+  return { from: parts[0]!.at, to: parts.at(-1)!.at + parts.at(-1)!.len, room: { l: Math.max(0, room("l")), r: Math.max(0, room("r")) } };
+}
+
+/** Göz bebekleri tek grupta (`<g id="pupils">`): poz onları göz beyazının içinde kaydırabilsin. */
+export function withPupils(svg: string, pupils: Pick<Pupils, "from" | "to">): string {
+  return `${svg.slice(0, pupils.from)}<g id="pupils">${svg.slice(pupils.from, pupils.to)}</g>${svg.slice(pupils.to)}`;
 }
 
 /**

@@ -3,6 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { FURNITURE, RIG, RIG_SIDE, textureLayer, TimelineVisual, VectorAnimType, VectorAsset, VectorLayer, VectorShot, type LineStyle, type Texture } from "@ys/core";
 import { random } from "remotion";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PUPIL } from "../src/rigGeometry.ts";
 
 // Remotion bağlamı yerine kare ve video ayarı testten verilir; geri kalan (Easing, interpolate, random) gerçek.
 const clock = vi.hoisted(() => ({ frame: 0, fps: 30, width: 1920, height: 1080 }));
@@ -127,6 +128,8 @@ const ASSETS = {
   // Eli ön kolun içinde ayrı grup (bilek dönüşü): sağ ön kolun ekseni x 264 (dönme noktası 260).
   handy: asset("handy", "character", `<svg viewBox="0 0 400 800">${PARTS.filter((p) => !["arm-r", "forearm-r", "hand-r"].includes(p)).map((p) => `<g id="${p}"><rect width="10" height="10" fill="#335577"/></g>`).join("")}<g id="arm-r"><rect x="250" y="300" width="20" height="100"/><g id="forearm-r"><rect x="254" y="400" width="20" height="90"/><g id="hand-r"><rect x="246" y="490" width="30" height="40"/></g></g></g></svg>`, 400, 800),
   lownose: asset("lownose", "character", `<svg viewBox="0 0 400 800">${PARTS.filter((p) => !["head", "eyes", "mouth"].includes(p)).map((p) => `<g id="${p}"><rect width="10" height="10" fill="#335577"/></g>`).join("")}<g id="head"><circle cx="200" cy="170" r="80"/><g id="eyes"><circle cx="180" cy="160" r="8"/><circle cx="220" cy="160" r="8"/></g><path d="M196 175 L192 190"/><g id="mouth"><path d="M185 205 L215 205"/></g></g></svg>`, 400, 800),
+  // Gözleri yüzün kenarına çizilmiş dar yüz (yüz 160–240, beyazlar 162–238), beyazların içinde bebekler (insideOf, pupilsOf).
+  narrow: asset("narrow", "character", `<svg viewBox="0 0 400 800">${PARTS.filter((p) => !["head", "eyes", "mouth"].includes(p)).map((p) => `<g id="${p}"><rect width="10" height="10" fill="#335577"/></g>`).join("")}<g id="head"><ellipse cx="200" cy="170" rx="40" ry="70" fill="#d9a066"/><g id="eyes"><ellipse cx="180" cy="160" rx="18" ry="6" fill="#ffffff"/><ellipse cx="220" cy="160" rx="18" ry="6" fill="#ffffff"/><circle cx="180" cy="160" r="3" fill="#111111"/><circle cx="220" cy="160" r="3" fill="#111111"/></g><g id="mouth"><path d="M190 205 L210 205"/></g></g></svg>`, 400, 800),
   talker: asset(
     "talker",
     "character",
@@ -1684,6 +1687,23 @@ describe("vektör sahne: burun", () => {
     expect(low).toEqual({ group: true, rule: undefined });
     // Burnu bulunamayan çizimde grup yok.
     expect(css("hero").group).toBe(false);
+  });
+
+  it("gözleri yüzün kenarına çizilmiş kişi dönünce gözler ve kaşlar yüzden taşmaz, bakışı bebekler verir", () => {
+    const at = (html: string, part: string) => Number(new RegExp(`#s1-0-${part}\\{transform:translate\\((-?[\\d.]+)px`).exec(html)?.[1]);
+    const c = scene({ layers: [{ asset: "narrow", x: 700, depth: 0.3 }, { asset: "hero", x: 1250, depth: 0.3 }] }, { frame: 60 });
+    const html = c.innerHTML;
+    expect(c.querySelector('[id="s1-0-pupils"]')).not.toBeNull();
+    expect(at(html, "eyes")).toBe(0);
+    expect(at(html, "brows")).toBe(0);
+    // Sağdaki kişiye: bebekler sağa, beyazın payı kadar (bebek 177–183, beyaz 162–198: 15 × PUPIL.share).
+    expect(at(html, "pupils")).toBeGreaterThan(0);
+    expect(at(html, "pupils")).toBeLessThanOrEqual(15 * PUPIL.share);
+    cleanup();
+    // Gözleri yüzün içinde kayabilen kişide bebek kuralı yok (göz kendisi kayar).
+    const free = scene({ layers: [{ asset: "nosy", x: 700, depth: 0.3 }, { asset: "hero", x: 1250, depth: 0.3 }] }, { frame: 60 });
+    expect(free.innerHTML).not.toContain("s1-0-pupils{");
+    cleanup();
   });
 });
 

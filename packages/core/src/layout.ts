@@ -117,6 +117,20 @@ export const FURNITURE = {
 } as const;
 
 /**
+ * Dizinin altında kalan alçak eşyanın (sehpa, katip masası, sandık) hemen ardında ayakta duran kişi: eşya ayaklarını örter,
+ * kişi eşyanın üstünde duruyor gibi okunur (6 Kas, Antik Mısır s6-sh4/s7-sh5: 0,35 m'lik katip masasının ardındaki katip,
+ * "the scribe stands on the desk"). Eşyanın üstü diz çizgisinin (ayaktan boyunun knee kesri) altındaysa ve ayakları (kutunun
+ * ortasından feet × genişlik) eşyanın arkasında kalıyorsa kişi ayaklarını açan en yakın x'e çekilir; yer yoksa eşyanın
+ * önüne geçer. Kalça boyundaki masanın ardında durmak olağan (bacaklar masanın arkasında), ona dokunulmaz.
+ */
+export const LOW_FURNITURE = {
+  knee: 0.28,
+  feet: 0.25,
+  aside: "alçak eşya ayaklarını örtüyordu (üstünde duruyor gibiydi), yanına çekildi",
+  front: "alçak eşya ayaklarını örtüyordu (üstünde duruyor gibiydi), önüne geçti",
+} as const;
+
+/**
  * Konuşma mesafesi (m, iki kişinin ortaları arası) ve geçişin sınırları: aynı derinlikte sayılan z farkı, geçişin
  * uygulandığı en büyük yönetmen zoom'u (altı geniş çekim), kişinin gövde yarı genişliği (çizim genişliğinin kesri; kollar
  * hariç).
@@ -630,6 +644,36 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
       for (const c of list) if (c.on === o.index && !c.sitting) c.y += shift;
       note(o, FURNITURE.lowered);
     }
+  }
+
+  // Alçak eşyanın ardındaki ayaktaki kişi eşyanın üstünde duruyor gibi okunur (LOW_FURNITURE): ayakları açılır.
+  const feetHidden = (o: PlacedLayer, q: PlacedLayer, x: number) => {
+    const top = o.y - o.height;
+    return o.z > q.z && o.y > q.y && top < q.y && top > q.y - q.height * LOW_FURNITURE.knee && Math.abs(o.x - x) < o.width / 2 + q.width * LOW_FURNITURE.feet;
+  };
+  for (const q of people) {
+    if (q.sitting || entering(spec.layers[q.index]!)) continue;
+    const low = furniture.filter((o) => feetHidden(o, q, q.x));
+    if (!low.length) continue;
+    // Yeni yer: hiçbir alçak eşya ayaklarını, hiçbir eşya ya da öndeki kişi yüzünü örtmez, ayaktaki bir kişinin (hangi
+    // derinlikte olursa olsun: s7-sh5'te öndeki kadının arkasına girip elleri birbirine karıştı) üstüne binmez.
+    const front = furniture.filter((o) => o.z > q.z);
+    const ahead = people.filter((p) => p !== q && p.z > q.z && !p.sitting);
+    const crowded = (x: number) => people.some((p) => p !== q && !p.sitting && Math.abs(p.x - x) < (p.width + q.width) * 0.32);
+    const ok = (x: number) =>
+      !furniture.some((o) => feetHidden(o, q, x)) &&
+      !front.some((o) => faceHidden(o, { ...q, x })) &&
+      !ahead.some((p) => faceHidden({ ...p, width: p.width * 0.6 }, { ...q, x })) &&
+      !crowded(x);
+    const half = q.width / 2;
+    const x = nearest(q.x, ok, half + 20, STAGE.width - half - 20);
+    if (x !== undefined) {
+      q.x = x;
+      note(q, LOW_FURNITURE.aside);
+      continue;
+    }
+    q.z = Math.max(...low.map((o) => o.z)) + 0.1;
+    note(q, LOW_FURNITURE.front);
   }
 
   // Duvardaki/havadaki öğe (logo, ok, tabela) yerdeki her şeyin arkasında çizilir. Bir mobilya onu yarıdan fazla

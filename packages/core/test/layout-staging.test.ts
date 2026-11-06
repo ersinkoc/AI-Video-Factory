@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOARD, CONVERSE, FURNITURE, isWritable, PASS, resolveLayout, STAGE, VectorShot, WORK, workBoard, workSurface, workTopOf, workZone, type VectorAsset } from "../src/index.ts";
+import { BOARD, CONVERSE, FURNITURE, isWritable, LOW_FURNITURE, PASS, resolveLayout, STAGE, VectorShot, WORK, workBoard, workSurface, workTopOf, workZone, type VectorAsset } from "../src/index.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({ id, kind, svg: "<svg/>", width: w, height: h, meta });
 
@@ -310,5 +310,41 @@ describe("sahne fiziği: yüzü örten eşya", () => {
     expect(by(high, 1).fixes).not.toContain(FURNITURE.lifted);
     // Üstü olmayan eşyanın (dolap) ardında kenara çekilir.
     expect(by(at([{ asset: "cabinet", x: 960, depth: 0.3 }, { asset: "robot", x: 960, depth: 0.45 }]), 1).fixes).toContain(FURNITURE.aside);
+  });
+});
+
+describe("sahne fiziği: alçak eşyanın ardında duran", () => {
+  // 0,35 m'lik katip masası (Antik Mısır s6-sh4): üstü ardındaki kişinin dizinin altında, ayaklarını örter.
+  const low = { ...assets, lowtable: asset("lowtable", "prop", { realHeight: 0.35, surface: 0.8, grounded: true }, 800, 400), lowwall: asset("lowwall", "prop", { realHeight: 0.35, grounded: true }, 8000, 400) };
+  const at = (layers: unknown[]) => resolveLayout(VectorShot.parse({ layers }), low);
+  const feetHidden = (placed: ReturnType<typeof resolveLayout>, table: number, person: number) => {
+    const [o, q] = [by(placed, table), by(placed, person)];
+    return o.z > q.z && o.y - o.height < q.y && o.y - o.height > q.y - q.height * LOW_FURNITURE.knee && Math.abs(o.x - q.x) < o.width / 2 + q.width * LOW_FURNITURE.feet;
+  };
+
+  it("ayakları masanın ardında kalan kişi ayaklarını açan en yakın yere çekilir; kalça boyundaki masanın ardındaki kalır", () => {
+    const placed = at([{ asset: "lowtable", x: 960, depth: 0.3 }, { asset: "a", x: 960, depth: 0.45 }]);
+    expect(by(placed, 1).fixes).toContain(LOW_FURNITURE.aside);
+    expect(by(placed, 1).x).not.toBe(960);
+    expect(feetHidden(placed, 0, 1)).toBe(false);
+    const desk = at([{ asset: "desk", x: 960, depth: 0.3 }, { asset: "a", x: 960, depth: 0.45 }]);
+    expect(by(desk, 1).fixes).not.toContain(LOW_FURNITURE.aside);
+    // Masanın önünde duran, oturan ve sahneye giren kişiye dokunulmaz.
+    const front = at([{ asset: "lowtable", x: 960, depth: 0.45 }, { asset: "a", x: 960, depth: 0.3 }]);
+    expect(by(front, 1).x).toBe(960);
+    const seated = at([{ asset: "chair", x: 960, depth: 0.5 }, { asset: "a", x: 960, on: 0 }, { asset: "lowtable", x: 960, depth: 0.3 }]);
+    expect(by(seated, 1).fixes).not.toContain(LOW_FURNITURE.aside);
+    const entering = at([{ asset: "lowtable", x: 960, depth: 0.3 }, { asset: "a", x: 960, depth: 0.45, anims: [{ type: "walk", toX: 980 }] }]);
+    expect(by(entering, 1).fixes).not.toContain(LOW_FURNITURE.aside);
+  });
+
+  it("çekileceği yerde biri duruyorsa (hangi derinlikte olursa olsun) öbür yana; hiç yer yoksa eşyanın önüne geçer", () => {
+    const alone = by(at([{ asset: "lowtable", x: 960, depth: 0.3 }, { asset: "a", x: 960, depth: 0.45 }]), 1).x;
+    // İlk seçtiği yanda öndeki bir kişi.
+    const busy = at([{ asset: "lowtable", x: 960, depth: 0.3 }, { asset: "a", x: 960, depth: 0.45 }, { asset: "b", x: alone, depth: 0.2 }]);
+    expect(Math.sign(by(busy, 1).x - 960)).toBe(-Math.sign(alone - 960));
+    const wall = at([{ asset: "lowwall", x: 960, depth: 0.3 }, { asset: "a", x: 960, depth: 0.45 }]);
+    expect(by(wall, 1).fixes).toContain(LOW_FURNITURE.front);
+    expect(by(wall, 1).z).toBeGreaterThan(by(wall, 0).z);
   });
 });

@@ -57,7 +57,7 @@ import { splitBrows, type BrowPart, type SplitBrows } from "./browShape.ts";
 import { bend, reach, type Reach } from "./ik.ts";
 import { revealWindow } from "./kinetic-timing.ts";
 import { lipLine, mouthIds, withMouths, type SpeakingMouth } from "./mouthShape.ts";
-import { faceOf, neckOf, noseOf, noseShift, withNose, wristsOf, type Bounds, type Face, type Nose } from "./rigGeometry.ts";
+import { faceOf, insideOf, neckOf, noseOf, noseShift, pupilsOf, withNose, withPupils, wristsOf, type Bounds, type Face, type Nose, type Side } from "./rigGeometry.ts";
 import { visemeAt, visemeCues, type Viseme } from "./visemes.ts";
 import { splitWords, useKinetic, wordCount } from "./kinetic.tsx";
 import { GLOBE_SETTLE, overlayProgress } from "./globe.ts";
@@ -232,7 +232,7 @@ function layerTransform(
 }
 
 /** İskelet parçası, üst gövde (gövde + kollar + baş; kalçadan, `wrapTorso`) ya da burun (`noseFor`; gözlerle kayar). */
-type PosePart = RigPart | "torso" | BrowPart | "nose";
+type PosePart = RigPart | "torso" | BrowPart | "nose" | "pupils";
 
 interface PartPose {
   rotate: number;
@@ -447,27 +447,39 @@ export function wristsFor(asset: VectorAsset): { l?: number; r?: number } {
   return w;
 }
 
-const drawn = new WeakMap<VectorAsset, { svg: string; room?: Nose["room"] }>();
+interface FaceSvg {
+  svg: string;
+  room?: Nose["room"];
+  inside: { eyes?: Side; mouth?: Side };
+  pupils?: Side;
+}
+const drawn = new WeakMap<VectorAsset, FaceSvg>();
 
 /**
  * Render'ın çizimi (varlık başına bir kez): kaşlar sol ve sağa ayrılmış (browsFor), burun ayrı grupta (rigGeometry
  * noseOf; gözlerle kayar), boyun gövdenin arkasında (neckOf, neckBehind). room: gözlerin burna değmeden kayabileceği
- * boşluk; burnu bulunamayan çizimde yok (burun kaymaz).
+ * boşluk; burnu bulunamayan çizimde yok (burun kaymaz). inside: gözlerin ve ağzın yüzden taşmadan kayabileceği pay
+ * (insideOf); pupils: göz bebeklerinin beyazın içinde kayma payı (pupilsOf; `<g id="pupils">`), bulunamayan çizimde yok.
  */
-export function faceSvgFor(asset: VectorAsset): { svg: string; room?: Nose["room"] } {
+export function faceSvgFor(asset: VectorAsset): FaceSvg {
   let f = drawn.get(asset);
   if (!f) {
     const base = browsFor(asset)?.svg ?? asset.svg;
     const nose = noseOf(base);
     const nosed = nose ? withNose(base, nose) : base;
-    const neck = neckOf(nosed);
-    drawn.set(asset, (f = { svg: neck ? neckBehind(nosed, neck) : nosed, ...(nose ? { room: nose.room } : {}) }));
+    const pupils = pupilsOf(nosed);
+    const eyed = pupils ? withPupils(nosed, pupils) : nosed;
+    const neck = neckOf(eyed);
+    drawn.set(
+      asset,
+      (f = { svg: neck ? neckBehind(eyed, neck) : eyed, ...(nose ? { room: nose.room } : {}), inside: insideOf(base), ...(pupils ? { pupils: pupils.room } : {}) }),
+    );
   }
   return f;
 }
 
 /** Kâğıt zemininde silüeti kendi grubunda dönen parçalar: iskelet, ayrılmış kaşlar, burun ve boyun. */
-const PAPER_PARTS = [...Object.keys(RIG.pivots), "brow-l", "brow-r", "nose", "neck"];
+const PAPER_PARTS = [...Object.keys(RIG.pivots), "brow-l", "brow-r", "nose", "pupils", "neck"];
 
 const papered = new WeakMap<VectorAsset, Map<string, string>>();
 
@@ -2100,8 +2112,20 @@ function motionOf(
   else attention.facing = facing;
   // Son poz anatomiye kırpılır (anatomy.ts): jestler ve karışımları sınırı aşmamalı; aşan denetimde görünür.
   const { pose, strains } = anatomical(rigPose(anims, p, t, prefix, placed.sitting, layer.expression, gait, layer.flip, attention, dur), false);
+  // Gözler, kaşlar ve ağız yüzün çizgisinden taşmaz (insideOf): kaşlar gözlerin payıyla sınırlanır.
+  const { room, inside, pupils }: Partial<FaceSvg> = figure ? {} : faceSvgFor(asset);
+  // Göz, kaş ve ağız pozda her karede kurulur (rigPose: bakış, konuşulana dönüş).
+  const keep = (part: PartPose, side: Side | undefined) => {
+    if (side) part.tx = Math.min(side.r, Math.max(-side.l, part.tx));
+  };
+  const look = pose.eyes!.tx;
+  keep(pose.eyes!, inside?.eyes);
+  // Gözün kayamadığı kadarını bebekler beyazın içinde kayar (bakış gözü yüzden taşırmadan sürer).
+  const rest = look - pose.eyes!.tx;
+  if (pupils && rest) pose.pupils = { rotate: 0, sx: 1, sy: 1, tx: Math.min(pupils.r, Math.max(-pupils.l, rest)), ty: 0 };
+  keep(pose.brows!, inside?.eyes);
+  keep(pose.mouth!, inside?.mouth);
   // Burun gözlerle kayar: gözler burnun yanındaki boşluğu aşınca (bakış, konuşulana dönüş, baş sallama) aşan kadar.
-  const room = figure ? undefined : faceSvgFor(asset).room;
   // Gözlerin pozu her karede kurulur (göz kırpma, bakış).
   const eyes = pose.eyes!.tx;
   if (room && noseShift(eyes, room)) pose.nose = { rotate: 0, sx: 1, sy: 1, tx: noseShift(eyes, room), ty: 0 };
@@ -2345,7 +2369,7 @@ function Layer({
           // Kaş kendi ortasında döner; ayrılamayan çizimde kaşın tek parçası yok (kural yazılmaz).
           const brow = k.startsWith("brow-") ? split?.centres[k as BrowPart] : undefined;
           if (k.startsWith("brow-") && !brow) return "";
-          const [pivotX, py] = brow ?? (k === "torso" ? pivots.body : k === "nose" ? pivots.eyes : pivots[k as RigPart]);
+          const [pivotX, py] = brow ?? (k === "torso" ? pivots.body : k === "nose" || k === "pupils" ? pivots.eyes : pivots[k as RigPart]);
           // Bilekte dönen el (handRoll) ön kolun ekseninde aynalanır: dönme noktası eksene alınır, kayma telafi edilir.
           const axis = k.startsWith("hand-") && v.sx !== 1 ? wristsFor(look)[k.slice(-1) as "l" | "r"] : undefined;
           const px = axis ?? pivotX;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { faceOf, neckOf, noseOf, noseShift, transformOf, withNose, wristsOf } from "../src/rigGeometry.ts";
+import { faceOf, INSIDE, insideOf, neckOf, noseOf, noseShift, PUPIL, pupilsOf, transformOf, withNose, withPupils, wristsOf } from "../src/rigGeometry.ts";
 
 const face = (inner: string, viewBox = "0 0 400 800") => faceOf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">${inner}</svg>`);
 
@@ -176,6 +176,52 @@ describe("burun", () => {
     expect(noseShift(11, room)).toBe(8);
     expect(noseShift(-14, room)).toBe(-3);
     expect(noseShift(40, { r: Infinity, l: Infinity })).toBe(0);
+  });
+});
+
+describe("yüzün içinde kalma payı", () => {
+  // Yüz 140–260 × 110–230 (merkez 200,170; yarıçap 60). Beyazlar 170–190 ve 210–230 (y 154–166), bebekler r 3, parıltı r 1.
+  const WHITES = '<ellipse cx="180" cy="160" rx="10" ry="6" fill="#ffffff"/><ellipse cx="220" cy="160" rx="10" ry="6" fill="#ffffff"/>';
+  const PUPILS = '<circle cx="180" cy="160" r="3" fill="#111111"/><circle cx="220" cy="160" r="3" fill="#111111"/><circle cx="181" cy="159" r="1" fill="#ffffff"/>';
+  const draw = (eyes = WHITES + PUPILS, mouth = '<path d="M185 205 L215 205"/>', face = '<circle cx="200" cy="170" r="60" fill="#d9a066"/>') =>
+    `<svg viewBox="0 0 400 800"><g id="head">${face}<g id="eyes">${eyes}</g><g id="mouth">${mouth}</g></g></svg>`;
+
+  it("gözlerin ve ağzın yüzün elipsinden taşmadan kayabileceği px; gözleri yüzün kenarına çizilmiş yüzde 0", () => {
+    const room = insideOf(draw());
+    // Gözlerin merkezden en uzak ucu (y 154) yarıçapın 16/60'ı: elipsin yarı genişliği 57,8; 2 px pay.
+    expect(room.eyes!.l).toBeCloseTo(170 - (200 - 60 * Math.sqrt(1 - (16 / 60) ** 2)) - INSIDE.margin, 5);
+    expect(room.eyes!.r).toBeCloseTo(room.eyes!.l, 5);
+    expect(room.mouth!.l).toBeCloseTo(185 - (200 - 60 * Math.sqrt(1 - (35 / 60) ** 2)) - INSIDE.margin, 5);
+    // Kenara çizilmiş badem gözler (sürme çizgisiyle 142–258).
+    expect(insideOf(draw('<ellipse cx="180" cy="160" rx="38" ry="6" fill="#ffffff"/><ellipse cx="220" cy="160" rx="38" ry="6" fill="#ffffff"/>')).eyes).toEqual({ l: 0, r: 0 });
+  });
+
+  it("gözü olmayan çizimde yalnız ağız; ağzı ya da ağzı içine alan yüzü olmayanda hiçbiri", () => {
+    expect(insideOf(draw(""))).toEqual({ mouth: expect.any(Object) });
+    expect(insideOf(draw(undefined, ""))).toEqual({});
+    expect(insideOf(draw(undefined, undefined, '<circle cx="200" cy="120" r="20"/>'))).toEqual({});
+    // Gözlerden iki kat uzun olmayan "yüz" (gözü ve ağzı içine alan bir bant) yüz sayılmaz: gözlerin payı yok.
+    expect(insideOf(draw(WHITES, '<path d="M185 160 L215 160"/>', '<rect x="160" y="150" width="80" height="20"/>'))).toEqual({ mouth: expect.any(Object) });
+  });
+
+  it("göz bebekleri: beyazın içindeki koyu şekiller ve parıltıları, ardışık; beyazın içinde kayma payı", () => {
+    const svg = draw();
+    const pupils = pupilsOf(svg)!;
+    expect(svg.slice(pupils.from, pupils.to)).toBe(PUPILS);
+    // Bebek 177–183, beyaz 170–190: 7 px × PUPIL.share.
+    expect(pupils.room).toEqual({ l: 7 * PUPIL.share, r: 7 * PUPIL.share });
+    expect(withPupils(svg, pupils)).toContain(`<g id="pupils">${PUPILS}</g>`);
+    // Beyazların rengi gruptan gelebilir; dolgusuz (çizgi) şekil sayılmaz.
+    const grouped = draw(`<g fill="#ffffff"><ellipse cx="180" cy="160" rx="10" ry="6"/><ellipse cx="220" cy="160" rx="10" ry="6"/></g><path d="M170 160 L160 162" fill="none"/>${PUPILS}`);
+    expect(grouped.slice(pupilsOf(grouped)!.from, pupilsOf(grouped)!.to)).toBe(PUPILS);
+  });
+
+  it("bebeği bulunamayan çizim: zaten grubu var, beyazı yok (nokta göz), bebek beyazı dolduruyor, kapanış etiketli ya da ardışık değil", () => {
+    expect(pupilsOf(draw(`${WHITES}<g id="pupils">${PUPILS}</g>`))).toBeUndefined();
+    expect(pupilsOf(draw(PUPILS))).toBeUndefined();
+    expect(pupilsOf(draw(`${WHITES}<ellipse cx="180" cy="160" rx="9" ry="5" fill="#111111"/>`))).toBeUndefined();
+    expect(pupilsOf(draw(`${WHITES}<circle cx="180" cy="160" r="3" fill="#111111"></circle>`))).toBeUndefined();
+    expect(pupilsOf(draw('<ellipse cx="180" cy="160" rx="10" ry="6" fill="#ffffff"/><circle cx="180" cy="160" r="3" fill="#111111"/><ellipse cx="220" cy="160" rx="10" ry="6" fill="#ffffff"/><circle cx="220" cy="160" r="3" fill="#111111"/>'))).toBeUndefined();
   });
 });
 
