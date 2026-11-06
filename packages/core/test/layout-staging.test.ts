@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARC, BOARD, CONVERSE, FURNITURE, isWritable, LOW_FURNITURE, PASS, resolveLayout, STAGE, VectorShot, WORK, workBoard, workSurface, workTopOf, workZone, type VectorAsset } from "../src/index.ts";
+import { ARC, BOARD, CONVERSE, EDGE, FURNITURE, isWritable, LOW_FURNITURE, PASS, resolveLayout, STAGE, VectorShot, WORK, workBoard, workSurface, workTopOf, workZone, type VectorAsset } from "../src/index.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({ id, kind, svg: "<svg/>", width: w, height: h, meta });
 
@@ -383,5 +383,44 @@ describe("sahne fiziği: alçak eşyanın ardında duran", () => {
     const wall = at([{ asset: "lowwall", x: 960, depth: 0.3 }, { asset: "a", x: 960, depth: 0.45 }]);
     expect(by(wall, 1).fixes).toContain(LOW_FURNITURE.front);
     expect(by(wall, 1).z).toBeGreaterThan(by(wall, 0).z);
+  });
+});
+
+describe("sahne fiziği: sahnenin kenarı", () => {
+  it("yanından taşan yerdeki eşya içeri alınır; üstündekiler, oturan ve onun tuttuğu onunla kayar", () => {
+    const placed = place([
+      { asset: "desk", x: 1900, depth: 0.3 },
+      { asset: "cup", x: 1900, on: 0 },
+      { asset: "chair", x: 30, depth: 0.3 },
+      { asset: "a", x: 30, on: 2 },
+      { asset: "cup", x: 30, heldBy: 3 },
+    ]);
+    const desk = by(placed, 0);
+    expect(desk.x + desk.width / 2).toBeCloseTo(STAGE.width - EDGE.margin, 6);
+    expect(desk.fixes).toContain(EDGE.note);
+    expect(by(placed, 1).x).toBeCloseTo(desk.x, 6);
+    const chair = by(placed, 2);
+    expect(chair.x - chair.width / 2).toBeCloseTo(EDGE.margin, 6);
+    expect(by(placed, 3).x).toBeCloseTo(chair.x, 6);
+    expect(by(placed, 4).x).toBeCloseTo(chair.x, 6);
+    // İçerideki eşyaya dokunulmaz.
+    expect(by(place([{ asset: "desk", x: 960, depth: 0.3 }]), 0).fixes).not.toContain(EDGE.note);
+  });
+
+  it("sahne genişliğindeki, sahneye giren ve kaydığı yerde yanındaki eşyaya değecek olan eşya yerinde kalır", () => {
+    expect(by(place([{ asset: "wall", x: 0, depth: 0.3 }]), 0).x).toBe(0);
+    expect(by(place([{ asset: "desk", x: 1900, depth: 0.3, anims: [{ type: "slide_in", from: "right" }] }]), 0).x).toBe(1900);
+    // Dolap 388 px genişliğinde: sağdaki içeri alınsa soldakine (1206–1594) değerdi.
+    const pair = place([
+      { asset: "cabinet", x: 1900, depth: 0.3 },
+      { asset: "cabinet", x: 1400, depth: 0.3 },
+    ]);
+    expect(by(pair, 0).x).toBe(1900);
+    // Zaten değdiği eşyanın yanında kayabilir.
+    const touching = place([
+      { asset: "cabinet", x: 1900, depth: 0.3 },
+      { asset: "cabinet", x: 1600, depth: 0.3 },
+    ]);
+    expect(by(touching, 0).fixes).toContain(EDGE.note);
   });
 });

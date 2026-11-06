@@ -405,6 +405,36 @@ function toWork(spec: VectorShot, assets: Record<string, VectorAsset>, list: Pla
  * geçer; kameranın dibindeyse arkasından). margin: duruş yeri yolun ucundan en az bu kadar (iki genişliğin toplamının
  * kesri) içerideyse geçiş sayılır.
  */
+/**
+ * Sahnenin yanından taşan yerdeki eşya (6 Kas, Antik Mısır s6-sh2: yönetmen 916 px'lik çuval yığınını x 350'ye koydu,
+ * yığının solu kadrajın dışındaydı; incelemeler "sack pile is cropped at the left edge", "the cannon is cut off"): 1615
+ * çekimde 90 eşya sahnenin dışına taşıyordu, kişiler zaten içeri alınıyordu. Genişliği sahnenin wide kesrini geçmeyen,
+ * sahneye girip çıkmayan eşya kenardan margin px içeri alınır; üstündekiler (masadaki fincan, banktaki kişi, onun
+ * tuttuğu) onunla kayar. Kaydığı yerde daha önce değmediği bir eşyaya değecekse (boğazın iki yakasındaki hisarlar)
+ * yerinde kalır; sahne genişliğindeki çadır, gemi, sur bilerek kenardan taşar.
+ */
+export const EDGE = { wide: 0.6, margin: 20, note: "sahnenin kenarından taşıyordu, içeri alındı" } as const;
+
+/** Sahnenin yanından taşan yerdeki eşyayı (EDGE) içeri alır; üstündekiler ve onların tuttukları onunla kayar. */
+function inside(spec: VectorShot, assets: Record<string, VectorAsset>, list: PlacedLayer[]): void {
+  const span = (p: PlacedLayer, dx = 0) => [p.x + dx - p.width / 2, p.x + dx + p.width / 2] as const;
+  const meets = (a: readonly [number, number], b: readonly [number, number]) => Math.min(a[1], b[1]) > Math.max(a[0], b[0]);
+  const props = list.filter((p) => p.grounded && p.on === undefined && p.heldBy === undefined && assets[spec.layers[p.index]!.asset]!.kind === "prop");
+  const at = new Map(list.map((p) => [p.index, p]));
+  for (const p of props) {
+    if (p.width > EDGE.wide * STAGE.width || spec.layers[p.index]!.anims.some((a) => ["walk", "move", "slide_in", "slide_out"].includes(a.type))) continue;
+    const dx = clamp(p.x, p.width / 2 + EDGE.margin, STAGE.width - p.width / 2 - EDGE.margin) - p.x;
+    if (!dx || props.some((o) => o !== p && !meets(span(o), span(p)) && meets(span(o), span(p, dx)))) continue;
+    // Üstünde duran ya da üstündekinin tuttuğu (zincir yerleşimde döngüsüz kurulur).
+    const rides = (q: PlacedLayer): boolean => {
+      const up = q.on ?? q.heldBy;
+      return up !== undefined && (up === p.index || rides(at.get(up)!));
+    };
+    for (const q of list) if (q === p || rides(q)) q.x += dx;
+    p.fixes.push(EDGE.note);
+  }
+}
+
 export const PASS = { depth: 0.12, same: 0.1, margin: 0.18, note: "aynı derinlikte birinin içinden geçiyordu, önünden geçiyor" } as const;
 
 /**
@@ -527,6 +557,7 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
 
   spec.layers.forEach((_, i) => resolve(i));
   const list = [...placed.values()];
+  inside(spec, assets, list);
 
   // Aynı oturakta birden çok kişi (bank, kanepe): yönetmenin x sırasıyla oturağın üstünde yan yana dizilir. Oturan
   // karakter oturağın ortasına konuyordu; iki kişi aynı noktaya oturup iç içe geçiyordu (Google incelemesi, 3 Kas).
