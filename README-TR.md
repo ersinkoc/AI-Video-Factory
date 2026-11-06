@@ -114,7 +114,7 @@ pnpm studio:build && pnpm studio:start   # production derlemesi, aynı port
  Yayın paketi YouTube başlığını, bölümlü açıklamayı, etiketleri (her birinin kopyala düğmesi var) ve indirilebilir 1280×720 küçük resmi verir. Yatay bölüm ayrıca dikey bir Short alır: paket en iyi 20–60 saniyesini seçer, yerelde 9:16 olarak yeniden render edilir.
 6. **Sil.** Bölümler sayfasındaki her kartta, yarım kalmış ya da bitmiş fark etmeksizin, bir çöp kutusu düğmesi vardır. Önce sorar, sonra bölümün durumunu, videosunu, Short'unu, küçük resmini, altyazısını, render önbelleğini, inceleme karelerini, efekt ve müzik izlerini siler. Kütüphaneye onaylanmış çizimler, ortak üretim önbelleği ve harcama defteri kalır. İşi süren bölüm, iş durana kadar silinemez.
 
-Ekran yazıları tek düzende: mekân, tarih ve olay satırları sol üstte sabit bir bilgi kartında, kişi etiketleri kişinin yanında; hepsi aynı yazı tipi ve plaka stiliyle. Kart bir yüzü ya da ad etiketini örtmez: üst köşelerde kişiler varsa öbür köşeye ya da aralarındaki boşluğa geçer ve çekim boyunca o yerde kalır.
+Ekran yazıları tek düzende: mekân, tarih ve olay satırları sol üstte sabit bir bilgi kartında, kişi etiketleri kişinin yanında; hepsi aynı yazı tipi ve plaka stiliyle. Kart bir yüzü, ad etiketini ya da bir ekranın veya panonun yazısını örtmez: üst köşelerde kişiler ya da bir pano varsa öbür köşeye ya da aralarındaki boşluğa geçer ve çekim boyunca o yerde kalır.
 
 Diğer sayfalar:
 

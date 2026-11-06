@@ -41,7 +41,7 @@ import { useMemo, type CSSProperties, type ReactElement } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { drawCss, drawPlan } from "./drawOn.ts";
 import { PAPER, paperOf, translucentShare, withPaper } from "./paperBase.ts";
-import { coverIn, drawnBottom, gridFor, screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
+import { coverIn, drawnBottom, gridFor, hollowBacked, luminance as lightness, screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
 import { cameraDrift, depthOfField, lensScale, motionBlur, screenGlow } from "./lens.ts";
 import { keyLight, lightOf } from "./light.ts";
 import { visualVector } from "./entrance.ts";
@@ -2822,7 +2822,9 @@ function PropView({
 }
 
 /** Makro ek çekimin nesnesi: o anki kutusunda, altında ilerledikçe koyulaşan yumuşak gölge. */
-function Macro({ asset, box, q, screen, person, surface, prefix, paper }: NonNullable<ShotFrame["macroView"]> & { prefix: string; paper: string | undefined }) {
+function Macro({ asset, box, q, screen, person, surface, prefix, paper, light }: NonNullable<ShotFrame["macroView"]> & { prefix: string; paper: string | undefined; light: string }) {
+  // İçi boş çizim (dolgusuz çerçeveli çek) büyütülünce arkası görünmesin: çerçevesinin içi kâğıt (hollowBacked).
+  const solid = hollowBacked(asset, paper ?? light);
   // Yüzey şeridi: kenarları ve altı bulanık sahneye yumuşakça karışır.
   const fade = "linear-gradient(to right, transparent, #000 22%, #000 78%, transparent), linear-gradient(to bottom, #000 45%, transparent)";
   return (
@@ -2841,7 +2843,7 @@ function Macro({ asset, box, q, screen, person, surface, prefix, paper }: NonNul
         data-macro={asset.id}
         style={{ position: "absolute", left: box.x, top: box.y, width: box.w, height: box.h, filter: `drop-shadow(0 ${(24 * q).toFixed(1)}px ${(30 * q).toFixed(1)}px rgba(0,0,0,${(0.45 * q).toFixed(2)}))` }}
       >
-        <PropView asset={asset} w={box.w} h={box.h} prefix={prefix} screen={screen} person={person} paper={paper} />
+        <PropView asset={solid} w={box.w} h={box.h} prefix={prefix} screen={screen} person={person} paper={paper} />
       </div>
     </>
   );
@@ -2965,7 +2967,9 @@ export function VectorScene({
   const [c0 = "#1d2433", c1 = "#3a4a66", accent = "#ffd84d"] = palette;
   const grain = useMemo(() => textureLayer(texture, `${visual.shotId}-tex`), [texture, visual.shotId]);
   const paper = paperOf(texture, palette);
-  return <ShotStage {...model} {...shot} {...{ visual, lineStyle, ambience, grain, texture, paper, c0, c1, accent, width, height }} />;
+  // Paletin en açık rengi: içi boş makro nesnenin zemini (kâğıt rengi yoksa).
+  const light = [...palette].sort((a, b) => lightness(b) - lightness(a))[0] ?? "#ffffff";
+  return <ShotStage {...model} {...shot} {...{ visual, lineStyle, ambience, grain, texture, paper, light, c0, c1, accent, width, height }} />;
 }
 
 /** Çekimin kareden bağımsız kurgusu: temizlenmiş varlıklar, yerleşim ve son kamera (render ve denetim aynı sonucu görür). */
@@ -3324,10 +3328,35 @@ function cardAvoid(model: ShotModel, shotId: string, dur: number, fps: number, w
       const s = tagSpot(text, at, bounds);
       faces.push({ x: s.x - s.half - TEXT_GAP, y: s.y - s.height / 2, w: 2 * (s.half + TEXT_GAP), h: s.height });
     }
+    faces.push(...screensAt(model, motions, k));
   }
   const avoid = { faces, bodies };
   avoided.set(model, avoid);
   return avoid;
+}
+
+/**
+ * İçerikli ekranların (layer.screen: kod, sayfa, panodaki yazı) bir andaki ekran kutusu. Kart onları da yüz gibi örtmez
+ * (6 Kas, Elon s9-sh2: kart soldaki kişiden kaçıp sağ üste geçti, şövaledeki panonun "Tesla ve Twitter" başlığının üstüne
+ * bindi; incelemede "ikisi de okunmuyor"). Ekranı bulunamayan nesnede içerik çizilmez, kutusu da yok.
+ */
+function screensAt(model: ShotModel, motions: Map<number, Motion>, k: number): Box[] {
+  const { spec, safe, cam, centre } = model;
+  return [...drawnAtOf(model, motions).values()].flatMap((at) => {
+    const layer = spec.layers[at.index]!;
+    const asset = safe[layer.asset]!;
+    const rect = layer.screen && asset.kind === "prop" ? screenFor(asset) : undefined;
+    if (!rect) return [];
+    const tr = motions.get(at.index)!.tr;
+    const [w, h] = [at.width * tr.scale, at.height * tr.scale];
+    const s = screenBox(asset.svg, rect, w, h);
+    // Aynalı katmanda ekran da aynalanır (içeriği okunur kalır ama yeri yansır).
+    const left = at.x + tr.x - w / 2 + (layer.flip ? w - s.x - s.w : s.x);
+    const top = at.y + tr.y - h + s.y;
+    const [x0, y0] = cameraPoint(cam, k, centre, [left, top]);
+    const [x1, y1] = cameraPoint(cam, k, centre, [left + s.w, top + s.h]);
+    return [{ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }];
+  });
 }
 
 /** Bir anın yazıları (bilgi kartı ve etiketler; kartın yeri çekim boyunca bir kez seçilir). */
@@ -3583,6 +3612,7 @@ function ShotStage({
   grain,
   texture,
   paper,
+  light,
   c0,
   c1,
   accent,
@@ -3600,6 +3630,8 @@ function ShotStage({
     texture: Texture;
     /** Kâğıt rengi (suluboya paketleri): sahnenin zemini ve kişi/nesne boyasının altı. */
     paper: string | undefined;
+    /** Paletin en açık rengi (içi boş makro nesnenin zemini). */
+    light: string;
     c0: string;
     c1: string;
     accent: string;
@@ -3721,7 +3753,7 @@ function ShotStage({
       <AbsoluteFill style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.32) 100%)" }} />
       {!BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} {...(DEPTH.has(ambience) ? { part: "near" as const } : {})} />}
       {inset && <Callout {...inset} p={p} prefix={`${visual.shotId}-co-`} accent={readable(accent) ?? "#ffd84d"} paper={paper} />}
-      {macroView && macroView.q > 0 && <Macro {...macroView} prefix={`${visual.shotId}-mc-`} paper={paper} />}
+      {macroView && macroView.q > 0 && <Macro {...macroView} prefix={`${visual.shotId}-mc-`} paper={paper} light={light} />}
       {/* Konuşma balonları kameranın dışında (yazı karede hep aynı boyda); konuşanın yüzünün yanında. */}
       {bubbles.length > 0 && (
         <svg data-bubbles width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }} dangerouslySetInnerHTML={{ __html: bubbles.map(bubbleSvg).join("") }} />

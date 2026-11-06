@@ -165,6 +165,52 @@ export function gridFor(asset: VectorAsset): CoverGrid | undefined {
   return g ?? undefined;
 }
 
+/**
+ * İçi boş çizim (6 Kas, Elon s2-sh4 ve s6-sh5: makrodaki çek "yarı saydam, hayalet bir katman"; tasarımcı çeki dolgusuz,
+ * kesik çizgili bir çerçeve ve içindeki çizgilerle çizmişti, büyütülünce arkadaki bulanık oda içinden görünüyordu; 86 makro
+ * çekimde 3'ü, oyun kartları ve çek). Dolgulu hücreleri çizimin cover'ından azsa ve çizimin en az frame'ini kaplayan dolgusuz,
+ * dikdörtgen gibi (alanı kutusunun en az rect'i) bir çerçevesi varsa o çerçevenin kutusu; yoksa undefined.
+ */
+export const HOLLOW = { cover: 0.3, frame: 0.8, rect: 0.9 } as const;
+const hollows = new WeakMap<VectorAsset, (Bounds & { rx: number }) | null>();
+export function hollowFrame(asset: VectorAsset): (Bounds & { rx: number }) | undefined {
+  let h = hollows.get(asset);
+  if (h === undefined) {
+    h = null;
+    const found = shapesOf(asset.svg);
+    const g = gridFor(asset);
+    if (found && g) {
+      const [vx, vy, vw, vh] = found.vb;
+      const whole = { x: vx, y: vy, w: vw, h: vh };
+      const frame = found.shapes
+        .filter((s) => /^(none|transparent)$/i.test(s.fill ?? "") && s.w * s.h >= HOLLOW.frame * vw * vh && s.area >= HOLLOW.rect * s.w * s.h)
+        .sort((a, b) => b.w * b.h - a.w * a.h)[0];
+      if (frame && coverIn(g, whole, false, whole) < HOLLOW.cover) h = { x: frame.x, y: frame.y, w: frame.w, h: frame.h, rx: frame.rx };
+    }
+    hollows.set(asset, h);
+  }
+  return h ?? undefined;
+}
+
+const backed = new WeakMap<VectorAsset, Map<string, VectorAsset>>();
+/** İçi boş çizimin çerçevesinin içine, bütün şekillerin altına opak bir zemin (kâğıt); içi dolu çizim olduğu gibi. */
+export function hollowBacked(asset: VectorAsset, colour: string): VectorAsset {
+  const frame = hollowFrame(asset);
+  if (!frame) return asset;
+  let byColour = backed.get(asset);
+  if (!byColour) backed.set(asset, (byColour = new Map()));
+  let out = byColour.get(colour);
+  if (!out) {
+    // Çerçeve bulunduysa kök etiketi vardır (shapesOf viewBox'ı ondan okur).
+    const root = /<svg\b[^>]*>/.exec(asset.svg)!;
+    const at = root.index + root[0].length;
+    const base = `<rect data-backing="" x="${frame.x}" y="${frame.y}" width="${frame.w}" height="${frame.h}" rx="${frame.rx}" fill="${colour}"/>`;
+    out = { ...asset, svg: `${asset.svg.slice(0, at)}${base}${asset.svg.slice(at)}` };
+    byColour.set(colour, out);
+  }
+  return out;
+}
+
 /** box'a "meet" ile oturan (flip: aynalı) çizimin aynı koordinattaki r bölgesini örttüğü pay. */
 export function coverIn(g: CoverGrid, box: Bounds, flip: boolean, r: Bounds): number {
   const [vx, vy, vw, vh] = g.vb;

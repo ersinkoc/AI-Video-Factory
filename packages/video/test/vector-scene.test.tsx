@@ -1736,6 +1736,40 @@ describe("vektör sahne: bilgi kartı", () => {
   });
 });
 
+describe("vektör sahne: kart ekranın yazısını örtmez", () => {
+  // Şövaledeki pano (1,8 m): çerçevesinin içinde beyaz yazı yüzeyi (screen.ts onu ekran bulur).
+  const easel = asset("easel", "prop", '<svg viewBox="0 0 120 180"><rect width="120" height="180" fill="#6b4a2b"/><rect id="easel-screen" x="8" y="8" width="84" height="60" fill="#ffffff"/></svg>', 120, 180, { realHeight: 1.8, grounded: true });
+  const assets = { ...ASSETS, easel };
+  const at = (flip: boolean, screen: boolean) => {
+    const spec = VectorShot.parse({
+      layers: [{ asset: "easel", x: 330, depth: 0, flip, ...(screen ? { screen: { kind: "text", title: "Tesla ve Twitter", lines: ["44 milyar dolar"] } } : {}) }],
+      texts: [{ text: "44 milyar dolar", style: "number", x: 0, y: 0 }],
+      camera: { zoomFrom: 1.6, zoomTo: 1.6, panX: 0, focusX: 330, focusY: 380 },
+    });
+    const m = shotModel(spec, assets, "outline", 1920, 1080, false, 10);
+    const f = shotFrame(m, { shotId: "s1", frame: 150, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: false, overlay: false });
+    const pl = f.drawnAt.get(0)!;
+    // Ekran çizimin sol üstünde (8, 8)–(92, 68); aynalı panoda sağ üstte.
+    const k = pl.width / 120;
+    const left = pl.x - pl.width / 2 + (flip ? pl.width - 92 * k : 8 * k);
+    const [x0, y0] = cameraPoint(m.cam, f.k, m.centre, [left, pl.y - pl.height + 8 * k]);
+    const [x1, y1] = cameraPoint(m.cam, f.k, m.centre, [left + 84 * k, pl.y - pl.height + 68 * k]);
+    return { card: textBoxOf(f.texts.find((t) => t.card)!), screen: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
+  };
+
+  it("içerikli ekranı (pano, ekran) örten köşeden kayar; aynalı panoda ekranın yeri de aynalanır (6 Kas, Elon s9-sh2)", () => {
+    // İçeriksiz pano kartı yerinden oynatmaz (yazısı yok).
+    const bare = at(false, false);
+    expect(bare.card.x).toBe(CARD.x);
+    expect(overlap(bare.card, bare.screen) / (bare.screen.w * bare.screen.h)).toBeGreaterThan(CARD.face);
+    for (const flip of [false, true]) {
+      const { card, screen } = at(flip, true);
+      expect(card.x).not.toBe(CARD.x);
+      expect(overlap(card, screen) / (screen.w * screen.h)).toBeLessThan(CARD.face);
+    }
+  });
+});
+
 describe("vektör sahne: tezgâhın ardında", () => {
   // Danışma masası (2,6 m; üst yarısı tabela ve ortasında tabelayı taşıyan direk, alt yarısı tezgâh): 1,7 m'lik kişi
   // yükselir, yüzü direğin ardında kalırsa tezgâh boyunca kayar.
@@ -1997,6 +2031,22 @@ describe("vektör sahne: makro ek çekim", () => {
     // Ekranda bir kişi: büyüyen telefonda da görünür.
     const call = scene({ ...props, layers: [layers[0], { ...layers[1], screen: { person: "hero" } }] }, { frame: 150 });
     expect(call.querySelector('[data-macro="phone"] [data-screen]')!.innerHTML).toContain('id="s1-mc-s-p-');
+  });
+
+  it("içi boş çizimin (dolgusuz çerçeveli çek) çerçevesinin içi paletin en açık rengi; sahnedeki çizimi değişmez (6 Kas, Elon s6-sh5)", () => {
+    const voucher = asset("voucher", "prop", '<svg viewBox="0 0 400 100"><rect x="4" y="4" width="392" height="92" rx="3" fill="none" stroke="#123456" stroke-width="2"/><rect x="20" y="20" width="80" height="8" fill="#123456"/></svg>', 400, 100, { realHeight: 0.04 });
+    const layers = [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "voucher", x: 700, on: 0 }];
+    const props = { layers, camera: { ...cam, focusY: 600 }, key: 1 };
+    const backing = (palette?: string[]) => {
+      const c = scene(props, { frame: 150, assets: { voucher }, ...(palette ? { palette } : {}) });
+      const rect = c.querySelector('[data-macro="voucher"] [data-backing]');
+      const inScene = c.querySelectorAll("[data-backing]").length;
+      cleanup();
+      return { fill: rect?.getAttribute("fill"), inScene };
+    };
+    // Palet yoksa beyaz; varsa en açığı. Sahnedeki küçük çizim olduğu gibi kalır.
+    expect(backing()).toEqual({ fill: "#ffffff", inScene: 1 });
+    expect(backing(["#1d2433", "#f4f1e8", "#3a4a66"]).fill).toBe("#f4f1e8");
   });
 });
 

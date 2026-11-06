@@ -114,7 +114,7 @@ pnpm studio:build && pnpm studio:start   # production build, same port
  The publishing package gives a YouTube title, a description with chapters, tags (each with a copy button) and a downloadable 1280×720 thumbnail. A horizontal episode also gets a vertical Short: the package picks its best 20–60 seconds and they are re-rendered locally as 9:16.
 6. **Delete.** Every card on the Episodes page has a trash button, for unfinished and finished episodes alike. It asks first, then deletes the episode's state, its video, Short, thumbnail, subtitles, render cache, review frames, sound effects and music. Drawings approved into the library, the shared generation cache and the cost ledger stay. An episode with a running job cannot be deleted until the job stops.
 
-On-screen text follows one layout: place, date and event lines sit in a fixed info card at the top-left, and name tags stay next to their person, all in one typeface and one plate style. The card never covers a face or a name tag: when people stand in the top corners it moves to the other corner or into the gap between them, and it keeps that place for the whole shot.
+On-screen text follows one layout: place, date and event lines sit in a fixed info card at the top-left, and name tags stay next to their person, all in one typeface and one plate style. The card never covers a face, a name tag or the text on a screen or board: when people or a board stand in the top corners it moves to the other corner or into the gap between them, and it keeps that place for the whole shot.
 
 Other pages:
 

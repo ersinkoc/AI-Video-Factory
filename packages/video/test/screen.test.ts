@@ -1,6 +1,6 @@
 import { VectorAsset, VectorScreen } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { coverGrid, coverOf, drawnBottom, luminance, SCREEN_LINES, SCREEN_READ, screenBox, screenFor, screenOf, screenSvg } from "../src/screen.ts";
+import { coverGrid, coverOf, drawnBottom, hollowBacked, hollowFrame, luminance, SCREEN_LINES, SCREEN_READ, screenBox, screenFor, screenOf, screenSvg } from "../src/screen.ts";
 
 // Monitör: kasa (dış dikdörtgen), ekran (içinde, koyu), altta ayak.
 const MONITOR = `<svg viewBox="0 0 200 180"><rect x="0" y="0" width="200" height="140" rx="10" fill="#ddd"/><rect x="20" y="15" width="160" height="105" rx="6" fill="#1b2430"/><rect x="40" y="30" width="20" height="10" fill="#fff"/><rect x="80" y="140" width="40" height="40" fill="#999"/></svg>`;
@@ -182,5 +182,35 @@ describe("ekranın içeriği", () => {
     expect(luminance("#1f6f5c")).toBeCloseTo(0.363, 2);
     expect(luminance("rgb(0, 0, 0)")).toBe(0);
     expect(luminance("white")).toBeCloseTo(1);
+  });
+});
+
+describe("içi boş çizim", () => {
+  const prop = (svg: string) => VectorAsset.parse({ id: "p-x", kind: "prop", svg, width: 400, height: 100 });
+  const FRAME = '<rect x="4" y="4" width="392" height="92" rx="3" fill="none" stroke="#123456" stroke-width="2"/>';
+  const BAR = '<rect x="20" y="20" width="80" height="8" fill="#123456"/>';
+
+  it("dolgusu az, dolgusuz dikdörtgen çerçeveli çizim: çerçevenin kutusu; zemin bütün şekillerin altında", () => {
+    // İçteki kesik çizgili ikinci çerçeve ve dolgusu yazılmamış (siyah) küçük şekil: en büyük çerçeve seçilir.
+    const INNER = '<rect x="6" y="6" width="388" height="88" fill="none" stroke="#123456" stroke-dasharray="4 4"/><rect x="300" y="60" width="20" height="10"/>';
+    const voucher = prop(`<svg viewBox="0 0 400 100">${INNER}${FRAME}${BAR}</svg>`);
+    expect(hollowFrame(voucher)).toEqual({ x: 4, y: 4, w: 392, h: 92, rx: 3 });
+    const solid = hollowBacked(voucher, "#f4f1e8");
+    expect(solid.svg).toBe(`<svg viewBox="0 0 400 100"><rect data-backing="" x="4" y="4" width="392" height="92" rx="3" fill="#f4f1e8"/>${INNER}${FRAME}${BAR}</svg>`);
+    // Varlık ve renk başına bir kez.
+    expect(hollowBacked(voucher, "#f4f1e8")).toBe(solid);
+    expect(hollowBacked(voucher, "#ffffff").svg).toContain('fill="#ffffff"');
+    expect(hollowFrame(voucher)).toBe(hollowFrame(voucher));
+  });
+
+  it("içi dolu, çerçevesi küçük ya da dikdörtgen olmayan, viewBox'ı okunamayan çizim olduğu gibi kalır", () => {
+    const filled = prop(`<svg viewBox="0 0 400 100"><rect width="400" height="100" fill="#ffffff"/>${FRAME}</svg>`);
+    const small = prop(`<svg viewBox="0 0 400 100"><rect x="4" y="4" width="200" height="50" fill="none" stroke="#000"/>${BAR}</svg>`);
+    const ring = prop(`<svg viewBox="0 0 400 400"><circle cx="200" cy="200" r="198" fill="none" stroke="#000"/>${BAR}</svg>`);
+    const broken = prop(`<svg>${FRAME}</svg>`);
+    for (const a of [filled, small, ring, broken]) {
+      expect(hollowFrame(a)).toBeUndefined();
+      expect(hollowBacked(a, "#fff")).toBe(a);
+    }
   });
 });
