@@ -1860,12 +1860,14 @@ export function jointSafe(
 
 /**
  * Yüzün iskelet tuvalindeki bölgesi (köşeler): ölçülen başın ortadaki %70'i, gözlerin üstünden (baş kutusunun üst %30'u
- * saç, şapka) çeneye kadar. Kamera (faceSafe) ve denetim (lint.ts) aynı bölgeye bakar.
+ * saç, şapka) çeneye kadar. Kamera (faceSafe) ve denetim (lint.ts) aynı bölgeye bakar. wide: başın bütün genişliği
+ * (konuşma balonu ve kuyruğu; 6 Kas, Antik Mısır s5-sh3: dar yüzde göz ortadaki %70'in dışına taşıyordu, kuyruğun ucu
+ * gözün üstüne iniyordu, "balon yüzü örtüyor").
  */
-export function faceCorners(asset: VectorAsset): [number, number][] {
+export function faceCorners(asset: VectorAsset, wide = false): [number, number][] {
   const { head, chin } = faceFor(asset);
-  const x0 = head.x + head.w * 0.15;
-  const x1 = head.x + head.w * 0.85;
+  const x0 = head.x + head.w * (wide ? 0 : 0.15);
+  const x1 = head.x + head.w * (wide ? 1 : 0.85);
   const y0 = head.y + head.h * 0.3;
   const y1 = Math.max(chin[1], y0 + 1);
   return [
@@ -3419,7 +3421,7 @@ function textsAt(model: ShotModel, shotId: string, heads: Head[], k: number, dur
 function steadyFace(model: ShotModel, motions: Map<number, Motion>, k: number, pl: PlacedLayer): Box {
   const layer = model.spec.layers[pl.index]!;
   const { tr, flip, squash } = motions.get(pl.index)!;
-  return boxOf(faceCorners(model.safe[layer.asset]!).map((c) => cameraPoint(model.cam, k, model.centre, rigToCanvas(pl, layer, { tr, flip, squash }, c))));
+  return boxOf(faceCorners(model.safe[layer.asset]!, true).map((c) => cameraPoint(model.cam, k, model.centre, rigToCanvas(pl, layer, { tr, flip, squash }, c))));
 }
 
 /** Balonların durabileceği alan: etiketlerin yatay bandı (dikeyde görünen kısım), yazıların üst sınırı, altyazının üstü. */

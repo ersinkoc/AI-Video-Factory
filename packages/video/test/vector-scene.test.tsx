@@ -41,7 +41,7 @@ const { BURST } = await import("../src/staging.ts");
 const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, MOOD_REST, MOOD_POSE, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, STARTLE, exclaimOf, opensMouth, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt, screenView } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, MOOD_REST, MOOD_POSE, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, STARTLE, exclaimOf, opensMouth, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt, screenView, faceCorners } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -1850,6 +1850,14 @@ describe("vektör sahne: konuşma balonu", () => {
     expect(at(285) - at(15)).toBeGreaterThan(500);
     const gone = shotModel(VectorShot.parse({ layers: [{ asset: "hero", x: 500, depth: 0.3, say: { text: "Hoşça kal", start: 0, end: 1 }, anims: [{ type: "walk", toX: 2600, start: 0.1, end: 0.6 }] }] }), ASSETS, "outline", 1920, 1080, false, 10);
     expect(shotFrame(gone, { shotId: "s1", frame: 280, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).bubbles).toEqual([]);
+  });
+
+  it("balon ve kuyruğu başın bütün genişliğine göre durur (dar yüzde göz ortadaki %70'in dışına taşıyordu)", () => {
+    // talker: baş 120–280 (yarıçap 80); yüz bölgesi ortadaki %70: 144–256; balon için bütün baş.
+    const xs = (wide: boolean) => faceCorners(ASSETS.talker!, wide).map((c) => c[0]);
+    expect([Math.min(...xs(false)), Math.max(...xs(false))]).toEqual([144, 256]);
+    expect([Math.min(...xs(true)), Math.max(...xs(true))]).toEqual([120, 280]);
+    expect(faceCorners(ASSETS.talker!, true).map((c) => c[1])).toEqual(faceCorners(ASSETS.talker!).map((c) => c[1]));
   });
 
   it("iki konuşanın balonu birbirini örtmez; büyütme balonu konuşma balonundan kaçınır", () => {
