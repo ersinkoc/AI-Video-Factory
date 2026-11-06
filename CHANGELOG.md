@@ -2,6 +2,15 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.4.1 (2026-11-06)
+
+- Screen keys get a readable inset of the screen itself; key camera and callout work after fillWide
+- The info card keeps off screen and board text; hollow props get a paper base in the macro
+- Entrances last under a second; the review frame waits for late texts
+- Re-planned scenes get a final check before render; the director sees the draft frames
+- Weather seen from a room stays inside its windows
+- A giant object is shown whole as if seen from afar, not as a strip of its base
+
 ## v0.4.0 (2026-11-05)
 
 - Renders can use a chosen Chrome (YS_BROWSER_EXECUTABLE); a browser that hangs at start says so
