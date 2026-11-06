@@ -46,7 +46,34 @@ export function buildIn(spec: VectorShot, assets: Assets, dur: number, fps: numb
   return { ...spec, layers };
 }
 
-/** Çekimin çizilen tarifi: sahnenin ilk çekimiyse (enter) kurulma girişleriyle. Render, denetim, inceleme anı ve sesler bunu kullanır. */
+/**
+ * Giriş ve çıkışın en uzun süresi (sn; 6 Kas, Elon Musk son incelemesi: "çek yarı saydam, hayalet bir katman gibi"). İlerleme
+ * yönetmenin verdiği pencereye yayılıyordu ve yönetmen pencereyi çoğu kez anlatımın cümlesi kadar uzun veriyordu: 1584
+ * çekimde pop ortanca 1,25 sn (en çok 16,5), slide_in 2,1 sn (21,7), fade_in 1,6 sn; 195 çekimde bir şey saniyelerce
+ * büyüyor, kayıyor ya da yarı saydam duruyordu. Hareket tasarımında bunlar 0,3–1 sn sürer. Girişin başı (anlatımla
+ * zamanlanmış) kalır, süresi kısalır; çıkışın sonu kalır. draw_on elle çizim gibi sürer, dokunulmaz.
+ */
+export const PACE: Readonly<Partial<Record<VectorAnimType, number>>> = { pop: 0.45, fade_in: 0.8, slide_in: 0.9, fade_out: 0.8 };
+
+const brisk = (a: VectorAnim, dur: number): VectorAnim => {
+  const most = PACE[a.type];
+  if (most === undefined || (a.end - a.start) * dur <= most) return a;
+  return a.type === "fade_out" ? { ...a, start: a.end - most / dur } : { ...a, end: a.start + most / dur };
+};
+
+/** Katman ve yazıların girişleri/çıkışları en çok PACE kadar sürer. */
+export function briskAnims(spec: VectorShot, dur: number): VectorShot {
+  const anims = <T extends { anims: VectorAnim[] }>(x: T): T => ({ ...x, anims: x.anims.map((a) => brisk(a, dur)) });
+  return { ...spec, layers: spec.layers.map(anims), texts: spec.texts.map(anims) };
+}
+
+/**
+ * Çekimin çizilen tarifi: girişler PACE'e kısalmış, sahnenin ilk çekimiyse (enter) kurulma girişleriyle. Render, denetim,
+ * inceleme anı ve sesler bunu kullanır.
+ */
 export function visualVector(visual: Visual, assets: Assets, fps: number): VectorShot | undefined {
-  return visual.vector && visual.enter ? buildIn(visual.vector, assets, visual.durationInFrames / fps, fps, visual.dressing) : visual.vector;
+  if (!visual.vector) return undefined;
+  const dur = visual.durationInFrames / fps;
+  const spec = briskAnims(visual.vector, dur);
+  return visual.enter ? buildIn(spec, assets, dur, fps, visual.dressing) : spec;
 }

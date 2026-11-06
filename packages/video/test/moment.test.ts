@@ -54,9 +54,23 @@ describe("inceleme karesinin anı", () => {
     const typed = at({ layers: [hero([{ type: "explain", start: 0.1, end: 0.6 }])], texts: [{ text: "x".repeat(64), style: "title", x: 0, y: 0, anims: [{ type: "typewriter", start: 0, end: 1 }] }] });
     expect(typed).toBeCloseTo(0.54, 3);
     // Kişi 7. sn'de kararıyor: kare ondan önce, %80'e en yakın.
-    expect(at({ layers: [hero([{ type: "explain", start: 0, end: 1 }, { type: "fade_out", start: 0.7, end: 1 }])] })).toBeCloseTo(0.7);
-    // Giriş çıkıştan sonra bitiyorsa (çelişkili plan) %80.
-    expect(at({ layers: [hero([{ type: "point", start: 0.1, end: 0.5 }, { type: "slide_in", start: 0, end: 0.9 }, { type: "fade_out", start: 0.5, end: 1 }])] })).toBe(STILL.at);
+    expect(at({ layers: [hero([{ type: "explain", start: 0, end: 1 }, { type: "fade_out", start: 0.7, end: 0.78 }])] })).toBeCloseTo(0.7);
+    // 3 sn'lik kararma 0,8 sn'ye kısalır (sonu yerinde): kişi %80'de daha tam görünür.
+    expect(at({ layers: [hero([{ type: "explain", start: 0, end: 1 }, { type: "fade_out", start: 0.7, end: 1 }])] })).toBe(STILL.at);
+    // Jest yokken de kare, çıkıştan önceki en geç ana çekilir.
+    expect(at({ layers: [hero([{ type: "fade_out", start: 0.5, end: 0.55 }])] })).toBe(0.5);
+    // Giriş çıkıştan sonra bitiyorsa (çelişkili plan) giriş bitince: yarım giriş kusur sanılır.
+    expect(at({ layers: [hero([{ type: "point", start: 0.1, end: 0.5 }, { type: "slide_in", start: 0.6, end: 0.63 }, { type: "fade_out", start: 0.5, end: 0.55 }])] })).toBeCloseTo(0.63 + 1 / 300, 6);
+  });
+
+  it("yazı çekimin sonuna doğru açılıyorsa kare onu bekler; en geç son kare (6 Kas, Elon s8-sh4)", () => {
+    // 76 harflik daktilo 5 sn'de başlıyor, 9,5 sn'de bitiyor: jest olsa da kare yazı bitince.
+    const quote = { text: "Sonraki riskler de iyi bitecek miydi? ".repeat(2), style: "quote", x: 200, y: 100, anims: [{ type: "typewriter", start: 0.5, end: 0.95 }] };
+    expect(at({ layers: [hero([{ type: "think", start: 0.3, end: 1 }])], texts: [quote] })).toBeCloseTo(0.95 + 1 / 300, 6);
+    // Jest yokken de %80 yarım yazıyı gösterir; yazı 8,5 sn'de bitince bir kare sonrası.
+    expect(at({ layers: [hero([])], texts: [{ ...quote, anims: [{ type: "typewriter", start: 0.5, end: 0.85 }] }] })).toBeCloseTo(0.85 + 1 / 300, 6);
+    // Bütün çekim boyunca çizilen nesne: son kare.
+    expect(at({ layers: [hero([]), { asset: "cup", x: 1200, depth: 0.3, anims: [{ type: "draw_on", start: 0, end: 1 }] }] })).toBeCloseTo(299 / 300, 6);
   });
 });
 
@@ -65,7 +79,7 @@ describe("inceleme karesinin anı: konuşma balonu", () => {
     // Pencere 0,1–0,5: görünür 0,16–0,47; hazır olunan 0,3 sonrasında %80'e en yakını.
     expect(at({ layers: [hero([], { say: { text: "Bu bizim hatamız değil", start: 0.1, end: 0.5 } })] })).toBeCloseTo(0.47);
     expect(at({ layers: [hero([], { say: { text: "  ", start: 0.1, end: 0.5 } })] })).toBe(STILL.at);
-    // Çekim bitmeden açılamayan balon (kişi sonda giriyor) sayılmaz.
-    expect(at({ layers: [hero([{ type: "fade_in", start: 0.9, end: 1 }], { say: { text: "Geç kaldım" } })] })).toBe(STILL.at);
+    // Çekim bitmeden açılamayan balon (kişi sonda giriyor) sayılmaz; kare kişi belirince (0,8 sn'lik giriş).
+    expect(at({ layers: [hero([{ type: "fade_in", start: 0.9, end: 1 }], { say: { text: "Geç kaldım" } })] })).toBeCloseTo(0.98 + 1 / 300, 6);
   });
 });

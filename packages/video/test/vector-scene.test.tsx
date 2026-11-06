@@ -251,21 +251,28 @@ describe("vektör sahne: katman animasyonları", () => {
   });
 
   it("fade_in pencereden önce görünmez, ortasında yarı, sonra tam görünür", () => {
-    const a = [{ type: "fade_in", start: 0.2, end: 0.4 }];
+    const a = [{ type: "fade_in", start: 0.2, end: 0.26 }];
     expect(boxAt(a, 30).opacity).toBe(0);
-    expect(boxAt(a, 90).opacity).toBeCloseTo(0.5);
+    expect(boxAt(a, 69).opacity).toBeCloseTo(0.5);
     expect(boxAt(a, 150).opacity).toBe(1);
+    // Uzun pencere PACE'e kısalır (2 sn → 0,8 sn): başı yerinde, ortasında artık tam görünür.
+    const long = [{ type: "fade_in", start: 0.2, end: 0.4 }];
+    expect(boxAt(long, 72).opacity).toBeCloseTo(0.5);
+    expect(boxAt(long, 90).opacity).toBe(1);
   });
 
-  it("fade_out pencereden sonra kaybolur", () => {
-    const a = [{ type: "fade_out", start: 0.6, end: 0.8 }];
+  it("fade_out pencereden sonra kaybolur; uzun çıkışın sonu yerinde kalır", () => {
+    const a = [{ type: "fade_out", start: 0.6, end: 0.66 }];
     expect(boxAt(a, 150).opacity).toBe(1);
-    expect(boxAt(a, 210).opacity).toBeCloseTo(0.5);
+    expect(boxAt(a, 189).opacity).toBeCloseTo(0.5);
     expect(boxAt(a, 270).opacity).toBe(0);
+    const long = [{ type: "fade_out", start: 0.6, end: 0.8 }];
+    expect(boxAt(long, 210).opacity).toBe(1);
+    expect(boxAt(long, 228).opacity).toBeCloseTo(0.5);
   });
 
   it("katman opaklığı animasyonla çarpılır", () => {
-    expect(boxAt([{ type: "fade_in", start: 0.2, end: 0.4 }], 90, { opacity: 0.5 }).opacity).toBeCloseTo(0.25);
+    expect(boxAt([{ type: "fade_in", start: 0.2, end: 0.26 }], 69, { opacity: 0.5 }).opacity).toBeCloseTo(0.25);
   });
 
   it("slide_in dört yönden kadraj dışından gelir, sonunda yerindedir", () => {
@@ -2306,7 +2313,7 @@ describe("vektör sahne: yerçekimi", () => {
   it("yerdeki nesne süzülmez; yukarıdan/aşağıdan kayarak gelen yerinde belirir", () => {
     expect(chairAt([{ type: "float" }], 60)).toMatchObject({ x: 0, y: 0 });
     const slid = (from: string) => {
-      const c = scene({ layers: [{ asset: "chair", x: 960, depth: 0.3, anims: [{ type: "slide_in", from, end: 0.5 }] }] }, { frame: 75 });
+      const c = scene({ layers: [{ asset: "chair", x: 960, depth: 0.3, anims: [{ type: "slide_in", from, end: 0.06 }] }] }, { frame: 9 });
       const el = layerBox(c, "chair");
       cleanup();
       return { tr: transformOf(el), opacity: Number(el.style.opacity) };

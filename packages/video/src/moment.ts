@@ -36,8 +36,15 @@ export function stillMoment(visual: Visual, assets: Assets, fps: number): number
   const { spec, safe } = shotModel(visualVector(visual, assets, fps)!, assets, "outline", 1920, 1080, Boolean(visual.overlay), dur, visual.dressing);
   const layerAnims = spec.layers.flatMap((l) => l.anims);
   const texts = spec.texts.flatMap((t) => t.anims.filter((a) => TEXT.has(a.type)).map((a) => revealWindow(a, t.text, dur)));
-  const ready = Math.max(STILL.from, ...layerAnims.filter((a) => ENTRANCE.has(a.type)).map((a) => a.end), ...texts.map((a) => a.end));
+  // Bitişten bir kare sonra (kare floor ile alınır: tam bitiş karesinde son harf daha yazılmamış olabilir); en geç son kare.
+  const frame = 1 / visual.durationInFrames;
+  const done = [...layerAnims.filter((a) => ENTRANCE.has(a.type)).map((a) => a.end), ...texts.map((a) => a.end)].map((e) => e + frame);
+  const ready = Math.min(1 - frame, Math.max(STILL.from, ...done));
   const exit = Math.min(STILL.to, ...layerAnims.filter((a) => a.type === "fade_out").map((a) => a.start));
+  // Yazı ya da giriş çekimin sonuna doğru bitiyorsa kare onu bekler (6 Kas, Elon s8-sh4: daktilo yazısı 0,95'te bitiyordu,
+  // kare %80'den alındı, incelemede "altyazı kesik: 'Sonraki riskler de iyi b'"; 1584 çekimde 14 yarım yazı). Jest yoksa da
+  // at, hazır olma anından önce olamaz.
+  if (ready > exit) return ready;
   const people = spec.layers.filter((l) => safe[l.asset]?.kind === "character");
   const gestures = people.flatMap((l) => l.anims.filter((a) => ACTION.has(a.type)));
   const shown = (a: Pick<VectorAnim, "start" | "end">) => {
@@ -66,7 +73,8 @@ export function stillMoment(visual: Visual, assets: Assets, fps: number): number
     ...gestures.map((a) => ({ at: a.type === "walk" ? shown(a) : full(a), weight: HEAD.has(a.type) ? STILL.head : 1 })),
     ...bubbles.map((a) => ({ at: shown(a), weight: 1 })),
   ];
-  if (!windows.length || ready > exit) return STILL.at;
+  const fallback = Math.min(Math.max(STILL.at, ready), exit);
+  if (!windows.length) return fallback;
   const score = (p: number) => windows.reduce((sum, { at: [lo, hi], weight }) => sum + (p >= lo - 1e-9 && p <= hi + 1e-9 ? weight : 0), 0);
   // Adaylar: ızgara ve her jestin görünür penceresinin uçları (kısa baş sallama ızgara adımının arasına düşmesin).
   const grid = Array.from({ length: Math.floor((exit - ready) / STILL.step + 1e-9) + 1 }, (_, i) => ready + i * STILL.step);
@@ -74,5 +82,5 @@ export function stillMoment(visual: Visual, assets: Assets, fps: number): number
   return candidates.reduce((best, p) => {
     const [s, b] = [score(p), score(best)];
     return s > b || (s === b && Math.abs(p - STILL.at) < Math.abs(best - STILL.at)) ? p : best;
-  }, Math.min(Math.max(STILL.at, ready), exit));
+  }, fallback);
 }
