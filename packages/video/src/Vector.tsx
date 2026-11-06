@@ -824,14 +824,16 @@ function rigPose(
         // Hedefsiz işaret buraya gelmez (sahneleme anlatmaya çevirir); savunma olarak öne-yana yatay.
         /* v8 ignore next -- hedefsiz point stageAfter (staging.ts) ile explain olur */
         const [ax, ay] = attention.aim ?? [RIG.width * 3, RIG.pivots["arm-r"][1]];
-        const hand = ax >= RIG.width / 2 ? "r" : "l";
+        const behind = Math.abs(ax - RIG.width / 2) < POINT.behind;
+        const hand = behind || ax >= RIG.width / 2 ? "r" : "l";
         const [sx, sy] = RIG.pivots[`arm-${hand}`];
         const toward = hand === "r" ? 1 : -1;
         // Hedef kol boyundan yakınsa dirsek bükülür, parmak ucu nesnenin yakın kenarının önünde durur: düz kol eli
         // nesnenin üstüne bindiriyordu (konuşma mesafesiyle kişiler eşyaya yaklaşınca ekranı elle kapatıyordu, 3 Kas).
         // Kenar omzun gerisindeyse (kişi nesnenin önünde) düz kol nesnenin üstünden gösterir.
-        const dx = ax - sx;
+        // Arkadaki hedefe kol gövdeyi çaprazlamadan, yukarı ve biraz dışa uzanır.
         const dy = ay - sy;
+        const dx = behind ? toward * Math.max((ax - sx) * toward, POINT.outward * Math.abs(dy)) : ax - sx;
         const len = Math.hypot(dx, dy);
         // Yanındaki kişiyle orta çizgi o yandaysa parmak ucu onu da geçmez (SPACE): kişiyi işaret eden el onun gövdesine
         // uzanıyor, karşıdakinin anlatan eliyle havada buluşuyordu.
@@ -1322,8 +1324,11 @@ export function stanceAt(t: number, seed: string): number {
 /**
  * İşaret: parmak ucu hedefin kenarından gap px önde durur; el omuzdan en az min × kol boyu uzakta (çok yakındaki nesneye
  * kol katlanmaz). Hedefin kenarı çizim kutusunun yarı genişliğinin edge'i kadar ortadan (kutunun kenarında boşluk olur).
+ * Hedef kişinin tam arkasındaysa (ortası gövdenin ortasından behind px içinde) sağ el gösterir ve kol gövdeyi çaprazlamaz:
+ * yukarı, en az outward × dikey yol kadar dışa (6 Kas: hisarın önündeki II. Mehmed'de hedef her karede gövdenin bir yanından
+ * öbürüne geçiyor, el değişip kol bir karede 115° dönüyordu; dev nesne kareye sığınca ortaya çıktı).
  */
-export const POINT = { gap: 6, min: 0.6, edge: 0.4 } as const;
+export const POINT = { gap: 6, min: 0.6, edge: 0.4, behind: 50, outward: 0.35 } as const;
 
 /** Uzatma: elin omuzdan uzaklığı (kol boyunun kesri) ve öne uzanırken aşağı eğimi (yatay 1'e karşı). */
 const GIVE = { reach: 0.85, drop: 0.5 } as const;
@@ -1666,7 +1671,11 @@ export function fillWide(
       ? { y: pl.y - pl.height * FILL.knee, max: 1 }
       : surfaces.has(pl.index)
         ? { y: pl.y - pl.height * 0.5, max: 1 }
-        : tallest && pl.grounded && pl.height >= tallest * FILL.tall
+        : // Uzaktaymış gibi sığdırılan dev nesne (roket, gemi, hisar) bütün kalır: tabanı kesilirse tepesi yine taşıyordu
+          // (6 Kas, Elon Musk s1-sh3: yaklaşan kamera Falcon 1'in burnunu kesiyordu).
+          pl.distant
+          ? { y: pl.y, max: 1 }
+          : tallest && pl.grounded && pl.height >= tallest * FILL.tall
           ? { y: pl.y - pl.height * FILL.base, max: 1 }
           : { y: Math.min(H, pl.y), max: FILL.props },
   );

@@ -1367,10 +1367,15 @@ describe("vektör sahne: dikkat (işaret ve bakış)", () => {
     expect(withOthers({ anims: [{ type: "point", target: 1 }] }, box(1080))("forearm-r").rotate).toBe(-6);
     // Uzaktaki hedefe düz kol.
     expect(withOthers(point, box(1700))("forearm-r").rotate).toBe(-6);
-    // Tam üstündeki hedef (verilmiş, aynı x): kenar sağda sayılır; kol yukarı kalkar, dirsek bükülmez.
+    // Tam üstündeki hedef (verilmiş, aynı x): sağ kol yukarı ve gövdeyi çaprazlamadan biraz dışa kalkar, dirsek bükülmez.
     const above = withOthers({ anims: [{ type: "point", target: 1 }] }, [{ asset: "box", x: 960, y: 300, height: 100 }]);
-    expect(above("arm-r").rotate).toBeGreaterThan(90);
+    expect(above("arm-r").rotate).toBeLessThan(-140);
+    expect(above("arm-r").rotate).toBeGreaterThan(-180);
     expect(above("forearm-r").rotate).toBe(-6);
+    // Gövdenin ortasından biraz soldaki arkadaki hedef de sağ kolla: el değişmez (salınımla her karede yan değiştiriyordu).
+    const behindLeft = withOthers({ anims: [{ type: "point", target: 1 }] }, [{ asset: "box", x: 930, y: 300, height: 100 }]);
+    expect(behindLeft("arm-r").rotate).toBeLessThan(-140);
+    expect(Math.abs(behindLeft("arm-l").rotate)).toBeLessThan(20);
   });
 
   it("kişisel alan: yanındakini işaret eden, anlatan, omuz silken ve irkilen el iki kişinin orta çizgisini geçmez", () => {
@@ -2751,6 +2756,10 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     const short = fillWide({ ...cam, zoomTo: 1.1 }, [man(800), { ...machine, height: 200, y: 950 }], isMan)!;
     expect(tall.cam.zoomTo).toBeGreaterThan(short.cam.zoomTo);
     expect(540 + (950 - 420 * 0.25 - tall.cam.focusY!) * tall.cam.zoomTo).toBeLessThanOrEqual(1080 + 0.5);
+    // Uzaktaymış gibi sığdırılan dev nesne tabanından da kesilmez: makineden az yaklaşılır, tabanı kadrajda.
+    const far = fillWide({ ...cam, zoomTo: 1.1 }, [man(800), { ...machine, distant: true }], isMan)!;
+    expect(far.cam.zoomTo).toBeLessThan(tall.cam.zoomTo);
+    expect(540 + (950 - far.cam.focusY!) * far.cam.zoomTo).toBeLessThanOrEqual(1080 + 0.5);
     const empty = fillWide({ ...cam, zoomTo: 1.1 }, [machine], () => false);
     expect(empty === undefined || 540 + (950 - empty.cam.focusY!) * empty.cam.zoomTo <= 0.8 * 1080 + 0.5).toBe(true);
     // Yakın çekim, boş sahne ve az kazanç: dokunulmaz.

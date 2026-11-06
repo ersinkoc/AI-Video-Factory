@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONVERSE, floorYOf, READABLE_SIDE, resolveLayout, STAGE, VectorShot, type VectorAsset } from "../src/index.ts";
+import { CONVERSE, floorYOf, GIANT, READABLE_SIDE, resolveLayout, STAGE, VectorShot, type VectorAsset } from "../src/index.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({
   id,
@@ -78,6 +78,26 @@ describe("sahne fiziği: kenar durumlar", () => {
     expect(by(2).height).toBeCloseTo(least);
     expect(by(3).height).toBeCloseTo(STAGE.pxPerMeter * 0.8);
     expect(by(3).fixes).toEqual([]);
+  });
+
+  it("dev nesne (yarısından azı kareye sığar) uzaktaymış gibi küçülür; az taşan ve kişi gerçek boyunda kalır", () => {
+    const assets = {
+      rocket: asset("rocket", "prop", { realHeight: 22.5, grounded: true }, 100, 800),
+      tent: asset("tent", "prop", { realHeight: 4, grounded: true }),
+      giant: asset("giant", "character", { realHeight: 6 }, 400, 800),
+    };
+    const placed = resolveLayout(shot([{ asset: "rocket", x: 1200, depth: 0.6 }, { asset: "tent", x: 400, depth: 0.5 }, { asset: "giant", x: 800, depth: 0 }]), assets);
+    const at = (i: number) => placed.find((p) => p.index === i)!;
+    const [rocket, tent, giant] = [at(0), at(1), at(2)];
+    expect(rocket.height).toBeCloseTo(GIANT.fit * (rocket.y - GIANT.top * STAGE.height), 6);
+    expect(rocket.height).toBeGreaterThan(600);
+    expect(rocket.fixes).toContain(GIANT.note);
+    expect(rocket.distant).toBe(true);
+    expect(tent.distant).toBeUndefined();
+    // 4 m çadır gerçek boyunda (üstünün kesilmesi doğal).
+    expect(tent.height).toBeCloseTo(4 * STAGE.pxPerMeter * tent.scale, 6);
+    expect(tent.fixes).not.toContain(GIANT.note);
+    expect(giant.height).toBeCloseTo(6 * STAGE.pxPerMeter, 6);
   });
 
   it("grounded=true nesnenin derinliği yoksa 0,3 varsayılır", () => {

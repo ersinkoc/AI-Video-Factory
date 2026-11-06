@@ -23,6 +23,16 @@ export const STAGE = {
 const DEFAULT_REAL_HEIGHT: Record<VectorAsset["kind"], number> = { character: 1.7, prop: 0.8, background: 0 };
 /** Elde tutulan nesnenin varsayılan boyu (m). */
 const HELD_REAL_HEIGHT = 0.3;
+/**
+ * Dev nesne uzaktadır (6 Kas, Elon Musk taslak incelemesi: 22,5 m'lik Falcon 1 kişinin yanında gerçek boyunda durunca karede
+ * yalnız kaidesi ve rampası görünüyordu, "roket yok" notu 10 çekimde; bütün bölümlerde 63 nesnenin 256 yerleşiminde aynı:
+ * savaş gemisi, kadırga, sur, Rumeli Hisarı, Ayasofya, kule). Yere basan nesnenin boyu ayak çizgisiyle karenin üstü
+ * (top kesri boşluk) arasına over katından fazla taşıyorsa, yani yarısından azı görünecekse, o aralığın fit kesrine
+ * küçülür: gerçek kamerada böyle bir nesne ancak uzaktan bütün görünür. Az taşan (4 m çadır, kapı) gerçek boyunda kalır,
+ * üstünün kesilmesi doğal.
+ */
+export const GIANT = { top: 0.06, over: 2, fit: 0.9, note: "kareye sığmayacak kadar büyüktü, uzaktaymış gibi küçültüldü" } as const;
+
 /** Duvardaki/havadaki öğe arkada durur: gerçek boyunun bu kesriyle çizilir. */
 const WALL_SCALE = 0.8;
 
@@ -56,6 +66,8 @@ export interface PlacedLayer {
   heldBy?: number;
   /** Üstünde durduğu/oturduğu katman (masa, sandalye). */
   on?: number;
+  /** Dev nesne uzaktaymış gibi kareye sığdırıldı (GIANT): kamera onu tepesinden tabanına bütün tutar. */
+  distant?: boolean;
   /** Yerleşimi koddan düzeltildiyse nedeni (inceleme ve testler için). */
   fixes: string[];
 }
@@ -436,6 +448,12 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
       const sized = asset.kind === "prop" ? readableHeight(real, aspect, READABLE_SIDE.floor, fixes) : real;
       out = { index: i, x: layer.x, y, height: sized * STAGE.pxPerMeter * scale, scale, z: 100 * (1 - depth), sitting: false, grounded: true, fixes };
       if (layer.height !== undefined && Math.abs(layer.height - out.height) > out.height * 0.15) fixes.push("boy gerçek ölçüye göre düzeltildi");
+      const room = y - GIANT.top * STAGE.height;
+      if (asset.kind === "prop" && out.height > GIANT.over * room) {
+        out.height = GIANT.fit * room;
+        out.distant = true;
+        fixes.push(GIANT.note);
+      }
     } else {
       // Duvarda/havada: verilen y ve boy; hepsi yerdeki öğelerin arkasında. Nesne okunur boyun altına düşmez (yönetmenin
       // verdiği boy dahil): öteki yerleşimlerin alt sınırı burada yoktu, havada sunulan telefon minik kalıyordu.
