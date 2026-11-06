@@ -40,7 +40,7 @@ const { BURST } = await import("../src/staging.ts");
 const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, MOOD_REST, MOOD_POSE, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, STARTLE, exclaimOf, opensMouth, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, MOOD_REST, MOOD_POSE, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, STARTLE, exclaimOf, opensMouth, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt, screenView } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -2054,6 +2054,48 @@ describe("vektör sahne: büyütme balonu ve atmosfer katmanı", () => {
   // Duvarı kaplayan öğe: geniş çekim dolu, kamera kendiliğinden yaklaşmaz (fillWide).
   const wall = { asset: "panorama", x: 960, y: 1080, height: 1080 };
   const held = { layers: [{ asset: "hero", x: 1300, depth: 0.5 }, { asset: "cup", x: 0, heldBy: 0 }, wall] };
+
+  it("içerikli ekranlı nesnenin balonunda ekranın kendisi büyür, kasası kenarda kesilir (6 Kas, Elon s3-sh2)", () => {
+    // Telefon 100×180, ekranı (8, 16) 84×148: balonun 259 px'lik kutusuna ekranın uzun kenarı oturur.
+    const side = 2 * CALLOUT.r * (1 - 2 * 0.13);
+    const v = screenView(ASSETS.phone, side, side);
+    const k = side / 148;
+    expect(v.w).toBeCloseTo(180 * k, 6);
+    expect(v.h).toBe(v.w);
+    // Ekranın ortası kutunun ortasında.
+    expect(v.x + (v.w - 100 * k) / 2 + (8 + 42) * k).toBeCloseTo(side / 2, 6);
+    expect(v.y + (16 + 74) * k).toBeCloseTo(side / 2, 6);
+    // İçerik yoksa ya da ekranı bulunamayan nesnede çizimin bütünü.
+    expect(screenView(ASSETS.phone, undefined, side)).toEqual({ x: 0, y: 0, w: side, h: side });
+    expect(screenView(ASSETS.cup, side, side)).toEqual({ x: 0, y: 0, w: side, h: side });
+    const c = scene({ ...held, layers: [held.layers[0]!, { asset: "phone", x: 0, heldBy: 0, screen: { kind: "code", lines: ["print(1)"] } }, wall] }, { frame: 150 });
+    // Balonun içindeki çizim kutusu ekranın ortasına kaymış (kenar payı 45,5 px'ten sola/yukarı) ve kutudan büyük.
+    const inner = c.querySelector('[data-callout="phone"] > div > div') as HTMLElement;
+    expect(parseFloat(inner.style.left)).toBeCloseTo(2 * CALLOUT.r * 0.13 + v.x, 6);
+    expect(parseFloat(inner.style.top)).toBeCloseTo(2 * CALLOUT.r * 0.13 + v.y, 6);
+    expect(c.querySelector('[data-callout="phone"] [data-screen]')).not.toBeNull();
+  });
+
+  it("yakın çekimde içerikli ekranın ölçüsü ekranın kendi boyu; ekranı bulunamayan nesnede alanın karekökü", () => {
+    const close = (asset: string) => {
+      const spec = VectorShot.parse({
+        layers: [{ asset: "hero", x: 960, depth: 0.5 }, { asset, x: 0, heldBy: 0, screen: { kind: "code", lines: ["print(1)"] } }, wall],
+        key: 1,
+        camera: { zoomFrom: 1.6, zoomTo: 1.6, panX: 0, focusX: 960, focusY: 420 },
+      });
+      const m = shotModel(spec, ASSETS, "outline", 1920, 1080, false, 10);
+      return { m, f: shotFrame(m, { shotId: "s1", frame: 200, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }) };
+    };
+    const phone = close("phone");
+    const cup = close("cup");
+    // Yakın çekim (yaklaşma ≥ 1,5), elde tutulan nesne özne.
+    expect(Math.max(phone.m.cam.zoomFrom, phone.m.cam.zoomTo)).toBeGreaterThanOrEqual(CALLOUT.closeUp);
+    expect(phone.m.subject).toBe(1);
+    // Telefonun ekranı boyunun %82'si: ekranın boyu eşiği aşmıyorsa balon; bardağın ekranı yok, bütün boyu sayılır.
+    const height = (r: typeof phone) => r.m.placed.find((p) => p.index === 1)!.height * Math.max(r.m.cam.zoomFrom, r.m.cam.zoomTo);
+    expect(Boolean(phone.f.inset)).toBe(height(phone) * (148 / 180) < CALLOUT.screenBelow * 1080);
+    expect(Boolean(cup.f.inset)).toBe(Math.sqrt(cup.m.placed.find((p) => p.index === 1)!.width * cup.m.placed.find((p) => p.index === 1)!.height) * Math.max(cup.m.cam.zoomFrom, cup.m.cam.zoomTo) < CALLOUT.closeBelow * 1080);
+  });
 
   it("elde tutulan küçük nesne geniş çekimde yuvarlak pencerede büyük görünür; çizgi nesneye gider; çekim başında yok", () => {
     expect(scene(held, { frame: 0 }).querySelector("[data-callout]")).toBeNull();

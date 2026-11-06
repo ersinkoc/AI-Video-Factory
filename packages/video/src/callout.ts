@@ -18,6 +18,12 @@ export const CALLOUT = {
   closeUp: 1.5,
   /** Yakın çekimin öznesi olan nesne ekranda (alanın karekökü) kare yüksekliğinin bundan azıysa balon. */
   closeBelow: 0.15,
+  /**
+   * İçerikli ekranlı (layer.screen) öznede ölçü nesne değil ekranın kendisi: ekranın ekrandaki boyu kare yüksekliğinin
+   * bundan azıysa balon, balonda ekran büyür (6 Kas, Elon s3-sh2 ve Yapay zekâ ajanları s9-sh1: kamera dizüstüne 2,7 kata
+   * yaklaştı, nesne karenin %19'u oldu ama sayfa ve gelen kutusu okunmuyordu; "minik, okunmuyor").
+   */
+  screenBelow: 0.12,
   /** Belirme: çekimin bu oranında başlar, bu sürede (oran) tamamlanır. */
   appear: 0.1,
   grow: 0.08,
@@ -45,11 +51,24 @@ export interface Box {
  * yok. Yakın çekimde yalnız özne nesne (closeUpCamera'nın subject'i), kamera onu okunur boya getiremediyse: başı kadrajda
  * tutulan kişinin masasındaki çek, kâğıt, disket hâlâ minikti (4 Kas yakın çekim denetimi, 131 çekimin 18'i).
  */
-export function calloutTarget(spec: VectorShot, placed: PlacedLayer[], isProp: (index: number) => boolean, zoom: number, subject?: number): number | undefined {
+export function calloutTarget(
+  spec: VectorShot,
+  placed: PlacedLayer[],
+  isProp: (index: number) => boolean,
+  zoom: number,
+  subject?: number,
+  /** İçerikli ekranın katman boyundaki payı (bulunamazsa undefined). */
+  screenShare: (index: number) => number | undefined = () => undefined,
+): number | undefined {
   if (spec.math) return undefined;
   if (zoom >= CALLOUT.closeUp) {
-    const pl = placed.find((p) => p.index === subject);
-    return pl && isProp(pl.index) && Math.sqrt(pl.width * pl.height) * zoom < CALLOUT.closeBelow * H ? pl.index : undefined;
+    // Kamerayı yakına geniş çekimi dolduran ya da kişileri kadraja alan geçiş getirdiyse özne yok: anlatılan nesne (key)
+    // sayılır (6 Kas, Elon s3-sh2: kamera 1,8'e geldi, PayPal sayfalı dizüstü karenin %12'siydi, balon açılmadı; "minik").
+    const pl = placed.find((p) => p.index === (subject ?? spec.key));
+    if (!pl || !isProp(pl.index)) return undefined;
+    const share = spec.layers[pl.index]!.screen ? screenShare(pl.index) : undefined;
+    const size = share === undefined ? Math.sqrt(pl.width * pl.height) * zoom < CALLOUT.closeBelow * H : pl.height * share * zoom < CALLOUT.screenBelow * H;
+    return size ? pl.index : undefined;
   }
   const small = (pl: PlacedLayer, below: number) => pl.height * zoom < below * H;
   if (spec.callout !== undefined) {

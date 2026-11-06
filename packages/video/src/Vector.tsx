@@ -2880,8 +2880,10 @@ function Callout({
   const s = calloutScale(p, from);
   if (s === 0) return null;
   const { r } = CALLOUT;
-  // Çizim balonun içindeki kare kutuda (kenarlardan %13 içeride).
+  // Çizim balonun içindeki kare kutuda (kenarlardan %13 içeride); içerikli ekranda kutuya ekranın kendisi oturur, kasası
+  // balonun kenarında kesilir (ekranın yazısı nesnenin bütününden ~2 kat büyük görünür).
   const side = 2 * r * (1 - 2 * 0.13);
+  const view = screenView(asset, screen ? side : undefined, side);
   return (
     <div data-callout={asset.id} style={{ position: "absolute", left: 0, top: 0, width: W, height: H, opacity: Math.min(1, s) }}>
       <svg width={W} height={H} style={{ position: "absolute", left: 0, top: 0 }}>
@@ -2903,12 +2905,35 @@ function Callout({
           transform: `scale(${s})`,
         }}
       >
-        <div style={{ position: "absolute", left: 2 * r * 0.13, top: 2 * r * 0.13 }}>
-          <PropView asset={asset} w={side} h={side} prefix={prefix} screen={screen} person={person} paper={paper} />
+        <div style={{ position: "absolute", left: 2 * r * 0.13 + view.x, top: 2 * r * 0.13 + view.y }}>
+          <PropView asset={asset} w={view.w} h={view.h} prefix={prefix} screen={screen} person={person} paper={paper} />
         </div>
       </div>
     </div>
   );
+}
+
+/** İçerikli ekranın çizimin boyundaki payı (balon kararı); ekranı bulunamayan nesnede undefined. */
+function screenShareOf(asset: VectorAsset): number | undefined {
+  const rect = screenFor(asset);
+  if (!rect) return undefined;
+  const vh = Number(/viewBox="([^"]*)"/.exec(asset.svg)![1]!.split(/[\s,]+/)[3]);
+  return rect.h / vh;
+}
+
+/**
+ * Balondaki çizimin kutusu (side × side alanına göre, px): fit verilirse çizimin ekranı o kenara sığacak kadar büyür ve
+ * ortalanır; verilmezse ya da ekran bulunamazsa çizim kutunun kendisidir.
+ */
+export function screenView(asset: VectorAsset, fit: number | undefined, side: number): { x: number; y: number; w: number; h: number } {
+  const rect = fit === undefined ? undefined : screenFor(asset);
+  if (!rect) return { x: 0, y: 0, w: side, h: side };
+  const [vx, vy, vw, vh] = /viewBox="([^"]*)"/.exec(asset.svg)![1]!.split(/[\s,]+/).map(Number) as [number, number, number, number];
+  // Çizim kutuya "meet" ile oturur: kare kutuda ölçek kenarın en büyüğüne göre.
+  const k = fit! / Math.max(rect.w, rect.h);
+  const w = Math.max(vw, vh) * k;
+  const [cx, cy] = [(w - vw * k) / 2 + (rect.x - vx + rect.w / 2) * k, (w - vh * k) / 2 + (rect.y - vy + rect.h / 2) * k];
+  return { x: side / 2 - cx, y: side / 2 - cy, w, h: w };
 }
 
 /** Çekimin ışık havası: aynı palet bütün videoda göz yormasın (30 Eki geri bildirimi). */
@@ -3176,7 +3201,8 @@ export function shotModel(
     // Anlatılan nesne okunmuyorsa ona yaklaşılır (keyCamera). Sahneye giren biri, kayan kamera, Manim tahtası (ortada
     // durur) ve figüranlı kalabalık çekimi (kalabalığın kendisi anlatılır) hariç.
     const key = held.find((pl) => pl.index === spec.key && !isPerson(pl));
-    const steady = !spec.math && !spec.crowd && spec.camera.panX === 0 && !placed.some((pl) => moving(pl.index));
+    // Kayan kamera: geniş çekimi dolduran geçiş kaydırmayı bırakmışsa artık kaymıyor (6 Kas, Elon s3-sh2).
+    const steady = !spec.math && !spec.crowd && wide.cam.panX === 0 && !placed.some((pl) => moving(pl.index));
     const keyed = key && steady ? keyCamera(wide.cam, wide.centre, key, held.filter(isPerson)) : undefined;
     const framed = keyed ?? wide;
     // Son olarak ayakta duranlar eklem yerinden kesilmez; nesne kadrajda kalır. Baş çizilen tepesiyle kadrajda sayılır
@@ -3568,7 +3594,8 @@ export function shotFrame(
   const inset = (() => {
     if (!insets || bg?.meta.exact || o.overlay || close) return undefined;
     const zoom = Math.max(cam.zoomFrom, cam.zoomTo);
-    const index = calloutTarget(spec, placed, (i) => safe[spec.layers[i]!.asset]!.kind === "prop", zoom, subject);
+    const isProp = (i: number) => safe[spec.layers[i]!.asset]!.kind === "prop";
+    const index = calloutTarget(spec, placed, isProp, zoom, subject, (i) => screenShareOf(safe[spec.layers[i]!.asset]!));
     if (index === undefined) return undefined;
     const layer = spec.layers[index]!;
     // Ekranlı nesnenin balonu da çekimin ekran içeriğini gösterir.

@@ -62,6 +62,19 @@ describe("büyütme balonu: hangi nesne", () => {
     expect(calloutTarget(shot({ callout: 2 }), placed, props, 2)).toBeUndefined();
     expect(calloutTarget(shot({ math: { steps: ["a=b"] } }), placed, props, 1)).toBeUndefined();
   });
+
+  it("yakına geniş çekimi dolduran geçiş getirdiyse (özne yok) anlatılan nesne; içerikli ekranda ölçü ekranın boyu", () => {
+    const placed = [pl(0, 600), pl(1, 60, { heldBy: 0 }), pl(2, 100, { on: 0 })];
+    // Özne yok: anlatılan nesne 60 px × 2 = 120 < 162.
+    expect(calloutTarget(shot({ key: 1 }), placed, props, 2)).toBe(1);
+    // İçerikli ekranlı dizüstü 100 px × 2 = 200 (okunur sayılırdı) ama ekranı boyunun %50'si: 100 < 130 (%12): balon.
+    const laptop = shot({ key: 2, layers: [{ asset: "a", x: 0 }, { asset: "b", x: 0 }, { asset: "c", x: 0, screen: { lines: ["PayPal"] } }] });
+    expect(calloutTarget(laptop, placed, props, 2, undefined, () => 0.5)).toBe(2);
+    // Ekranı büyük (%70: 140 px) monitör zaten okunur; ekranı bulunamayan nesnede yine alanın karekökü.
+    expect(calloutTarget(laptop, placed, props, 2, undefined, () => 0.7)).toBeUndefined();
+    expect(calloutTarget(laptop, placed, props, 1.5, undefined, () => undefined)).toBe(2);
+    expect(calloutTarget(laptop, placed, props, 2, undefined)).toBeUndefined();
+  });
 });
 
 describe("büyütme balonu: yer ve açılış", () => {
