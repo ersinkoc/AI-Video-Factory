@@ -211,6 +211,7 @@ describe("görsel denetçiler", () => {
     expect(b.system).toContain("The asset is an intentionally EMPTY room shell");
     // 5 Kas, Amazon: ufka uzanan çöl yolunda yandan çizilmiş araba yolu enlemesine kesip park etmiş gibi duruyordu.
     expect(b.system).toContain("one receding toward the horizon or a vanishing point is a defect");
+    expect(b.system).toContain("rain, snow or dots scattered over the walls and floor instead of only inside the windows is a defect");
   });
 
   it("prop fiziği ajanı adı ve tarifi gönderir", async () => {
@@ -235,6 +236,7 @@ describe("vektör ajanları", () => {
     const a = await capture((d) => assetPlanner({ kind: "background", name: "Station", description: "wooden", references: [img(7)] }, style, d));
     expect(a.system).toContain("The 1 attached image(s) are real references");
     expect(a.system).toContain("runs straight across the frame from left to right on the ground, never toward the horizon");
+    expect(a.system).toContain("Weather seen from an interior (rain, snow) stays inside the window panes");
     expect(a.prompt).toBe("Location: Station\nwooden");
     expect(a.images).toEqual(["Bw=="]);
     const b = await capture((d) => assetPlanner({ kind: "prop", name: "Saddle", description: "leather" }, style, d));
