@@ -1916,7 +1916,7 @@ describe("vektör sahne: konuşma balonu", () => {
     const pin = asset("pin", "prop", '<svg viewBox="0 0 100 100"><rect id="pin" width="100" height="100" fill="#00ff00"/></svg>', 100, 100, { realHeight: 0.12 });
     for (const [hx, ax, to] of [
       [600, 1750, 1100],
-      [1250, 250, 800],
+      [1250, 1750, 1350],
     ]) {
       const m = shotModel(
         VectorShot.parse({
@@ -1938,6 +1938,17 @@ describe("vektör sahne: konuşma balonu", () => {
       const at = [45, 90, 150, 210, 290].map((frame) => shotFrame(m, { shotId: "s1", frame, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).inset!.at.join(","));
       expect(new Set(at).size).toBe(1);
     }
+  });
+
+  it("anlatılan nesne bir masaysa büyütme balonu açılmaz; içerikli ekranı varsa açılır", () => {
+    // 6 Kas, Antik Mısır s3-sh2: katibin alçak masası anlatılan nesneydi, balon "minik bir masa kopyası" gösteriyordu.
+    const layers = [
+      { asset: "hero", x: 300, depth: 0.4, anims: [{ type: "walk", start: 0, end: 1, toX: 700 }] },
+      { asset: "desk", x: 1300, depth: 0.95 },
+    ];
+    expect(scene({ layers, key: 1 }, { frame: 200 }).querySelector("[data-callout]")).toBeNull();
+    const shown = scene({ layers: [layers[0], { ...layers[1], screen: { kind: "text", lines: ["Grev"] } }], key: 1 }, { frame: 200 });
+    expect(shown.querySelector("[data-callout]")?.getAttribute("data-callout")).toBe("desk");
   });
 
   it("boş balon nesnesi atılır ve denetim sahneyi yeniden planlatır", () => {

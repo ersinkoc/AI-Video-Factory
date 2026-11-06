@@ -1,6 +1,6 @@
 import { VectorShot, type PlacedLayer } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { CALLOUT, calloutBlocked, calloutCost, calloutScale, calloutSpot, calloutTarget, overlap } from "../src/callout.ts";
+import { CALLOUT, calloutBlocked, calloutCost, calloutScale, calloutSpot, calloutTarget, clipSegment, isFurniture, leaderIn, leaderOf, overlap } from "../src/callout.ts";
 
 const pl = (index: number, height: number, extra: Partial<PlacedLayer> = {}): PlacedLayer => ({ index, x: 960, y: 800, height, width: height, scale: 1, z: 0, sitting: false, grounded: true, fixes: [], ...extra });
 const shot = (extra: object = {}) => VectorShot.parse({ layers: [{ asset: "a", x: 0 }, { asset: "b", x: 0 }, { asset: "c", x: 0 }], ...extra });
@@ -92,18 +92,63 @@ describe("büyütme balonu: yer ve açılış", () => {
     // Nesnenin hemen yanındaki adaylar seçilmez: balon onu örterdi.
     const spot = calloutSpot([1520, 400], []);
     expect(Math.hypot(spot[0] - 1520, spot[1] - 400)).toBeGreaterThan(CALLOUT.r + 60);
-    // Orada bir kişinin göğsü var: gövde yarı ağırlıkla sayılır; üstteki aday da göğsün üst kenarına değdiğinden balon
-    // ortaya yakın üst adaya gider.
+    // Orada bir kişinin göğsü var: gövde yarı ağırlıkla sayılır; üstteki aday da göğsün üst kenarına değiyor, ortaya
+    // yakın üst adayın işaret çizgisi göğsün içinden geçiyor (leader bedeli), balon karşı taraftaki üst adaya gider.
     const chest = { x: 1440, y: 480, w: 160, h: 200 };
-    expect(calloutSpot([1500, 800], [], [chest])).toEqual([1340, 290]);
+    expect(calloutSpot([1500, 800], [], [chest])).toEqual([580, 290]);
     expect(calloutCost([1520, 560], [1500, 800], [], [chest])).toBeCloseTo(calloutCost([1520, 560], [1500, 800], []) + CALLOUT.body * 160 * 200);
+    const through = leaderIn(leaderOf([1340, 290], [1500, 800]), [chest]);
+    expect(through).toBeGreaterThan(50);
+    expect(calloutCost([1340, 290], [1500, 800], [], [chest])).toBeCloseTo(calloutCost([1340, 290], [1500, 800], []) + CALLOUT.body * CALLOUT.leader * through);
+  });
+
+  it("işaret çizgisi: balonun kenarından nesnenin kutusuna; kutulardan geçen boyu", () => {
+    // Yatay çizgi, kutunun ortasından: [0.25, 0.75].
+    expect(clipSegment([0, 50], [400, 50], { x: 100, y: 0, w: 200, h: 100 })).toEqual([0.25, 0.75]);
+    // Kutunun yanından geçen, kutuya paralel dışarıda ve içeride kalan çizgiler.
+    expect(clipSegment([0, 150], [400, 150], { x: 100, y: 0, w: 200, h: 100 })).toBeUndefined();
+    expect(clipSegment([150, -50], [150, -10], { x: 100, y: 0, w: 200, h: 100 })).toBeUndefined();
+    expect(clipSegment([150, 20], [150, 80], { x: 100, y: 0, w: 200, h: 100 })).toEqual([0, 1]);
+    // Balonun merkezinden 1000 px sağdaki nesne: çizgi kenardan (r) başlar, nesnenin kutusunun sol kenarında biter.
+    expect(leaderOf([0, 0], [1000, 0], { x: 950, y: -20, w: 100, h: 40 })).toEqual([
+      [CALLOUT.r, 0],
+      [950, 0],
+    ]);
+    expect(leaderOf([0, 0], [1000, 0])).toEqual([
+      [CALLOUT.r, 0],
+      [1000, 0],
+    ]);
+    // Kutu çizgiye hiç değmiyorsa hedefe kadar; hedef balonun içindeyse çizgi yok.
+    expect(leaderOf([0, 0], [1000, 0], { x: 0, y: 500, w: 10, h: 10 })![1]).toEqual([1000, 0]);
+    expect(leaderOf([0, 0], [100, 0])).toBeUndefined();
+    expect(leaderIn(undefined, [{ x: 0, y: 0, w: 10, h: 10 }])).toBe(0);
+    expect(leaderIn([[0, 5], [100, 5]], [{ x: 20, y: 0, w: 10, h: 10 }, { x: 50, y: 0, w: 20, h: 10 }, { x: 0, y: 50, w: 10, h: 10 }])).toBeCloseTo(30);
+  });
+
+  it("mobilya (üstüne bir şey konabilen, en uzun kenarı furniture'dan uzun) balona girmez", () => {
+    const desk = { width: 200, height: 100, meta: { surface: 0.8, realHeight: 0.35 } };
+    expect(isFurniture(desk)).toBe(true);
+    // Küçük kutu, yüzeysiz uzun nesne ve boyu bilinmeyen yüzey mobilya değil.
+    expect(isFurniture({ ...desk, meta: { surface: 0.9, realHeight: 0.2 } })).toBe(false);
+    expect(isFurniture({ ...desk, meta: { realHeight: 2 } })).toBe(false);
+    expect(isFurniture({ ...desk, meta: { surface: 0.8 } })).toBe(false);
+    // Uzun kenar boydaysa (dolap) boy sayılır.
+    expect(isFurniture({ width: 50, height: 100, meta: { surface: 0.5, realHeight: 0.7 } })).toBe(true);
   });
 
   it("yakın çekimde bir yüze değen ya da bir kişinin gövdesinin dörtte birinden çoğunu örten yerde balon açılmaz", () => {
     const face = { x: 1500, y: 300, w: 80, h: 80 };
     expect(calloutBlocked([1520, 330], [face], [], true)).toBe(true);
-    // Geniş çekimde yüze değmek bedeldir, engel değil.
-    expect(calloutBlocked([1520, 330], [face], [], false)).toBe(false);
+    // Geniş çekimde yüzün kenarına değmek bedeldir; faceMax'tan çoğunu örtmek engel (C s5-sh2: balon başı örtüyordu).
+    expect(calloutBlocked([1520, 330], [face], [], false)).toBe(true);
+    expect(calloutBlocked([1520, 330], [{ x: 1690, y: 300, w: 80, h: 80 }], [], false)).toBe(false);
+    // İşaret çizgisi bir yüzü kesiyorsa ya da balon nesnenin üstüne biniyorsa engel; çizginin nesnenin kendi kutusunda
+    // kalan ucu (yüzün yanındaki telefon) sayılmaz.
+    const far = { x: 1000, y: 300, w: 80, h: 80 };
+    expect(calloutBlocked([1520, 330], [far], [], false, { target: [700, 340] })).toBe(true);
+    expect(calloutBlocked([1520, 330], [far], [], false, { target: [1040, 340], prop: { x: 990, y: 290, w: 100, h: 100 } })).toBe(false);
+    expect(calloutBlocked([1520, 330], [], [], false, { target: [1520, 560] })).toBe(true);
+    expect(calloutBlocked([1520, 330], [far], [], false, { target: [1520, 800] })).toBe(false);
     // Gövdenin yarısı balonun altında; köşesine değmek engel değil.
     expect(calloutBlocked([1520, 560], [], [{ x: 1500, y: 600, w: 100, h: 300 }], false)).toBe(true);
     expect(calloutBlocked([1520, 560], [], [{ x: 1680, y: 720, w: 100, h: 100 }], false)).toBe(false);

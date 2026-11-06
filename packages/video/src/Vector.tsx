@@ -48,7 +48,7 @@ import { visualVector } from "./entrance.ts";
 import { Ambience } from "./Ambience.tsx";
 import { Crowd, crowdFigures, crowdZ, type CrowdFigure } from "./crowd.tsx";
 import { armBeats, BEAT, pulseAt, speechBeats, strokeAt } from "./beats.ts";
-import { CALLOUT, CALLOUT_SPOTS, calloutBlocked, calloutCost, calloutScale, calloutTarget, overlap, type Box } from "./callout.ts";
+import { CALLOUT, CALLOUT_SPOTS, calloutBlocked, calloutCost, calloutScale, calloutTarget, isFurniture, overlap, type Box } from "./callout.ts";
 import { Figure3D } from "./Figure3D.tsx";
 import { clapClosed, GESTURE_RHYTHM, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
@@ -3500,13 +3500,14 @@ function insetScene(model: ShotModel, k: number, motions: Map<number, Motion>, d
     faces.push({ x: x - tall * 0.12, y, w: tall * 0.24, h: tall * 0.22 });
     bodies.push({ x: x - tall * 0.16, y: y + tall * 0.2, w: tall * 0.32, h: tall * 0.35 });
   }
+  const prop = { x: target[0] - (at.width * scale) / 2, y: target[1] - (at.height * scale) / 2, w: at.width * scale, h: at.height * scale };
   const avoid: Box[] = [
-    { x: target[0] - (at.width * scale) / 2, y: target[1] - (at.height * scale) / 2, w: at.width * scale, h: at.height * scale },
+    prop,
     ...faces,
     ...texts.map(textBoxOf),
     ...bubbles.map((b) => b.box),
   ];
-  return { target, avoid, faces, bodies };
+  return { target, avoid, faces, bodies, prop };
 }
 
 const insetSpots = new WeakMap<ShotModel, Map<number, readonly [number, number] | null>>();
@@ -3534,10 +3535,11 @@ function insetSpot(model: ShotModel, shotId: string, dur: number, fps: number, w
     const bubbles = bubblesAt(model, shotId, motions, k, p * dur, dur, fps, width, height);
     return insetScene(model, k, motions, drawnAtOf(model, motions), heads, texts, bubbles, index);
   });
-  const cost = (c: readonly [number, number]) => views.reduce((n, v) => n + calloutCost(c, v.target, v.avoid, v.bodies), 0);
-  const spot = CALLOUT_SPOTS.reduce((a, b) => (cost(b) < cost(a) ? b : a));
+  const cost = (c: readonly [number, number]) => views.reduce((n, v) => n + calloutCost(c, v.target, v.avoid, v.bodies, v.prop), 0);
   const near = Math.max(model.cam.zoomFrom, model.cam.zoomTo) >= CALLOUT.closeUp;
-  const chosen = views.some((v) => calloutBlocked(spot, v.faces, v.bodies, near)) ? null : spot;
+  // Engelli yer (yakında yüz, gövdenin çoğu, çizgisi bir yüzü kesen) hiç seçilmez; kalanların en ucuzu, yoksa balonsuz.
+  const open = CALLOUT_SPOTS.filter((c) => !views.some((v) => calloutBlocked(c, v.faces, v.bodies, near, { target: v.target, prop: v.prop })));
+  const chosen = open.length ? open.reduce((a, b) => (cost(b) < cost(a) ? b : a)) : null;
   cache.set(index, chosen);
   return chosen ?? undefined;
 }
@@ -3620,7 +3622,11 @@ export function shotFrame(
   const inset = (() => {
     if (!insets || bg?.meta.exact || o.overlay || close) return undefined;
     const zoom = Math.max(cam.zoomFrom, cam.zoomTo);
-    const isProp = (i: number) => safe[spec.layers[i]!.asset]!.kind === "prop";
+    // Mobilya (masa, tezgâh) balona girmez; içerikli ekranı olan her nesne girer.
+    const isProp = (i: number) => {
+      const a = safe[spec.layers[i]!.asset]!;
+      return a.kind === "prop" && (!isFurniture(a) || spec.layers[i]!.screen !== undefined);
+    };
     const index = calloutTarget(spec, placed, isProp, zoom, subject, (i) => screenShareOf(safe[spec.layers[i]!.asset]!));
     if (index === undefined) return undefined;
     const layer = spec.layers[index]!;
