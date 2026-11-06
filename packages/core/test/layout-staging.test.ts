@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOARD, CONVERSE, FURNITURE, isWritable, LOW_FURNITURE, PASS, resolveLayout, STAGE, VectorShot, WORK, workBoard, workSurface, workTopOf, workZone, type VectorAsset } from "../src/index.ts";
+import { ARC, BOARD, CONVERSE, FURNITURE, isWritable, LOW_FURNITURE, PASS, resolveLayout, STAGE, VectorShot, WORK, workBoard, workSurface, workTopOf, workZone, type VectorAsset } from "../src/index.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({ id, kind, svg: "<svg/>", width: w, height: h, meta });
 
@@ -310,6 +310,43 @@ describe("sahne fiziği: yüzü örten eşya", () => {
     expect(by(high, 1).fixes).not.toContain(FURNITURE.lifted);
     // Üstü olmayan eşyanın (dolap) ardında kenara çekilir.
     expect(by(at([{ asset: "cabinet", x: 960, depth: 0.3 }, { asset: "robot", x: 960, depth: 0.45 }]), 1).fixes).toContain(FURNITURE.aside);
+  });
+});
+
+describe("sahne fiziği: sıra hâlinde dizilenler yay kurar", () => {
+  const row = (extra: object[] = [{}, {}, {}], camera?: object) =>
+    resolveLayout(
+      VectorShot.parse({ layers: extra.map((e, i) => ({ asset: i % 2 ? "b" : "a", x: 500 + i * 450, depth: 0.4, ...e })), ...(camera ? { camera } : {}) }),
+      assets,
+    );
+  const zs = (placed: ReturnType<typeof resolveLayout>, n: number) => Array.from({ length: n }, (_, i) => by(placed, i).z);
+
+  it("aynı derinlikteki üç kişide uçlar öne, orta geriye; boy ve ayak çizgisi yeni derinlikten", () => {
+    const placed = row();
+    const [a, b, c] = zs(placed, 3);
+    expect(a).toBeCloseTo(60 + 100 * ARC.depth * 0.5, 6);
+    expect(b).toBeCloseTo(60 - 100 * ARC.depth * 0.5, 6);
+    expect(c).toBeCloseTo(a!, 6);
+    // Öndeki daha büyük ve ayağı daha aşağıda.
+    expect(by(placed, 0).height).toBeGreaterThan(by(placed, 1).height);
+    expect(by(placed, 0).y).toBeGreaterThan(by(placed, 1).y);
+    expect(by(placed, 1).fixes).toContain(ARC.note);
+    // Dört kişide içtekiler uçlarla orta arasında.
+    const four = zs(row([{}, {}, {}, {}]), 4);
+    expect(four[1]).toBeLessThan(four[0]!);
+    expect(four[1]).toBeCloseTo(four[2]!, 6);
+  });
+
+  it("iki kişi, yakın çekim, Manim tahtası ve yürüyen, oturan, tutan, çalışan ya da z'si verilmiş kişi yay kurmaz", () => {
+    const flat = (placed: ReturnType<typeof resolveLayout>, n: number) => expect(zs(placed, n).every((z) => Math.abs(z - 60) < 1e-6)).toBe(true);
+    flat(row([{}, {}]), 2);
+    flat(row(undefined, { zoomFrom: 1.6, zoomTo: 1.6 }), 3);
+    flat(resolveLayout(VectorShot.parse({ layers: [0, 1, 2].map((i) => ({ asset: "a", x: 500 + i * 450, depth: 0.4 })), math: { steps: ["a=b"] } }), assets), 3);
+    flat(row([{}, { anims: [{ type: "walk", toX: 900 }] }, {}]), 1);
+    flat(row([{}, {}, { z: 60 }]), 2);
+    flat(row([{}, { anims: [{ type: "typing" }] }, {}]), 1);
+    // Elinde bardak olan sayılmaz: geriye iki kişi kalır.
+    flat(resolveLayout(VectorShot.parse({ layers: [{ asset: "a", x: 500, depth: 0.4 }, { asset: "b", x: 950, depth: 0.4 }, { asset: "a", x: 1400, depth: 0.4 }, { asset: "cup", x: 0, heldBy: 1 }] }), assets), 1);
   });
 });
 

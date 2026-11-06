@@ -138,6 +138,16 @@ export const LOW_FURNITURE = {
 export const CONVERSE = { max: 1.1, depth: 25, zoom: 1.5, body: 0.22, note: "konuşma mesafesinden uzaktı, yaklaştırıldı" } as const;
 
 /**
+ * Yay (6 Kas): geniş çekimde aynı derinlikte (z farkı same'den az) yan yana duran üç ve daha çok kişi tek sıra hâlinde
+ * dizilip kameraya bakıyordu (1287 geniş çekimin 26'sı; incelemenin 15'inde "sıra hâlinde dizilmiş", "donuk", "boş
+ * duruyor"; Antik Mısır s5-sh4: "three stiff figures lined up"). Sahnede kalabalık bir konuşma kameraya açık bir yay
+ * kurar: uçtakiler öne, ortadakiler geriye. Soldan sağa sıralı kişinin yaydaki yeri t (−1..1), derinliği −
+ * depth × (t² − ½) kadar değişir (uçlar depth/2 öne, orta depth/2 geriye); boyu ve ayak çizgisi yeni derinlikten. Yürüyerek
+ * giren, oturan, bir şey tutan, iş başındaki (klavye, yazı) ve yönetmenin z verdiği kişiye dokunulmaz.
+ */
+export const ARC = { same: 10, min: 3, depth: 0.12, note: "sıra hâlinde dizilmişti, kameraya açık yay kuruldu" } as const;
+
+/**
  * Ayaktaki iki kişi konuşma mesafesine gelir (3 Kas, inceleme notları: "stand far apart, not interacting" bölüm başına
  * onlarca kez; ölçüm: yan yana duran çiftlerin %37'si 2 m'den, %17'si 2,5 m'den uzaktı). Aynı derinlikte x sırasıyla
  * komşu iki kişi CONVERSE.max'tan uzaksa aradaki fazlayı ikisi yarı yarıya kapatır. Aralarındaki eşya (masa, pano,
@@ -145,6 +155,37 @@ export const CONVERSE = { max: 1.1, depth: 25, zoom: 1.5, body: 0.22, note: "kon
  * gösteren kişi yerinde kalır, yaklaşmayı öbürü yapar. Yalnız geniş çekimde (yakın kadraj yönetmenin konumlarına göre
  * kurulmuş) ve Manim tahtası yokken (tahta ortada, kişiler yanlarında durur); giren, yürüyen ve oturan kişiye dokunulmaz.
  */
+function arc(spec: VectorShot, assets: Record<string, VectorAsset>, list: PlacedLayer[], floorY: number, moved: (p: PlacedLayer) => void): void {
+  if (Math.max(spec.camera.zoomFrom, spec.camera.zoomTo) >= CONVERSE.zoom || spec.math) return;
+  const layer = (p: PlacedLayer) => spec.layers[p.index]!;
+  const free = list.filter(
+    (p) =>
+      assets[layer(p).asset]!.kind === "character" &&
+      !p.sitting &&
+      p.heldBy === undefined &&
+      p.grounded &&
+      layer(p).z === undefined &&
+      !entering(layer(p)) &&
+      !layer(p).anims.some(working) &&
+      !list.some((o) => o.heldBy === p.index || o.on === p.index),
+  );
+  const taken = new Set<PlacedLayer>();
+  for (const p of [...free].sort((a, b) => a.z - b.z)) {
+    if (taken.has(p)) continue;
+    const row = free.filter((q) => !taken.has(q) && Math.abs(q.z - p.z) < ARC.same).sort((a, b) => a.x - b.x);
+    if (row.length < ARC.min) continue;
+    row.forEach((q, i) => {
+      taken.add(q);
+      const t = (2 * i) / (row.length - 1) - 1;
+      const depth = clamp(1 - q.z / 100 - ARC.depth * (t * t - 0.5), 0, 1);
+      const { y, scale } = depthToFloor(depth, floorY);
+      const k = scale / q.scale;
+      Object.assign(q, { y, scale, z: 100 * (1 - depth), height: q.height * k, width: q.width * k });
+      moved(q);
+    });
+  }
+}
+
 function converse(spec: VectorShot, assets: Record<string, VectorAsset>, list: PlacedLayer[], moved: (p: PlacedLayer) => void): void {
   const zoom = Math.max(spec.camera.zoomFrom, spec.camera.zoomTo);
   if (zoom >= CONVERSE.zoom || spec.math) return;
@@ -539,6 +580,7 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
 
   toWork(spec, assets, list, note);
   converse(spec, assets, list, (p) => note(p, CONVERSE.note));
+  arc(spec, assets, list, floorY, (p) => note(p, ARC.note));
 
   // Öndeki karakter arkadakinin yüzünü örtmesin (3 Kas, Pascal incelemesi: masadaki komite üyelerinin yüzü öndeki
   // ayaktaki kişinin arkasında kalıyordu; farklı derinlikte oldukları için yukarıdaki ayırma görmüyordu). Öndeki ayaktaki
