@@ -2,6 +2,13 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.4.2 (2026-11-06)
+
+- Three or more people in a row form an arc open to the camera
+- Extras look like people: cast proportions, bending arms and fists, faces that shout or smile, varied poses
+- A speech bubble's tail stops at the edge of the head, not on a narrow face's eye
+- Eyes and mouth stay inside the face, pupils carry the look; nobody stands on a low table
+
 ## v0.4.1 (2026-11-06)
 
 - Screen keys get a readable inset of the screen itself; key camera and callout work after fillWide
