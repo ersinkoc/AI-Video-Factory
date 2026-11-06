@@ -24,6 +24,15 @@ export const CROWD = {
   marchHz: 1,
   /** Ortak vuruştan kişiye özgü kayma: kişinin evresinin bu kesri (±0,25 rad, ~±25 ms). */
   sync: 0.08,
+  /** Yapı aralığı (çizimin genişlik katı) ve sakallıların payı. */
+  build: [0.88, 1.14],
+  beard: 0.22,
+  /** Duruş payları (kişinin pose'u bundan küçükse): dururken eller belde, dinlerken kollar kavuşuk, sevinçte tek kol. */
+  akimbo: 0.25,
+  crossed: 0.3,
+  oneArm: 0.3,
+  /** Protestoda yumruk: pose bu sınırların altındaysa sağ, sol, iki yumruk; üstündeyse kollar aşağıda (öfkeli bağırır). */
+  fists: [0.45, 0.7, 0.86],
 } as const;
 
 /** Kalabalıktaki kişi sayısı (örtülen figüranlar düşülmeden): sesin gürlüğü buna bağlı. */
