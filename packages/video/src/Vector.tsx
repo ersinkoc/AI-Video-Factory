@@ -3392,7 +3392,7 @@ function cardAvoid(model: ShotModel, shotId: string, dur: number, fps: number, w
       const s = tagSpot(text, at, bounds);
       faces.push({ x: s.x - s.half - TEXT_GAP, y: s.y - s.height / 2, w: 2 * (s.half + TEXT_GAP), h: s.height });
     }
-    faces.push(...screensAt(model, motions, k));
+    faces.push(...screensAt(model, motions, k), ...keyPropsAt(model, motions, k));
   }
   const avoid = { faces, bodies };
   avoided.set(model, avoid);
@@ -3420,6 +3420,29 @@ function screensAt(model: ShotModel, motions: Map<number, Motion>, k: number): B
     const [x0, y0] = cameraPoint(cam, k, centre, [left, top]);
     const [x1, y1] = cameraPoint(cam, k, centre, [left + s.w, top + s.h]);
     return [{ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }];
+  });
+}
+
+/** Kartın örtmediği nesneler: duvarın yarısından geniş olan (pano, savaş gemisi) kartın yerini belirlemez. */
+export const CARD_PROPS = { wide: 0.6 } as const;
+
+/**
+ * Anlatılan nesnenin (key, yakın çekimin öznesi), elde tutulanın ve duvardaki/havadaki nesnenin (saat, takvim, ok,
+ * tabela) bir andaki ekran kutusu. Kart onları da yüz gibi örtmez (7 Kas, inceleme karelerinde kart 22 çekimde böyle bir
+ * nesnenin %10'undan fazlasını örtüyordu, 11'inde not düşülmüş: Netflix s2-sh1 "kart zarfı, anahtar nesneyi örtüyor",
+ * Vue s3-sh5 "soru kartı Evan'ın tuttuğu kutunun üstünü kapatıyor"). Yerde ya da masada duran öteki eşyalar odadır.
+ */
+function keyPropsAt(model: ShotModel, motions: Map<number, Motion>, k: number): Box[] {
+  const { spec, safe, cam, centre, subject } = model;
+  return [...drawnAtOf(model, motions).values()].flatMap((at) => {
+    if (safe[spec.layers[at.index]!.asset]!.kind !== "prop") return [];
+    const air = !at.grounded && at.on === undefined;
+    if (!air && at.heldBy === undefined && at.index !== spec.key && at.index !== subject) return [];
+    const tr = motions.get(at.index)!.tr;
+    const [w, h] = [at.width * tr.scale, at.height * tr.scale];
+    const [x0, y0] = cameraPoint(cam, k, centre, [at.x + tr.x - w / 2, at.y + tr.y - h]);
+    const [x1, y1] = cameraPoint(cam, k, centre, [at.x + tr.x + w / 2, at.y + tr.y]);
+    return x1 - x0 > W * CARD_PROPS.wide ? [] : [{ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }];
   });
 }
 

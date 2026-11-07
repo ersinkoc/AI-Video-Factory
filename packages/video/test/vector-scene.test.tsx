@@ -1788,6 +1788,26 @@ describe("vektör sahne: kart ekranın yazısını örtmez", () => {
       expect(overlap(card, screen) / (screen.w * screen.h)).toBeLessThan(CARD.face);
     }
   });
+
+  it("anlatılan nesneyi, duvardaki/havadaki nesneyi örtmez; duvarın yarısından genişini ve odanın eşyasını örtebilir (7 Kas, Netflix s2-sh1)", () => {
+    const card = (layers: object[], extra: object = {}, more: Record<string, VectorAsset> = {}) => {
+      const spec = VectorShot.parse({ layers, texts: [{ text: "Para nereden bulunur?", style: "title", x: 0, y: 0 }], camera: { zoomFrom: 1, zoomTo: 1, panX: 0 }, ...extra });
+      const m = shotModel(spec, { ...assets, ...more }, "outline", 1920, 1080, false, 10);
+      const f = shotFrame(m, { shotId: "s1", frame: 150, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: false, overlay: false });
+      return textBoxOf(f.texts.find((t) => t.card)!).x;
+    };
+    // Şövaledeki boş pano odanın eşyası; anlatılan nesne olunca kart ondan kayar.
+    const easel = [{ asset: "easel", x: 330, depth: 0 }];
+    const near = { camera: { zoomFrom: 1.6, zoomTo: 1.6, panX: 0, focusX: 330, focusY: 380 } };
+    expect(card(easel, near)).toBe(CARD.x);
+    expect(card(easel, { ...near, key: 0 })).not.toBe(CARD.x);
+    // Duvardaki saat (yerde değil, bir şeyin üstünde değil) kartın köşesinde.
+    const clock = asset("wallclock", "prop", '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#eeeeee"/></svg>', 100, 100, { realHeight: 0.5, grounded: false });
+    expect(card([{ asset: "wallclock", x: 300, y: 260, depth: 0 }, { asset: "hero", x: 1300, depth: 0.2 }], {}, { wallclock: clock })).not.toBe(CARD.x);
+    // Duvarın yarısından geniş afiş kartın yerini belirlemez.
+    const banner = asset("banner", "prop", '<svg viewBox="0 0 400 40"><rect width="400" height="40" fill="#cc3333"/></svg>', 400, 40, { realHeight: 0.6, grounded: false });
+    expect(card([{ asset: "banner", x: 960, y: 200, depth: 0, height: 150 }, { asset: "hero", x: 1300, depth: 0.2 }], {}, { banner })).toBe(CARD.x);
+  });
 });
 
 describe("vektör sahne: tezgâhın ardında", () => {
