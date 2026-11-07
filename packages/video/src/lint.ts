@@ -1,7 +1,7 @@
 import { RIG, type PlacedLayer, type Timeline, type VectorAnim } from "@ys/core";
 import { visualVector } from "./entrance.ts";
 import { FAST_GESTURES } from "./motion.ts";
-import { coverIn, gridFor } from "./screen.ts";
+import { coverIn, gridFor, screenFor } from "./screen.ts";
 import type { StagingCode } from "./staging.ts";
 import { cameraPoint, faceBox, shotFrame, shotModel, textBoxOf, type Motion, type ShotFrame, type ShotModel } from "./Vector.tsx";
 
@@ -11,13 +11,14 @@ import { cameraPoint, faceBox, shotFrame, shotModel, textBoxOf, type Motion, typ
  * aranır. Model çağrısı yok, ücretsiz; üretim render'dan önce çalıştırır, bulunanı kodla düzeltir ya da sahneyi
  * yeniden planlatır. Yalnız izleyicinin "bu yanlış" diyeceği şeyler: kesilmiş yüz, örtülen yüz, yüzdeki yazı, boşluğu
  * gösteren el, nesnesiz iş jesti, çakışan kol jestleri, karede sıçrayan eklem, insanın yapamayacağı eklem açısı,
- * birbirinin içinden geçen kişiler, hiçbir şeyin görünmediği kadraj, planlanıp çizilemediği için sessizce düşen nesne.
+ * birbirinin içinden geçen kişiler, hiçbir şeyin görünmediği kadraj, planlanıp çizilemediği için sessizce düşen nesne,
+ * çiziminde ekran olmadığı için gösterilemeyen ekran yazısı.
  */
 
 type Visual = Timeline["visuals"][number];
 type Assets = Timeline["vectorAssets"];
 
-export type LintCode = StagingCode | "face_cut" | "face_covered" | "text_on_face" | "pose_snap" | "anatomy" | "walk_through" | "empty_frame" | "missing_asset";
+export type LintCode = StagingCode | "face_cut" | "face_covered" | "text_on_face" | "pose_snap" | "anatomy" | "walk_through" | "empty_frame" | "missing_asset" | "no_screen";
 
 export interface LintIssue {
   code: LintCode;
@@ -141,6 +142,15 @@ export function lintShot(visual: Visual, assets: Assets, o: { fps?: number; step
     if (!safe[l.asset]) add("missing_asset", `layer asset ${l.asset} is not drawn`, true, i);
   });
   if (spec.background && !safe[spec.background]) add("missing_asset", `background ${spec.background} is not drawn`, true);
+
+  // --- ekran yazısı verilmiş ama çiziminde ekran bulunamayan nesne (7 Kas, LLM bölümü: ELIZA'nın terminali gerçeğine
+  // uygun ekransız bir Teletype çizildi; yönetmenin 10 katmana verdiği sohbet ve yanıt satırları sessizce düştü, inceleme
+  // 8 çekimde "terminal ekranı boş" dedi). Yazı ancak başka yoldan gösterilebilir: sahne yeniden planlanır.
+  spec.layers.forEach((l, i) => {
+    const a = safe[l.asset];
+    if (l.screen && a?.kind === "prop" && !screenFor(a))
+      add("no_screen", `${l.asset} has no screen in its drawing, so its screen text is not shown: give the words to the speaker as "say" or to an on-screen text, or use a prop that has a screen`, true, i);
+  });
 
   // --- kareler (yarım yüzler katman başına toplanır, sonra karar verilir)
   const cuts = new Map<number, { frames: number[]; detail: string }>();

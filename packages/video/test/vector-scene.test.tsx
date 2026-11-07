@@ -73,6 +73,8 @@ const ASSETS = {
   phone: asset("phone", "prop", '<svg viewBox="0 0 100 180"><rect width="100" height="180" rx="12" fill="#222222"/><rect id="phone-screen" x="8" y="16" width="84" height="148" fill="#1b2430"/></svg>', 100, 180, { realHeight: 0.14 }),
   slate: asset("slate", "prop", '<svg viewBox="0 0 200 140"><rect width="200" height="140" fill="#6b4a2b"/><rect id="slate-board" x="12" y="12" width="176" height="116" fill="#1f3d2b"/></svg>', 200, 140, { realHeight: 0.9, grounded: true, writable: true }),
   cup: asset("cup", "prop", '<svg viewBox="0 0 100 100"><rect id="cup" width="100" height="100" fill="#00ff00"/></svg>', 100, 100, { realHeight: 0.3 }),
+  // Ekranı olmayan küçük nesne (yuvarlak: düz dikdörtgen çizim kasasız panel sayılır, ekranı kendisidir).
+  ball: asset("ball", "prop", '<svg viewBox="0 0 100 100"><circle id="ball" cx="50" cy="50" r="50" fill="#00ff00"/></svg>', 100, 100, { realHeight: 0.3 }),
   chair: asset("chair", "prop", '<svg viewBox="0 0 100 100"><rect id="chair" width="100" height="100" fill="#0000ff"/></svg>', 100, 100, { realHeight: 0.9, surface: 0.5, grounded: true }),
   hero: asset(
     "hero",
@@ -2159,11 +2161,11 @@ describe("vektör sahne: büyütme balonu ve atmosfer katmanı", () => {
       return { m, f: shotFrame(m, { shotId: "s1", frame: 200, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }) };
     };
     const phone = close("phone");
-    const cup = close("cup");
+    const cup = close("ball");
     // Yakın çekim (yaklaşma ≥ 1,5), elde tutulan nesne özne.
     expect(Math.max(phone.m.cam.zoomFrom, phone.m.cam.zoomTo)).toBeGreaterThanOrEqual(CALLOUT.closeUp);
     expect(phone.m.subject).toBe(1);
-    // Telefonun ekranı boyunun %82'si: ekranın boyu eşiği aşmıyorsa balon; bardağın ekranı yok, bütün boyu sayılır.
+    // Telefonun ekranı boyunun %82'si: ekranın boyu eşiği aşmıyorsa balon; topun ekranı yok, bütün boyu sayılır.
     const height = (r: typeof phone) => r.m.placed.find((p) => p.index === 1)!.height * Math.max(r.m.cam.zoomFrom, r.m.cam.zoomTo);
     expect(Boolean(phone.f.inset)).toBe(height(phone) * (148 / 180) < CALLOUT.screenBelow * 1080);
     expect(Boolean(cup.f.inset)).toBe(Math.sqrt(cup.m.placed.find((p) => p.index === 1)!.width * cup.m.placed.find((p) => p.index === 1)!.height) * Math.max(cup.m.cam.zoomFrom, cup.m.cam.zoomTo) < CALLOUT.closeBelow * 1080);
@@ -2193,8 +2195,8 @@ describe("vektör sahne: büyütme balonu ve atmosfer katmanı", () => {
     cleanup();
     expect(scene(shot({ person: "hero" }), { frame: 150 }).querySelector('[data-callout="monitor"] [data-screen]')!.innerHTML).toContain('id="s1-co-s-p-');
     cleanup();
-    const cup = { ...held, layers: [held.layers[0]!, { ...held.layers[1]!, screen: { lines: ["x"] } }, wall] };
-    const box = scene(cup, { frame: 150 }).querySelector('[data-callout="cup"]')!;
+    const cup = { ...held, layers: [held.layers[0]!, { ...held.layers[1]!, asset: "ball", screen: { lines: ["x"] } }, wall] };
+    const box = scene(cup, { frame: 150 }).querySelector('[data-callout="ball"]')!;
     expect(box.querySelector("[data-screen]")).toBeNull();
   });
 
@@ -3107,7 +3109,7 @@ describe("vektör sahne: arka plan, harita ve kadraj", () => {
     // İçerik verilmeyen, ekranı olmayan ya da karakter katmanında çizilmez.
     expect(scene({ layers: [{ asset: "monitor", x: 900 }] }).querySelector("[data-screen]")).toBeNull();
     cleanup();
-    expect(scene({ layers: [{ asset: "box", x: 900, screen: code }, { asset: "hero", x: 400, screen: code }] }).querySelector("[data-screen]")).toBeNull();
+    expect(scene({ layers: [{ asset: "ball", x: 900, screen: code }, { asset: "hero", x: 400, screen: code }] }).querySelector("[data-screen]")).toBeNull();
     // Kişi yalnız karakter olabilir; aynı varlık için aynı nesne (önbellek).
     expect(screenPersonOf(ASSETS, "box")).toBeUndefined();
     expect(screenPersonOf(ASSETS, undefined)).toBeUndefined();

@@ -19,9 +19,12 @@ export interface ScreenRect extends Bounds {
 /**
  * Ekran adayı: alanı sınır kutusunun en az rect'i olan (dikdörtgensi), çizimin en az area'sı kadar, eni boyunun aspect
  * aralığında, kendinden en az frame kat büyük ve önce çizilmiş bir şeklin (kasa, çerçeve) içinde duran en büyük şekil.
- * 70 ekranlı/tahtalı nesnenin 63'ünde ekranı buldu (monitör, CRT, dizüstü, televizyon, telefon, tahta).
+ * 70 ekranlı/tahtalı nesnenin 63'ünde ekranı buldu (monitör, CRT, dizüstü, televizyon, telefon, tahta). Kasası yoksa
+ * çizimin kendisi bir paneldir (7 Kas: Commons'un düz monitör simgesi, sohbet penceresi; içerikli 90 ekran katmanının
+ * 9'u bu yüzden boş kaldı, incelemede "ekran boş"): aday şekillerin en büyüğü, şekillerin birleşik kutusunun en az
+ * panel'i kadarsa ekran odur.
  */
-export const SCREEN = { rect: 0.85, area: 0.04, aspect: [0.4, 3.2], frame: 1.05 } as const;
+export const SCREEN = { rect: 0.85, area: 0.04, aspect: [0.4, 3.2], frame: 1.05, panel: 0.6 } as const;
 
 const SKIP = /^(defs|clipPath|mask|pattern|symbol|marker|linearGradient|radialGradient|filter|metadata|title|desc|style)$/i;
 const SHAPE = /^(path|rect|circle|ellipse|polyline|polygon)$/i;
@@ -235,14 +238,20 @@ export function screenOf(svg: string): ScreenRect | undefined {
   }
   const total = vb[2] * vb[3];
   const inside = (c: Shape, d: Shape) => c.x >= d.x - 0.5 && c.y >= d.y - 0.5 && c.x + c.w <= d.x + d.w + 0.5 && c.y + c.h <= d.y + d.h + 0.5;
-  const best = shapes
+  const bigger = (a: Shape, b: Shape) => b.w * b.h - a.w * a.h;
+  const candidates = shapes
     .filter((c) => {
       const box = c.w * c.h;
       const aspect = c.w / c.h;
       return c.area >= box * SCREEN.rect && box >= total * SCREEN.area && aspect >= SCREEN.aspect[0] && aspect <= SCREEN.aspect[1] && c.fill !== undefined && c.fill !== "none";
     })
-    .filter((c) => shapes.some((d) => d.i < c.i && d.w * d.h >= c.w * c.h * SCREEN.frame && inside(c, d)))
-    .sort((a, b) => b.w * b.h - a.w * a.h)[0];
+    .sort(bigger);
+  const framed = candidates.find((c) => shapes.some((d) => d.i < c.i && d.w * d.h >= c.w * c.h * SCREEN.frame && inside(c, d)));
+  // Kasasız panel: en büyük aday çizimin (bütün şekillerinin kutusunun) çoğunu kaplıyor.
+  const [x0, y0] = [Math.min(...shapes.map((s) => s.x)), Math.min(...shapes.map((s) => s.y))];
+  const extent = (Math.max(...shapes.map((s) => s.x + s.w)) - x0) * (Math.max(...shapes.map((s) => s.y + s.h)) - y0);
+  const panel = candidates[0] && candidates[0].w * candidates[0].h >= extent * SCREEN.panel ? candidates[0] : undefined;
+  const best = framed ?? panel;
   return best && { x: best.x, y: best.y, w: best.w, h: best.h, rx: best.rx, ...plain(best) };
 }
 

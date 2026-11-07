@@ -18,9 +18,16 @@ describe("ekranın bulunması", () => {
     expect(screenOf(`<svg viewBox="0 0 10 10"><path id="screen" d="M1 1H9V9H1Z" fill="url(#g)"/></svg>`)).toEqual({ x: 1, y: 1, w: 8, h: 8, rx: 0 });
   });
 
-  it("çerçevesiz, çok küçük, uzun ince, yuvarlak, dolgusuz şekil ekran değil; viewBox'sız çizimde aranmaz", () => {
-    expect(screenOf('<svg viewBox="0 0 100 100"><rect width="100" height="60" fill="#ddd"/></svg>')).toBeUndefined();
-    const inside = (shape: string) => screenOf(`<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#ddd"/>${shape}</svg>`);
+  it("kasasız panel: çizimin çoğunu kaplayan dikdörtgensi şekil ekrandır (düz monitör simgesi, sohbet penceresi, belge)", () => {
+    // Commons simgesi: beyaz ekran dikdörtgeni ve altında ayak; çevreleyen kasa yok.
+    expect(screenOf('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="100" height="60" fill="#ddd"/><rect x="40" y="62" width="20" height="10" fill="#000"/></svg>')).toEqual({ x: 0, y: 0, w: 100, h: 60, rx: 0, fill: "#ddd" });
+    // Çizimin küçük bir parçası olan çerçevesiz dikdörtgen ekran değil.
+    expect(screenOf('<svg viewBox="0 0 100 100"><rect width="40" height="40" fill="#ddd"/><circle cx="90" cy="90" r="10" fill="#000"/></svg>')).toBeUndefined();
+    expect(screenOf('<svg viewBox="0 0 100 100"></svg>')).toBeUndefined();
+  });
+
+  it("çok küçük, uzun ince, yuvarlak, dolgusuz şekil ekran değil; viewBox'sız çizimde aranmaz", () => {
+    const inside = (shape: string) => screenOf(`<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="none" stroke="#000"/>${shape}</svg>`);
     expect(inside('<rect x="10" y="10" width="5" height="5" fill="#000"/>')).toBeUndefined();
     expect(inside('<rect x="5" y="40" width="90" height="10" fill="#000"/>')).toBeUndefined();
     expect(inside('<circle cx="50" cy="50" r="30" fill="#000"/>')).toBeUndefined();

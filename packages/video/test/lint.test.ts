@@ -147,6 +147,15 @@ describe("denetim: çekim", () => {
     ]);
   });
 
+  it("ekran yazısı verilen nesnenin çiziminde ekran yoksa yazı gösterilemez: sahne yeniden planlanır", () => {
+    const screen = { kind: "terminal", lines: ["> merhaba"] };
+    const tv = asset("tv", "prop", '<svg viewBox="0 0 100 100"><rect width="100" height="80" fill="#333333"/><rect x="10" y="10" width="80" height="60" fill="#000000"/></svg>', 100, 100, { realHeight: 0.5 });
+    const shot = (name: string) => visual({ background: "room", layers: [{ asset: "hero", x: 600, depth: 0.2 }, { asset: name, x: 1200, y: 900, height: 300, screen }] });
+    const out = lintShot(shot("cup"), { ...ASSETS, tv });
+    expect(out.filter((i) => i.code === "no_screen")).toEqual([{ code: "no_screen", shotId: "s1", layer: 1, detail: expect.stringContaining("cup has no screen"), replan: true }]);
+    expect(codes(lintShot(shot("tv"), { ...ASSETS, tv }))).not.toContain("no_screen");
+  });
+
   it("yarım yüz çekimin sonunda (kadraj durunca) bildirilir; yürüyüş sırasında kenardan geçmek değil", () => {
     // Kenara yürüyüp orada duran kişi: varınca yüzü yarım.
     const out = lintShot(visual({ background: "room", layers: [{ asset: "hero", x: 960, depth: 0.2, anims: [{ type: "walk", toX: 60, end: 0.5 }] }] }), ASSETS, { step: 5 });
