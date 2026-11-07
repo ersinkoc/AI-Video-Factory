@@ -208,7 +208,7 @@ Rules:
 - A character that changes over the story (e.g. chick → adult) is described in the look it has in most shots.
 - Never put readable text in a description (signs, notes, book pages): image models render it as letters. Say "a paper notice" instead of quoting it.
 - Historical/real figures: depict respectfully in the given art style; never depict prophets or religious figures.
-- Set "kind" honestly: only humans are "person". A recurring horse, dog or bird is "animal"; a recurring bag, machine, vehicle, device, gadget, prototype, product or logo is "object" (they are drawn differently from people: a "person" is drawn as a human puppet, so a handheld device marked "person" turns into a robot). A cartoon mascot with a body, arms and legs may be a "person".
+- Set "kind" honestly: only humans are "person". A recurring horse, dog or bird is "animal"; a recurring bag, machine, vehicle, device, gadget, prototype, product or logo is "object" (they are drawn differently from people: a "person" is drawn as a human puppet, so a handheld device marked "person" turns into a robot). A robot, android or cartoon mascot with a body, arms and legs that acts on screen (narrates, points, reacts, types) is a "person": it is drawn on the same puppet and can gesture; marked "object" it would stand still as a prop.
 - Realism is mandatory: real people, places, buildings, objects and uniforms are described as they really looked (period-correct clothing, headgear, hair, beard, materials, colours, architecture). Set "reference" for every real one so the illustrator works from a real photo or painting; never invent the look of something real.
 Art style: ${style.artStyle}.${
         library.length

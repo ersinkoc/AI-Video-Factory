@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { looksLikeObject } from "../src/cast-kind.ts";
+import { looksLikeFigure, looksLikeObject } from "../src/cast-kind.ts";
 
 describe("kadroda kişi sanılan nesne", () => {
   it("rolü ya da tarifinin başı cihaz/eşya olan ve insan sözcüğü içermeyen oyuncu nesnedir", () => {
@@ -11,5 +11,14 @@ describe("kadroda kişi sanılan nesne", () => {
     // Maskot ve robot kişi kalır.
     expect(looksLikeObject({ role: "Java mascot", visualDescription: "Cartoon mascot: wedge-shaped figure" })).toBe(false);
     expect(looksLikeObject({ role: "Helper robot", visualDescription: "A friendly robot with arms" })).toBe(false);
+  });
+
+  it("nesne sanılan gövdeli figür (robot, android, maskot; ayaklı ya da oturan/yürüyen) kişidir; robot kolu nesne kalır", () => {
+    expect(looksLikeFigure({ role: "AI narrator", visualDescription: "Small friendly robot with a square head, thin stick arms and legs" })).toBe(true);
+    expect(looksLikeFigure({ role: "Coder", visualDescription: "Small robot with jointed arms. Sits at a desk and types" })).toBe(true);
+    expect(looksLikeFigure({ role: "Mascot", visualDescription: "Cartoon mascot walking on two feet" })).toBe(true);
+    // Ayaksız sanayi robotu; figür sözcüğü ilk cümlede değil.
+    expect(looksLikeFigure({ role: "First industrial robot", visualDescription: "Unimate robot arm bolted to the factory floor" })).toBe(false);
+    expect(looksLikeFigure({ role: "Toy", visualDescription: "Wind-up tin box. Shaped like a robot standing" })).toBe(false);
   });
 });

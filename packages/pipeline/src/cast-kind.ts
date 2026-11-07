@@ -14,3 +14,17 @@ export function looksLikeObject(c: { role: string; visualDescription: string }):
   const text = `${c.role} ${first}`;
   return THING.test(text) && !HUMAN.test(`${c.role} ${c.visualDescription}`);
 }
+
+const FIGURE = /\b(robot|android|humanoid|cyborg|mascot)s?\b/i;
+const BODY = /\b(legs?|feet|sits?|sitting|stands?|standing|walks?|walking)\b/i;
+
+/**
+ * Nesne diye işaretlenmiş ama gövdeli bir figür: tarifinin ilk cümlesi robot/android/maskot diyen, ayakları olan ya da
+ * oturan/yürüyen oyuncu kişidir (7 Kas, LLM bölümü: anlatıcı robot "object" geldi, iskeletsiz nesne olarak 34 çekimde
+ * durdu; yönetmenin verdiği 28 jest çizilemedi, kadraj onu kişi gibi korumadı, taslak incelemede 7 kez "robot köşede
+ * kesik, ince bir şerit"; TypeScript bölümündeki masada yazan robot da öyle). Ayaksız sanayi robot kolu nesne kalır.
+ */
+export function looksLikeFigure(c: { role: string; visualDescription: string }): boolean {
+  const first = c.visualDescription.split(/[.:;]/)[0]!;
+  return FIGURE.test(first) && BODY.test(c.visualDescription);
+}

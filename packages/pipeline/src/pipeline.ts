@@ -134,7 +134,7 @@ import { assignReverseViews, reverseCandidates, varyShotSizes } from "./variety.
 import { withKey } from "./key-prop.ts";
 import { nameTags } from "./name-tags.ts";
 import { addsNoDefect, withNarratedActions, withNarratedMoods } from "./narrated-action.ts";
-import { looksLikeObject } from "./cast-kind.ts";
+import { looksLikeFigure, looksLikeObject } from "./cast-kind.ts";
 import type { EpisodeReview } from "./state.ts";
 
 /** Günlük satırının önemi: aşama başlangıcı, uyarı (atlanan/başarısız alt adım) ya da bilgi. */
@@ -2605,6 +2605,13 @@ export class EpisodePipeline {
       // Vektör kişisi insan iskeletli kukladır: kişi diye işaretlenmiş cihaz robot olarak çiziliyordu (cast-kind.ts).
       if (vector) {
         for (const c of state.cast.characters) {
+          // Gövdeli figür (robot, maskot) kuklada kişidir; rolünde bir cihaz adı geçse de nesneye dönmez.
+          if (looksLikeFigure(c)) {
+            if (c.kind === "person") continue;
+            c.kind = "person";
+            this.log(msg("log.cast.asPerson", { name: c.name }));
+            continue;
+          }
           if (c.kind !== "person" || !looksLikeObject(c)) continue;
           c.kind = "object";
           this.log(msg("log.cast.asObject", { name: c.name }));

@@ -271,6 +271,10 @@ export const PIPELINE_MESSAGES = {
     tr: "  {name} kişi diye işaretlenmişti ama tarifi bir cihaz/eşya: nesne olarak çizilecek",
     en: "  {name} was marked as a person but is described as a device/thing: it will be drawn as a prop",
   },
+  "log.cast.asPerson": {
+    tr: "  {name} nesne diye işaretlenmişti ama tarifi gövdeli bir figür (robot, maskot): kişi olarak çizilecek",
+    en: "  {name} was marked as an object but is described as a figure with a body (robot, mascot): it will be drawn as a person",
+  },
   "log.cast.nonHuman": {
     tr: "  insan olmayan {n} oyuncu nesne olarak çizilecek: {names}",
     en: "  {n} non-human cast members will be drawn as props: {names}",

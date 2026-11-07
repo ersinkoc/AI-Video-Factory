@@ -391,12 +391,17 @@ describe("kadro aşaması", () => {
         { id: "c1", name: "Gosling", kind: "person", role: "Java's creator, engineer at Sun", visualDescription: "Man with glasses", scenes: ["s1"] },
         { id: "c2", name: "Duke", kind: "person", role: "Java mascot waving on screens", visualDescription: "Cartoon mascot: a wedge-shaped figure", scenes: ["s1"] },
         { id: "c3", name: "Star7", kind: "person", role: "Early handheld prototype device", visualDescription: "Handheld PDA prototype: boxy plastic body, small touchscreen", scenes: ["s1"] },
+        // Anlatıcı robot "object" gelmiş (7 Kas, LLM bölümü): gövdeli figür kişiye döner; rolündeki cihaz adı onu geri çevirmez.
+        { id: "c4", name: "Narrator Bot", kind: "object", role: "Friendly computer assistant who narrates", visualDescription: "Small friendly robot with a square head, thin stick arms and legs", scenes: ["s1"] },
+        { id: "c5", name: "Helper", kind: "person", role: "Chat robot on the computer", visualDescription: "Friendly robot standing beside the desk", scenes: ["s1"] },
       ],
       locations: CAST.locations,
     }));
     const id = await h.seed(makeState({ motionMode: "vector" }, { style: STYLE, script: SCRIPT }));
     const state = await h.pipeline.run(id, { only: "cast" });
-    expect(state.cast!.characters.map((c) => c.id)).toEqual(["c1", "c2"]);
+    expect(state.cast!.characters.map((c) => c.id)).toEqual(["c1", "c2", "c4", "c5"]);
+    expect(state.vectorProps!.c4).toBeUndefined();
+    expect(h.logs).toContain("  Narrator Bot nesne diye işaretlenmişti ama tarifi gövdeli bir figür (robot, maskot): kişi olarak çizilecek");
     expect(state.vectorProps!.c3).toMatchObject({ kind: "prop", description: "Handheld PDA prototype: boxy plastic body, small touchscreen" });
     expect(h.logs).toContain("  Star7 kişi diye işaretlenmişti ama tarifi bir cihaz/eşya: nesne olarak çizilecek");
   });
