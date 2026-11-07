@@ -2,6 +2,11 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.4.5 (2026-11-07)
+
+- The frame reviewer treats the magnifier inset as intended, and lessons cannot forbid the code's camera devices
+- A robot or mascot with legs that the casting marked as an object is cast as a person, so it can act and stays in frame
+
 ## v0.4.4 (2026-11-07)
 
 - The final review sends the frames the critic left out once more instead of staying open
