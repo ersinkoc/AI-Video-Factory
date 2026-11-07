@@ -2,6 +2,11 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.4.6 (2026-11-07)
+
+- The frame reviewer treats medium and close framing that leaves the legs out as film grammar, not a cut-off character
+- Screen text shows on a drawing that is itself the panel, and the lint replans a shot whose screen text has no screen to go on
+
 ## v0.4.5 (2026-11-07)
 
 - The frame reviewer treats the magnifier inset as intended, and lessons cannot forbid the code's camera devices
