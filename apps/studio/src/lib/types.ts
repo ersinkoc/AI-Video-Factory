@@ -19,7 +19,8 @@ export interface QuotaView {
 }
 
 export interface EpisodeResponse {
-  state: EpisodeState;
+  /** Render kaynakları yalnız CLI'da kullanılır; sık sorgulanan Studio yanıtına girmez. */
+  state: Omit<EpisodeState, "timeline">;
   /** Bu bölümün stilinde kütüphanedeki onaylı karakterler (tekrar kullanmak için). */
   library: LibraryCharacter[];
   job: JobView | null;

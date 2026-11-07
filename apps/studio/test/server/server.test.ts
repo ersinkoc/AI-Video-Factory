@@ -3,6 +3,7 @@ import { hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { putJson } from "@ys/storage";
+import { JsonlLedger } from "@ys/media-gateway";
 import { dbCalls, fakeProvider, lastChild, quotaCalls, registry, resetStudio, spawn } from "./fakes.ts";
 
 vi.mock("server-only", () => ({}));
@@ -44,6 +45,15 @@ afterEach(() => {
 });
 
 describe("Stüdyo sunucusu: kök ve kurulum", () => {
+  it("uses supplied global ledger entries without another read, including an empty snapshot", async () => {
+    const read = vi.spyOn(JsonlLedger.prototype, "all").mockRejectedValue(new Error("must not read"));
+    const entries = [{ at: "t", providerId: "other-provider", capability: "tts" as const, estimateMicros: 1, cacheHit: false, requestHash: "h", episodeId: "another-episode", durationMs: 1234 }];
+    expect((await server.estimateContext(entries)).latency).toEqual({ "other-provider": { avgMs: 1234, n: 1 } });
+    expect((await server.estimateContext([])).latency).toEqual({});
+    expect(read).not.toHaveBeenCalled();
+    read.mockRestore();
+  });
+
   it("ROOT, YS_ROOT'tan çözülür; .env dosyası yüklenir ve JSONL defter okunur", async () => {
     expect(server.ROOT).toBe(root);
     writeFileSync(join(root, ".env"), "YS_STUDIO_TEST_ENV=yuklendi\n");

@@ -10,6 +10,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { CAS_DB, fsCompareAndSwap, sameBytes } from "./atomic.ts";
 
 /** Üretilen tüm varlıkların yazıldığı depo. Anahtarlar her zaman "/" ile ayrılır. */
 export interface AssetStore {
@@ -19,6 +20,8 @@ export interface AssetStore {
   list(prefix: string): Promise<string[]>;
   /** Anahtarı siler; yoksa bir şey yapmaz. */
   delete(key: string): Promise<void>;
+  /** Atomik koşullu yazma. Beklenen null: anahtar bulunmamalı. Desteklenmiyorsa kilit alınamaz. */
+  compareAndSwap?(key: string, expected: Uint8Array | null, bytes: Uint8Array, contentType: string): Promise<boolean>;
 }
 
 /** Önekle başlayan tüm anahtarları siler (bir bölümün klasörü gibi); silinen sayısını döner. */
@@ -47,6 +50,9 @@ export class FsAssetStore implements AssetStore {
 
   private pathFor(key: string): string {
     const p = resolve(join(this.root, ...key.split("/")));
+    const internal = join(this.root, CAS_DB).toLowerCase();
+    const normalized = p.toLowerCase();
+    if (normalized === internal || normalized.startsWith(`${internal}-`)) throw new Error(`Geçersiz anahtar: ${key}`);
     // Ayraçla karşılaştırılır: ".data/assets-x" gibi kardeş klasör de "root ile başlıyor" sayılmasın.
     if (!p.startsWith(this.root + sep)) throw new Error(`Geçersiz anahtar: ${key}`);
     return p;
@@ -76,6 +82,10 @@ export class FsAssetStore implements AssetStore {
     return `file://${p.replaceAll("\\", "/")}`;
   }
 
+  async compareAndSwap(key: string, expected: Uint8Array | null, bytes: Uint8Array): Promise<boolean> {
+    return fsCompareAndSwap(this.root, this.pathFor(key), expected, bytes);
+  }
+
   async get(key: string): Promise<Uint8Array | null> {
     try {
       return new Uint8Array(await readFile(this.pathFor(key)));
@@ -93,7 +103,7 @@ export class FsAssetStore implements AssetStore {
       return entries
         .filter((e) => e.isFile() && !e.name.endsWith(".tmp"))
         .map((e) => relative(this.root, join(e.parentPath, e.name)).split(sep).join("/"))
-        .filter((k) => k.startsWith(prefix));
+        .filter((k) => k.startsWith(prefix) && k !== CAS_DB && !k.startsWith(`${CAS_DB}-`));
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw e;
@@ -151,6 +161,31 @@ export class S3AssetStore implements AssetStore {
       new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: bytes, ContentType: contentType }),
     );
     return `s3://${this.bucket}/${key}`;
+  }
+
+  async compareAndSwap(key: string, expected: Uint8Array | null, bytes: Uint8Array, contentType: string): Promise<boolean> {
+    let current: Uint8Array | null = null;
+    let etag: string | undefined;
+    try {
+      const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      if (!res.ETag || !res.Body) throw new Error("S3 atomik okuma için ETag ve gövde gerekli");
+      etag = res.ETag;
+      current = await res.Body.transformToByteArray();
+    } catch (e) {
+      if (!(e instanceof NoSuchKey)) throw e;
+    }
+    if (!sameBytes(current, expected)) return false;
+    try {
+      await this.client.send(new PutObjectCommand({
+        Bucket: this.bucket, Key: key, Body: bytes, ContentType: contentType,
+        ...(etag ? { IfMatch: etag } : { IfNoneMatch: "*" }),
+      }));
+      return true;
+    } catch (e) {
+      const status = (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+      if (status === 409 || status === 412 || (status === 404 && etag)) return false;
+      throw e;
+    }
   }
 
   async list(prefix: string): Promise<string[]> {

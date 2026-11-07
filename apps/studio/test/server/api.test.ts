@@ -3,6 +3,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STYLE_CUSTOM, STYLE_PACK_IDS } from "@ys/core";
+import { JsonlLedger } from "@ys/media-gateway";
 import type { EpisodeInput, EpisodeState } from "@ys/pipeline/light";
 import { getJson, putJson } from "@ys/storage";
 import { fakeProvider, lastChild, registry, resetStudio, spawn } from "./fakes.ts";
@@ -148,6 +149,17 @@ describe("/api/episodes", () => {
         { id: "e-bos", createdAt: "2026-10-30T00:00:00.000Z", topic: "Fatih", lang: "tr", done: [], hasVideo: false },
       ]),
     );
+  });
+
+  it("GET listing retains no timelines while the stored state stays complete", async () => {
+    const timeline = { vectorAssets: { svg: "x".repeat(256_000) } } as unknown as EpisodeState["timeline"];
+    await saveEpisode("e-list-heavy", { timeline });
+    const list = vi.spyOn(server.repo(), "list");
+    const response = await episodes.GET();
+    expect(response.status).toBe(200);
+    const retained = await list.mock.results[0]!.value;
+    expect(retained.every((s: EpisodeState) => !("timeline" in s))).toBe(true);
+    expect((await load("e-list-heavy")).timeline).toEqual(timeline);
   });
 
   it("POST doğrulama hataları 400", async () => {
@@ -312,11 +324,39 @@ describe("/api/settings/models", () => {
 });
 
 describe("GET /api/episodes/[id]", () => {
+  it("reads one ledger snapshot so spend and breakdowns cannot disagree during an append", async () => {
+    await saveEpisode("e-snapshot");
+    const entry = { at: "2026-11-06T00:00:00Z", episodeId: "e-snapshot", stage: "voice", providerId: "fake:tts", capability: "tts" as const, estimateMicros: 1_000_000, cacheHit: false, requestHash: "h" };
+    const snapshot = [entry, { ...entry, estimateMicros: 500_000, error: "billed failure" }, { ...entry, capability: "llm" as const, providerId: "claude:x", estimateMicros: 250_000 }, { ...entry, cacheHit: true, estimateMicros: 9_000_000 }, { ...entry, episodeId: "other", estimateMicros: 90_000_000 }];
+    let reads = 0;
+    const all = vi.spyOn(JsonlLedger.prototype, "all").mockImplementation(async () => ++reads === 1 ? snapshot : [...snapshot, { ...entry, estimateMicros: 2_000_000 }]);
+    const res = await episode.GET(new Request("http://x", { headers: TR }), params({ id: "e-snapshot" }));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.spentUsd).toBe(1.5);
+    expect(body.claudeUsd).toBe(0.25);
+    expect(body.actual.byProvider.find((g: { key: string }) => g.key === "fake:tts")).toMatchObject({ micros: 1_500_000, failures: 1, cacheHits: 1 });
+    expect(all).toHaveBeenCalledTimes(1);
+  });
+
   const get = async (id: string) => {
     const res = await episode.GET(new Request("http://x", { headers: TR }), params({ id }));
     return { res, body: (await res.json()) as Record<string, any> };
   };
 
+  it("ilerleme sorgusu render SVG kaynaklarını taşımaz; depodaki timeline korunur", async () => {
+    const timeline = {
+      episodeId: "e-heavy",
+      vectorAssets: { map: { svg: "x".repeat(2_400_000) } },
+    } as unknown as EpisodeState["timeline"];
+    await saveEpisode("e-heavy", { timeline, renderPct: 25 });
+    const { res, body } = await get("e-heavy");
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(body).length).toBeLessThan(100_000);
+    expect(body.state).not.toHaveProperty("timeline");
+    expect(body.state.renderPct).toBe(25);
+    expect((await load("e-heavy")).timeline).toEqual(timeline);
+  });
 
   it("geçersiz kimlik 400, olmayan bölüm 404", async () => {
     const bad = await episode.GET(new Request("http://x"), params({ id: "../x" }));

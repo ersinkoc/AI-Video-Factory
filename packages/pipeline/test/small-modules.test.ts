@@ -88,11 +88,13 @@ describe("ders sıralaması", () => {
 describe("çalışma kilidi: kenar durumlar", () => {
   const key = "episodes/e1/run.lock.json";
 
-  it("bozuk kilit dosyası kilit yok sayılır", async () => {
+  it("bozuk kilit çalışma başlatmaz; bırakma başkasının verisini değiştirmez", async () => {
     const s = tempStore();
     await s.put(key, new TextEncoder().encode("{bozuk"), "application/json");
-    expect(await liveLock(s, "e1")).toBeUndefined();
-    expect(await deadLock(s, "e1")).toBe(false);
+    await expect(liveLock(s, "e1")).rejects.toThrow("kilidi okunamıyor veya bozuk");
+    await expect(deadLock(s, "e1")).rejects.toThrow("kilidi okunamıyor veya bozuk");
+    await expect(acquireLock(s, "e1")).rejects.toThrow("kilidi okunamıyor veya bozuk");
+    await putJson(s, key, null);
     const release = await acquireLock(s, "e1");
     await s.put(key, new TextEncoder().encode("{bozuk"), "application/json");
     // Bırakırken dosya okunamıyorsa (başkasının olabilir) dokunulmaz.
@@ -109,10 +111,10 @@ describe("çalışma kilidi: kenar durumlar", () => {
     await expect(acquireLock(s, "e1")).rejects.toThrow(`süreç ${lock.pid}`);
   });
 
-  it("kendi kilidini yeniden alabilir; kilidi başkası devraldıysa bırakma ona dokunmaz", async () => {
+  it("aynı süreç yeniden alamaz; kilidi başkası devraldıysa bırakma ona dokunmaz", async () => {
     const s = tempStore();
-    await acquireLock(s, "e1");
     const release = await acquireLock(s, "e1");
+    await expect(acquireLock(s, "e1")).rejects.toThrow("zaten çalışıyor");
     const other = { pid: process.ppid, host: hostname(), startedAt: "t" };
     await putJson(s, key, other);
     await release();

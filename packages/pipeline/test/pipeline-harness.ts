@@ -26,6 +26,13 @@ export class MemStore implements AssetStore {
   async get(key: string): Promise<Uint8Array | null> {
     return this.map.get(key) ?? null;
   }
+  async compareAndSwap(key: string, expected: Uint8Array | null, bytes: Uint8Array): Promise<boolean> {
+    const current = this.map.get(key) ?? null;
+    if (current === null ? expected !== null : expected === null || !Buffer.from(current).equals(expected)) return false;
+    if (this.failPut?.(key)) throw new Error(`yazılamadı: ${key}`);
+    this.map.set(key, bytes);
+    return true;
+  }
   async list(prefix: string): Promise<string[]> {
     return [...this.map.keys()].filter((k) => k.startsWith(prefix));
   }

@@ -743,12 +743,29 @@ describe("kare aşaması (görsel model)", () => {
     });
     const id = await ready(h, {}, { shots: [shot("a"), shot("b"), shot("c")] });
     const state = await h.pipeline.run(id, { only: "keyframes" });
-    expect(state.qa!.a).toMatchObject({ skipped: "görsel çok büyük", passed: true });
-    expect(state.qa!.b).toMatchObject({ skipped: "denetim hatası", passed: true });
+    expect(state.qa!.a).toMatchObject({ skipped: "görsel çok büyük", passed: false });
+    expect(state.qa!.b).toMatchObject({ skipped: "denetim hatası", passed: false });
     expect(state.qa!.c).toMatchObject({ passed: false, score: 2, attempts: 1 });
     expect(h.logs).toContain("  b: kare kontrolü yapılamadı (görsel model yok)");
     expect(h.logs).toContain("  c yeniden çizilemedi, ilk kare kullanılıyor: kota bitti");
-    expect(h.logs.some((l) => l.startsWith("  b ✓ (img:fake, önbellek)"))).toBe(true);
+    expect(h.logs.some((l) => l.startsWith("  b ? (img:fake, önbellek)"))).toBe(true);
+  });
+
+  it("keeps an inspected frame when the redraw cannot be checked, without buying another redraw", async () => {
+    const h = harness({ qaRedraws: 2 });
+    let draws = 0;
+    h.gateway.generate.mockImplementation(async () => {
+      const key = 'assets/candidate-' + ++draws + '.png';
+      await h.store.put(key, new Uint8Array(draws === 2 ? 3_600_000 : 1));
+      return { files: [{ key, mimeType: "image/png" }], providerId: "img:fake", cacheHit: false };
+    });
+    onAgent("frameInspector", () => ({ score: 6, issues: [], fix: "Improve framing" }));
+    const id = await ready(h, {}, { shots: [shot("a")] });
+    const state = await h.pipeline.run(id, { only: "keyframes" });
+    expect(state.keyframes!.a!.key).toBe("assets/candidate-1.png");
+    expect(state.qa!.a).toMatchObject({ score: 6, passed: false, attempts: 2 });
+    expect(state.qa!.a!.skipped).toBeUndefined();
+    expect(draws).toBe(2);
   });
 
   it("kadro ve konsept yokken kare referanssız çizilir ve denetlenir", async () => {
@@ -1077,36 +1094,70 @@ describe("timeline, render ve inceleme", () => {
     expect(items.find((i) => i.shotId === "s1-sh1")!.intent).toBe('shot 0 | narration: "bir"');
   });
 
-  it("inceleme grubu başarısızsa atlanır; hiçbir grup incelenemezse aşama açık kalır; kare çıkmayan çekimler denetlenmez", async () => {
+  it("keeps final review pending if frames are missing or a batch fails, preserving the previous review", async () => {
     const h = harness();
     const id = await ready(h);
     await h.pipeline.run(id, { only: "timeline" });
-    render.stills.mockImplementationOnce(async () => ({}));
-    await h.pipeline.run(id, { only: "review" });
-    expect(callsOf("sceneCritic")).toHaveLength(0);
-    expect(h.logs).toContain("  0 kare, ortalama 0.0/10; sorunlar: yok");
+    onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => ({ shotId: i.shotId, score: 7, issues: [] })), lessons: [] }));
+    const complete = await h.pipeline.run(id, { only: "review" });
+    expect(Object.keys(complete.review!.shots)).toHaveLength(7);
+    expect(complete.done.review).toBeDefined();
 
-    // Altı karelik grup düşer, tek karelik incelenir: eksik inceleme yine yazılır.
+    render.stills.mockImplementationOnce(async () => ({}));
+    await expect(h.pipeline.run(id, { only: "review" })).rejects.toThrow("İnceleme eksik: 0/7 kare incelendi");
+    expect(callsOf("sceneCritic")).toHaveLength(2);
+
     onAgent("sceneCritic", (items: { shotId: string }[]) => {
       if (items.length === 6) throw new Error("critic yok");
       return { shots: items.map((i) => ({ shotId: i.shotId, score: 7, issues: [] })), lessons: [] };
     });
-    const partial = await h.pipeline.run(id, { only: "review" });
+    await expect(h.pipeline.run(id, { only: "review" })).rejects.toThrow("İnceleme eksik: 1/7 kare incelendi");
     expect(h.logs).toContain("  inceleme grubu atlandı: critic yok");
-    expect(Object.keys(partial.review!.shots)).toHaveLength(1);
-    // 5 Kas, Amazon: kullanım sınırı (429) bütün grupları düşürmüş, aşama "0 kare, sorun yok" diye kapanmıştı.
-    onAgent("sceneCritic", () => {
-      throw new Error("API hatası 429: limit");
-    });
+    const pending = await h.load(id);
+    expect(pending.done.review).toBeUndefined();
+    expect(pending.review).toEqual(complete.review);
+
+    onAgent("sceneCritic", () => { throw new Error("API hatası 429: limit"); });
     await expect(h.pipeline.run(id, { only: "review" })).rejects.toThrow("Hiçbir kare incelenemedi: API hatası 429: limit");
-    // Önceki inceleme olduğu gibi durur.
-    expect(Object.keys((await h.pipeline.load(id)).review!.shots)).toHaveLength(1);
-    onAgent("sceneCritic", () => {
-      throw "düz";
-    });
+    expect((await h.load(id)).review).toEqual(complete.review);
+    onAgent("sceneCritic", () => { throw "düz"; });
     await expect(h.pipeline.run(id, { only: "review" })).rejects.toThrow("Hiçbir kare incelenemedi: düz");
     expect(h.logs).toContain("  inceleme grubu atlandı: düz");
   });
+
+  it("completes an empty shot list without calling the critic", async () => {
+    const h = harness();
+    const id = await ready(h);
+    await h.pipeline.run(id, { only: "timeline" });
+    const state = await h.load(id);
+    state.shots = [];
+    await h.pipeline.save(state);
+    const result = await h.pipeline.run(id, { only: "review" });
+    expect(result.review!.shots).toEqual({});
+    expect(result.done.review).toBeDefined();
+    expect(callsOf("sceneCritic")).toHaveLength(0);
+    expect(h.logs).toContain("  0 kare, ortalama 0.0/10; sorunlar: yok");
+  });
+
+  it("rejects empty, omitted and foreign critic results and completes after a full retry", async () => {
+    const h = harness();
+    const id = await ready(h);
+    await h.pipeline.run(id, { only: "timeline" });
+    for (const mode of ["empty", "omitted", "foreign"]) {
+      onAgent("sceneCritic", (items: { shotId: string }[]) => ({
+        shots: mode === "empty" ? [] : mode === "foreign" ? [{ shotId: "unknown", score: 10, issues: [] }] : items.slice(1).map((i) => ({ shotId: i.shotId, score: 7, issues: [] })),
+        lessons: [],
+      }));
+      await expect(h.pipeline.run(id, { only: "review" })).rejects.toThrow("İnceleme eksik:");
+      expect((await h.load(id)).done.review).toBeUndefined();
+    }
+    onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => ({ shotId: i.shotId, score: 7, issues: [] })), lessons: [] }));
+    const complete = await h.pipeline.run(id, { only: "review" });
+    expect(Object.keys(complete.review!.shots)).toHaveLength(7);
+    expect(complete.done.review).toBeDefined();
+    expect(complete.lastError).toBeUndefined();
+  });
+
 });
 
 describe("previewConcept", () => {

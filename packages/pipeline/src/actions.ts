@@ -41,10 +41,20 @@ export class EpisodeRepo {
     await putJson(this.store, stateKey(state.id), state);
   }
 
-  async list(): Promise<EpisodeState[]> {
+  async list(options: { includeTimeline?: boolean } = {}): Promise<EpisodeState[]> {
     const keys = (await this.store.list("episodes/")).filter((k) => k.endsWith("/state.json"));
-    // Okunamayan (bozuk) tek durum dosyası tüm listeyi düşürmesin.
-    const states = await Promise.all(keys.map((k) => getJson<EpisodeState>(this.store, k).catch(() => null)));
+    const states: (EpisodeState | null)[] = [];
+    // Büyük SVG'li durumları aynı anda belleğe doldurma; Studio listeleri timeline'ı tutmaz.
+    for (let i = 0; i < keys.length; i += 4) {
+      const batch = await Promise.all(keys.slice(i, i + 4).map(async (k) => {
+        // Okunamayan (bozuk) tek durum dosyası tüm listeyi düşürmesin.
+        const state = await getJson<EpisodeState>(this.store, k).catch(() => null);
+        if (!state || options.includeTimeline !== false) return state;
+        const { timeline: _timeline, ...summary } = state;
+        return summary;
+      }));
+      states.push(...batch);
+    }
     return states
       .filter((s): s is EpisodeState => s !== null)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));

@@ -15,7 +15,7 @@ export function judgeFrame(out: FrameReviewOut, attempt: number): FrameQa {
 
 /** Denemeler arasında seçim: geçen kare her zaman önde, sonra puan. Denetimsiz kare en geride. */
 export function frameRank(qa: FrameQa | undefined): number {
-  if (!qa) return -1;
+  if (!qa || qa.skipped) return -1;
   return (qa.passed ? 100 : 0) + qa.score;
 }
 

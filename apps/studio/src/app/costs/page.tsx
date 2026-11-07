@@ -13,7 +13,7 @@ const dollars = (g: CostGroup) => g.micros / 1_000_000;
 const byCost = (a: CostGroup, b: CostGroup) => b.micros - a.micros;
 
 export default async function CostsPage() {
-  const [entries, episodes, { t, fmt, locale }] = await Promise.all([ledgerEntries(), repo().list(), getI18n()]);
+  const [entries, episodes, { t, fmt, locale }] = await Promise.all([ledgerEntries(), repo().list({ includeTimeline: false }), getI18n()]);
   const { usd, duration, number } = fmt;
   const stageName = (k: string) => (k.startsWith("cli:") || k === "—" ? k : t(`stage.${k}` as MessageKey));
   const total = groupCosts(entries, () => "total")[0];

@@ -18,7 +18,7 @@ export interface CostEntry {
   /** Faturalanan miktar ve birimi (ör. 10 "sn", 1 "görsel", 812 "karakter"). */
   units?: number;
   unitLabel?: string;
-  /** Başarısız deneme; maliyet 0 kaydedilir ama süre ve hata görünür kalır. */
+  /** Başarısız deneme; ücretlenmişse tahmini maliyet korunur, aksi halde 0 kaydedilir. */
   error?: string;
 }
 
@@ -41,7 +41,7 @@ export class InMemoryLedger implements CostLedger {
   }
 
   async spent(episodeId: string): Promise<Micros> {
-    return sumFor(this.entries, episodeId);
+    return mediaSpentMicros(this.entries, episodeId);
   }
 
   async list(episodeId?: string): Promise<CostEntry[]> {
@@ -72,7 +72,7 @@ export class JsonlLedger implements CostLedger {
   }
 
   async spent(episodeId: string): Promise<Micros> {
-    return sumFor(await this.all(), episodeId);
+    return mediaSpentMicros(await this.all(), episodeId);
   }
 
   async list(episodeId?: string): Promise<CostEntry[]> {
@@ -81,7 +81,8 @@ export class JsonlLedger implements CostLedger {
   }
 }
 
-function sumFor(entries: readonly CostEntry[], episodeId: string): Micros {
+/** Aynı defter snapshot'ından bütçe toplamı: önbellek ve Claude çağrıları tavanın dışındadır. */
+export function mediaSpentMicros(entries: readonly CostEntry[], episodeId: string): Micros {
   return entries
     .filter((e) => e.episodeId === episodeId && !e.cacheHit && e.capability !== "llm")
     .reduce((sum, e) => sum + e.estimateMicros, 0);
@@ -107,8 +108,11 @@ export function groupCosts(entries: readonly CostEntry[], keyOf: (e: CostEntry) 
   for (const e of entries) {
     const key = keyOf(e);
     const g = groups.get(key) ?? { key, calls: 0, cacheHits: 0, failures: 0, micros: 0, durationMs: 0, units: 0 };
-    if (e.error) g.failures++;
-    else if (e.cacheHit) g.cacheHits++;
+    if (e.error) {
+      g.failures++;
+      // Başarısız üretim de ücretlenmiş olabilir; süre/birimler yalnız başarılı çağrıların istatistiğidir.
+      if (!e.cacheHit) g.micros += e.estimateMicros;
+    } else if (e.cacheHit) g.cacheHits++;
     else {
       g.calls++;
       g.micros += e.estimateMicros;

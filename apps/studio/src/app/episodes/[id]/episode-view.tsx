@@ -5,7 +5,7 @@ import { formatText } from "@ys/core/messages";
 import type { Stage } from "@ys/pipeline/light";
 import { ArrowLeft, Mic, Pencil, Play, RefreshCw, Square } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { errorKey } from "../../../lib/errors";
 import type { MessageKey } from "../../../lib/i18n";
 import type { EpisodeResponse } from "../../../lib/types";
@@ -24,17 +24,40 @@ export function EpisodeView({ id }: { id: string }) {
   const [tab, setTabState] = useState<Tab>();
   const [logStage, setLogStage] = useState<Stage>();
   const [, tick] = useState(0);
+  const requestId = useRef(0);
+  const inFlight = useRef<AbortController | undefined>(undefined);
 
   const refresh = useCallback(async () => {
-    const res = await fetch(`/api/episodes/${id}`, { cache: "no-store" });
-    if (res.ok) setData((await res.json()) as EpisodeResponse);
+    const request = ++requestId.current;
+    inFlight.current?.abort();
+    const controller = new AbortController();
+    inFlight.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+    try {
+      const res = await fetch(`/api/episodes/${id}`, { cache: "no-store", signal: controller.signal });
+      if (res.ok) {
+        const next = (await res.json()) as EpisodeResponse;
+        if (request === requestId.current) setData(next);
+      }
+    } finally {
+      clearTimeout(timeout);
+      if (inFlight.current === controller) inFlight.current = undefined;
+    }
   }, [id]);
+
+  // Önceki bölümün ya da kaldırılan bileşenin yanıtı sonradan durumu değiştiremez.
+  useEffect(() => () => { requestId.current++; inFlight.current?.abort(); }, [id]);
 
   const live = data?.status.status === "running";
   useEffect(() => {
-    void refresh();
-    const timer = setInterval(() => void refresh(), live ? 1500 : 5000);
-    return () => clearInterval(timer);
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try { await refresh(); } catch { /* Ağ hatasında sonraki yoklamada yeniden denenir. */ }
+      if (active) timer = setTimeout(() => void poll(), live ? 1500 : 5000);
+    };
+    void poll();
+    return () => { active = false; clearTimeout(timer); };
   }, [refresh, live]);
   // "x sn önce" ve geçen süre her saniye güncellensin.
   useEffect(() => {

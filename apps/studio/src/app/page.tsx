@@ -32,7 +32,7 @@ const SEGMENT: Record<RunStatus | "pending", string> = {
 const NO_SERIES = "-";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ series?: string }> }) {
-  const [all, entries, { t, fmt }, params] = await Promise.all([repo().list(), ledgerEntries(), getI18n(), searchParams]);
+  const [all, entries, { t, fmt }, params] = await Promise.all([repo().list({ includeTimeline: false }), ledgerEntries(), getI18n(), searchParams]);
   const everything = all.filter((e) => e.input.topic !== "render demo");
   const series = summarizeSeries(everything);
   const filter = params.series;

@@ -1,9 +1,9 @@
 import { rm } from "node:fs/promises";
 import { msg } from "@ys/core/messages";
-import { groupCosts } from "@ys/media-gateway";
+import { groupCosts, mediaSpentMicros } from "@ys/media-gateway";
 import { deleteEpisode, estimateEpisode, lineStyleOf, listLibraryCharacters, motionModeOf, progressOf, runStatusOf, type MotionMode } from "@ys/pipeline/light";
 import { apiError, errorResponse, textResponse } from "../../../../lib/api";
-import { episodeBusy, episodeSpentUsd, estimateContext, forgetJob, getJob, ledgerEntries, quotaOf, repo, store, workDirOf } from "../../../../lib/server";
+import { episodeBusy, estimateContext, forgetJob, getJob, ledgerEntries, quotaOf, repo, store, workDirOf } from "../../../../lib/server";
 import type { EpisodeResponse, QuotaView } from "../../../../lib/types";
 
 const MODES: MotionMode[] = ["animated", "mixed", "still", "vector"];
@@ -13,7 +13,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const { id } = await ctx.params;
   if (!EPISODE_ID.test(id)) return textResponse(req, msg("api.badEpisode"), 400);
   try {
-    const [state, entries, estimateCtx] = await Promise.all([repo().load(id), ledgerEntries(id), estimateContext()]);
+    // Harcama, dökümler ve tüm sağlayıcıların gecikmeleri aynı tek snapshot'tan hesaplanır.
+    const [state, allEntries] = await Promise.all([repo().load(id), ledgerEntries()]);
+    const entries = allEntries.filter((e) => e.episodeId === id);
+    const estimateCtx = await estimateContext(allEntries);
     const estimates = Object.fromEntries(MODES.map((m) => [m, estimateEpisode(state, estimateCtx, m)])) as EpisodeResponse["estimates"];
 
     // Ses henüz bitmediyse kullanılacak sağlayıcının kotası yetiyor mu?
@@ -45,12 +48,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       motionModeOf(state.input) === "vector" && state.style && state.cast && !state.approvals?.concept
         ? await listLibraryCharacters(store(), { artStyle: state.style.artStyle, lineStyle: lineStyleOf(state), realism: state.input.realism !== false })
         : [];
+    // Timeline gömülü SVG'lerle megabaytlar tutabilir; Studio bunu kullanmaz. Render depodaki tam durumu okur.
+    const { timeline: _timeline, ...studioState } = state;
     const body: EpisodeResponse = {
-      state,
+      state: studioState,
       library,
       job,
       status,
-      spentUsd: await episodeSpentUsd(id),
+      spentUsd: mediaSpentMicros(entries, id) / 1_000_000,
       claudeUsd: entries.filter((e) => e.capability === "llm" && !e.cacheHit).reduce((n, e) => n + e.estimateMicros, 0) / 1_000_000,
       estimates,
       actual: {

@@ -5,7 +5,7 @@ import { apiError, errorResponse } from "../../../lib/api";
 import { repo, startJob, store } from "../../../lib/server";
 
 export async function GET() {
-  const episodes = await repo().list();
+  const episodes = await repo().list({ includeTimeline: false });
   return Response.json(
     episodes.map((e) => ({
       id: e.id,

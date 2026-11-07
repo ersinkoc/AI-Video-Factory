@@ -133,11 +133,102 @@ describe("FsAssetStore", () => {
     expect(await deletePrefix(store, "ep/c/")).toBe(0);
     await expect(store.delete("../x")).rejects.toThrow("Geçersiz anahtar");
   });
+
+  it("atomically compares absent, empty and changed bytes across store instances", async () => {
+    const a = new FsAssetStore(root);
+    const b = new FsAssetStore(root);
+    const empty = new Uint8Array();
+    const one = new Uint8Array([1]);
+    expect(await a.compareAndSwap("locks/a", null, empty)).toBe(true);
+    expect(await b.compareAndSwap("locks/a", null, one)).toBe(false);
+    expect(await b.compareAndSwap("locks/a", empty, one)).toBe(true);
+    expect(await a.compareAndSwap("locks/a", empty, empty)).toBe(false);
+    expect(await a.get("locks/a")).toEqual(one);
+    expect(await a.compareAndSwap("missing", one, empty)).toBe(false);
+    expect(await a.list("")).toEqual(["locks/a"]);
+    for (const key of [".store-cas.sqlite", ".store-cas.sqlite-journal", "./.STORE-CAS.SQLITE", "nested/../.store-cas.sqlite", "../outside"]) {
+      await expect(a.compareAndSwap(key, null, one)).rejects.toThrow("Geçersiz anahtar");
+    }
+  });
+
+  it("propagates filesystem failures and releases its transaction for the next caller", async () => {
+    const a = new FsAssetStore(root);
+    await a.put("folder/keep", new Uint8Array([1]));
+    await expect(a.compareAndSwap("folder", null, new Uint8Array())).rejects.toThrow();
+    expect(await a.compareAndSwap("next", null, new Uint8Array([2]))).toBe(true);
+  });
 });
 
 describe("S3AssetStore", () => {
   const opts = { region: "auto", bucket: "kova", accessKeyId: "a", secretAccessKey: "s", endpoint: "http://127.0.0.1:1" };
   afterEach(() => vi.restoreAllMocks());
+
+  it("uses If-None-Match for absent keys and If-Match for the exact observed ETag", async () => {
+    const send = vi.spyOn(S3Client.prototype, "send");
+    const s = new S3AssetStore(opts);
+    const bytes = new Uint8Array([1]);
+    send.mockRejectedValueOnce(new NoSuchKey({ message: "missing", $metadata: {} })).mockResolvedValueOnce({} as never);
+    expect(await s.compareAndSwap("lock", null, bytes, "application/json")).toBe(true);
+    expect((send.mock.calls[1]![0] as PutObjectCommand).input).toMatchObject({ IfNoneMatch: "*", ContentType: "application/json", Body: bytes });
+    expect((send.mock.calls[1]![0] as PutObjectCommand).input.IfMatch).toBeUndefined();
+    send.mockResolvedValueOnce({ ETag: '"version-1"', Body: { transformToByteArray: async () => bytes } } as never).mockResolvedValueOnce({} as never);
+    expect(await s.compareAndSwap("lock", bytes, new Uint8Array([2]), "application/json")).toBe(true);
+    expect((send.mock.calls[3]![0] as PutObjectCommand).input).toMatchObject({ IfMatch: '"version-1"' });
+    expect((send.mock.calls[3]![0] as PutObjectCommand).input.IfNoneMatch).toBeUndefined();
+  });
+
+  it("does not write when the expected bytes differ and propagates unknown reads", async () => {
+    const send = vi.spyOn(S3Client.prototype, "send");
+    const s = new S3AssetStore(opts);
+    send.mockResolvedValueOnce({ ETag: "v", Body: { transformToByteArray: async () => new Uint8Array([1]) } } as never);
+    expect(await s.compareAndSwap("lock", null, new Uint8Array([2]), "application/json")).toBe(false);
+    expect(send).toHaveBeenCalledTimes(1);
+    send.mockRejectedValueOnce(new Error("access denied"));
+    await expect(s.compareAndSwap("lock", null, new Uint8Array(), "application/json")).rejects.toThrow("access denied");
+    for (const response of [{}, { ETag: "v" }, { Body: {} }]) {
+      send.mockResolvedValueOnce(response as never);
+      await expect(s.compareAndSwap("lock", null, new Uint8Array(), "application/json")).rejects.toThrow("ETag ve gövde gerekli");
+    }
+  });
+
+  it("returns contention for conditional conflicts but never falls back to an unconditional write", async () => {
+    const send = vi.spyOn(S3Client.prototype, "send");
+    const s = new S3AssetStore(opts);
+    for (const status of [409, 412, 404, 500, undefined]) {
+      const bytes = new Uint8Array([1]);
+      send.mockResolvedValueOnce({ ETag: "v", Body: { transformToByteArray: async () => bytes } } as never)
+        .mockRejectedValueOnce(Object.assign(new Error("write failed"), { $metadata: { httpStatusCode: status } }));
+      const pending = s.compareAndSwap("lock", bytes, new Uint8Array(), "application/json");
+      if (status === 409 || status === 412 || status === 404) expect(await pending).toBe(false);
+      else await expect(pending).rejects.toThrow("write failed");
+    }
+    send.mockRejectedValueOnce(new NoSuchKey({ message: "missing", $metadata: {} }))
+      .mockRejectedValueOnce(Object.assign(new Error("bucket missing"), { $metadata: { httpStatusCode: 404 } }));
+    await expect(s.compareAndSwap("lock", null, new Uint8Array(), "application/json")).rejects.toThrow("bucket missing");
+    expect(send).toHaveBeenCalledTimes(12);
+  });
+
+  it("only one writer wins after two S3 readers observe the same ETag", async () => {
+    const before = new Uint8Array([0]);
+    let version = "old";
+    let reads = 0;
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => { open = resolve; });
+    vi.spyOn(S3Client.prototype, "send").mockImplementation((async (cmd: GetObjectCommand | PutObjectCommand) => {
+      if (cmd instanceof GetObjectCommand) {
+        const snapshot = version;
+        if (++reads === 2) open();
+        await gate;
+        return { ETag: snapshot, Body: { transformToByteArray: async () => before } };
+      }
+      if (cmd.input.IfMatch !== version) throw Object.assign(new Error("conflict"), { $metadata: { httpStatusCode: 412 } });
+      version = "new";
+      return {};
+    }) as never);
+    const results = await Promise.all([new S3AssetStore(opts), new S3AssetStore(opts)].map((s) => s.compareAndSwap("lock", before, new Uint8Array([1]), "application/json")));
+    expect(results.sort()).toEqual([false, true]);
+    expect(version).toBe("new");
+  });
 
   it("kova varsa oluşturmaz, yoksa oluşturur", async () => {
     const send = vi.spyOn(S3Client.prototype, "send").mockResolvedValue({} as never);

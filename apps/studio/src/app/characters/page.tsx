@@ -6,7 +6,7 @@ import { CharacterBank } from "./character-bank";
 export const dynamic = "force-dynamic";
 
 export default async function CharactersPage() {
-  const [characters, episodes, { t }] = await Promise.all([listLibraryCharacters(store()), repo().list(), getI18n()]);
+  const [characters, episodes, { t }] = await Promise.all([listLibraryCharacters(store()), repo().list({ includeTimeline: false }), getI18n()]);
   return (
     <div className="grid gap-6">
       <div>

@@ -50,7 +50,10 @@ const DEFAULT_VIDEO_CACHE_BYTES = 2 * 1024 ** 3;
  * Claude Code süreçleri) "Timed out after 30000ms while setting up the headless browser" ile aşama düşüyordu (30 Eki).
  */
 const BROWSER_TIMEOUT_MS = 120_000;
-const MAX_DEFAULT_CONCURRENCY = 8;
+// Büyük SVG'li Next.js bölümü 8 sekmede yerel bellek hatası ve kare zaman aşımıyla düştü; tek sekmede aynı kare geçti.
+const MAX_DEFAULT_CONCURRENCY = 2;
+// Tarayıcı paralelliği x264'ü sınırlamaz: otomatik 34 thread ayrı bellek ayırıp malloc hatasıyla kapanabiliyordu.
+const MAX_ENCODER_THREADS = 4;
 
 /**
  * Yalnız ses render'ı kare görüntüsü almaz, kareleri yalnız ses dizileri için değerlendirir: ilerlemede kare sayısının
@@ -286,7 +289,7 @@ async function renderOnce(opts: RenderOptions, gl: OpenGlRenderer): Promise<stri
           frameRange: [from, to - 1],
           outputLocation,
           cancelSignal,
-          ...(cuts.length ? { ffmpegOverride: keyframesAt(cuts) } : {}),
+          ffmpegOverride: videoEncoding(cuts),
           onProgress: ({ progress }) => (tick(), report(progress * (to - from))),
         }),
       );
@@ -355,6 +358,16 @@ export const keyframesAt =
     if (!args.includes("libx264") || y < 0) return args;
     return [...args.slice(0, y), "-force_key_frames", `expr:${cuts.map((c) => `eq(n,${c})`).join("+")}`, ...args.slice(y)];
   };
+
+/** Anahtar kareleri korurken yalnız video kodlayıcının thread bütçesini sınırlar; kopyalama ve ses değişmez. */
+function videoEncoding(cuts: number[]) {
+  return (command: { type: string; args: string[] }): string[] => {
+    const args = cuts.length ? keyframesAt(cuts)(command) : command.args;
+    const y = args.lastIndexOf("-y");
+    if (command.type !== "pre-stitcher" || !args.includes("libx264") || y < 0) return args;
+    return [...args.slice(0, y), "-threads", String(MAX_ENCODER_THREADS), ...args.slice(y)];
+  };
+}
 
 /**
  * Tek render'ı parça dosyalarına yeniden kodlamadan böler. Her parçanın kare sayısı (paket sayımı, kod çözmeden)

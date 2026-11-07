@@ -68,8 +68,8 @@ export async function episodeSpentUsd(episodeId: string): Promise<number> {
 }
 
 /** Tahmin motorunun girdisi: etkin sağlayıcılar ve defterden ölçülen gecikmeler. */
-export async function estimateContext(): Promise<EstimateContext> {
-  return { providers: init().providers, latency: measuredLatency(await ledgerEntries()) };
+export async function estimateContext(entries?: readonly CostEntry[]): Promise<EstimateContext> {
+  return { providers: init().providers, latency: measuredLatency(entries ?? await ledgerEntries()) };
 }
 
 const QUOTA_TTL_MS = 60_000;

@@ -169,6 +169,11 @@ AI-Video-Factory/
 
 ---
 
+Implementation note (6 Nov 2026): episode lock acquisition and release use storage-level
+compare-and-swap. Local files use a short Node SQLite transaction as a cross-process
+mutex; episode state and media remain files. S3 uses conditional object writes.
+See [Episode locking](LOCKING.md) for ownership, recovery and compatibility boundaries.
+
 ## 4. Veri Modeli (çekirdek)
 
 ```ts

@@ -348,6 +348,70 @@ describe("EpisodeView: eylem hataları", () => {
 });
 
 describe("EpisodeView: yenileme aralıkları", () => {
+  it("times out a stuck poll, retries, and aborts its request on unmount", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    const data = makeData(makeState());
+    let aborted = 0;
+    const fetchMock = vi.fn((_url: string, init?: RequestInit): Promise<Response> => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => { aborted++; reject(new Error("aborted")); });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const view = renderIn(<EpisodeView id={ID} />);
+    await act(async () => {});
+    await act(async () => void (await vi.advanceTimersByTimeAsync(30_000)));
+    expect(aborted).toBe(1);
+    fetchMock.mockResolvedValueOnce(json(data));
+    await act(async () => void (await vi.advanceTimersByTimeAsync(5000)));
+    expect(screen.getByRole("heading", { name: data.state.input.topic })).toBeTruthy();
+    await act(async () => void (await vi.advanceTimersByTimeAsync(5000)));
+    view.unmount();
+    await act(async () => {});
+    expect(aborted).toBe(2);
+  });
+
+  it("waits for a slow poll before scheduling another one", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    const data = makeData(makeState());
+    const { fetchMock } = mockApi(data);
+    const view = renderIn(<EpisodeView id={ID} />);
+    await act(async () => {});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    let finish!: (response: Response) => void;
+    const response = new Promise<Response>((resolve) => { finish = resolve; });
+    fetchMock.mockImplementationOnce(() => response);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(5000)));
+    await act(async () => void (await vi.advanceTimersByTimeAsync(15_000)));
+    const callsWhilePending = fetchMock.mock.calls.length;
+    await act(async () => { finish(json(data)); });
+    expect(callsWhilePending).toBe(2);
+    const completed = fetchMock.mock.calls.length;
+    await act(async () => void (await vi.advanceTimersByTimeAsync(5000)));
+    expect(fetchMock.mock.calls.length).toBe(completed + 1);
+    view.unmount();
+  });
+
+  it("does not let a delayed poll overwrite the response requested after an action", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    const script = { scenes: [] } as EpisodeState["script"];
+    const old = makeData(makeState({ script, story: { title: "Old snapshot" } as EpisodeState["story"] }), { status: { status: "idle", stage: "voice" } });
+    const fresh = makeData(makeState({ script, story: { title: "Fresh snapshot" } as EpisodeState["story"] }), { status: { status: "idle", stage: "voice" } });
+    const { fetchMock } = mockApi(old);
+    renderIn(<EpisodeView id={ID} />);
+    await act(async () => {});
+    let finish!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+    await act(async () => void (await vi.advanceTimersByTimeAsync(5000)));
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => json(init?.method === "POST" ? { ok: true } : fresh));
+    await click(screen.getByRole("button", { name: tr("live.continue") }));
+    expect(screen.getByRole("heading", { name: "Fresh snapshot" })).toBeTruthy();
+    await act(async () => { finish(json(old)); });
+    expect(screen.getByRole("heading", { name: "Fresh snapshot" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Old snapshot" })).toBeNull();
+  });
+
   it("çalışırken 1,5 sn, durunca 5 sn aralıkla yeniler; kaldırılınca durur", async () => {
     vi.useRealTimers();
     vi.useFakeTimers();

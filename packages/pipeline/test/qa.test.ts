@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { frameRank, judgeFrame, redrawPrompt } from "../src/qa.ts";
 
 describe("kare denetimi", () => {
+  it("ranks skipped checks below inspected frames, including legacy passed records", () => {
+    const inspected = judgeFrame({ score: 0, issues: [], fix: "" }, 1);
+    for (const passed of [false, true]) {
+      expect(frameRank({ score: 0, issues: [], attempts: 2, passed, skipped: "denetim hatası" })).toBeLessThan(frameRank(inspected));
+    }
+  });
+
   it("puan eşiğin altındaysa ya da engelleyici sorun varsa kareyi reddeder", () => {
     expect(judgeFrame({ score: 9, issues: [], fix: "" }, 1).passed).toBe(true);
     expect(judgeFrame({ score: 6, issues: [], fix: "" }, 1).passed).toBe(false);

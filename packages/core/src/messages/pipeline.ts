@@ -313,6 +313,7 @@ export const PIPELINE_MESSAGES = {
   "err.store.missing": { tr: "Depoda yok: {key}", en: "Not in storage: {key}" },
   "err.missing": { tr: "{what} yok", en: "{what} missing" },
   "err.review.unreviewed": { tr: "Hiçbir kare incelenemedi: {error}", en: "No frame could be reviewed: {error}" },
+  "err.review.incomplete": { tr: "İnceleme eksik: {reviewed}/{total} kare incelendi", en: "Review incomplete: {reviewed}/{total} frames reviewed" },
   "err.preview.needConcept": { tr: "Önce casting ve konsept aşamaları çalışmalı", en: "The cast and concept stages must run first" },
   "err.preview.vector": {
     tr: "Vektör modunda deneme karesi yok; varlıklar zaten önizleniyor",
@@ -334,6 +335,9 @@ export const PIPELINE_MESSAGES = {
     tr: "Bu bölüm zaten çalışıyor (süreç {pid}, {startedAt}); bitmesini bekle ya da iptal et",
     en: "This episode is already running (process {pid}, {startedAt}); wait for it to finish or cancel it",
   },
+  "err.lock.invalid": { tr: "Bölüm kilidi okunamıyor veya bozuk: {id}; güvenlik için çalışma başlatılmadı", en: "Episode lock is unreadable or invalid: {id}; the run was not started" },
+  "err.lock.unsupported": { tr: "Depo atomik kilit yazmayı desteklemiyor", en: "Storage does not support atomic lock writes" },
+  "err.lock.contended": { tr: "Bölüm kilidi eşzamanlı değişti: {id}; yeniden deneyin", en: "Episode lock changed concurrently: {id}; try again" },
   "err.render.browser": {
     tr: "Render tarayıcısı açılamadı ya da bağlantısı koptu ({error}). Remotion'ın indirdiği Chromium bu sistemde çalışmıyor olabilir: çalışan bir Chrome ya da Chrome for Testing yolunu YS_BROWSER_EXECUTABLE ile verin.",
     en: "The render browser could not start or disconnected ({error}). The Chromium that Remotion downloaded may not work on this system: point YS_BROWSER_EXECUTABLE at a working Chrome or Chrome for Testing.",

@@ -84,6 +84,21 @@ describe("InMemoryLedger.list", () => {
 });
 
 describe("groupCosts / measuredLatency", () => {
+  it("includes billed failures in spend without counting them as successful calls", async () => {
+    const rows = [entry(), entry({ error: "submitted and billed", estimateMicros: usd(1), durationMs: 9000 }), entry({ error: "429", estimateMicros: 0 }), entry({ cacheHit: true, estimateMicros: 0 })];
+    const ledger = new InMemoryLedger();
+    for (const row of rows) await ledger.record(row);
+    const [group] = groupCosts(rows, (e) => e.providerId);
+    expect(group).toMatchObject({ calls: 1, failures: 2, cacheHits: 1, micros: await ledger.spent("e1"), durationMs: 0, units: 0 });
+    expect(group!.micros).toBe(usd(1.1));
+  });
+
+  it("keeps empty and unbilled failure summaries at zero and excludes cached charges", () => {
+    expect(groupCosts([], (e) => e.providerId)).toEqual([]);
+    expect(groupCosts([entry({ error: "429", estimateMicros: 0 })], (e) => e.providerId)[0]).toMatchObject({ calls: 0, failures: 1, micros: 0 });
+    expect(groupCosts([entry({ error: "cached metadata error", cacheHit: true, estimateMicros: usd(1) })], (e) => e.providerId)[0]).toMatchObject({ calls: 0, failures: 1, micros: 0 });
+  });
+
   it("süre/birim alanı olmayan başarılı kayıtları sıfır sayar; ilk birim etiketini korur", () => {
     const [g] = groupCosts([entry(), entry({ units: 2, unitLabel: "sn" }), entry({ units: 1, unitLabel: "görsel" })], () => "k");
     expect(g).toEqual({ key: "k", calls: 3, cacheHits: 0, failures: 0, micros: usd(0.3), durationMs: 0, units: 3, unitLabel: "sn" });

@@ -638,13 +638,13 @@ export class EpisodePipeline {
   }
 
   /**
-   * Kareyi görsel modelle denetler. Denetim başarısız olursa (ajan hatası, büyük dosya) kare kabul edilir;
-   * kalite kontrolü üretimi durdurmamalı.
+   * Kareyi görsel modelle denetler. Denetim yapılamazsa (ajan hatası, büyük dosya) sonuç atlandı olarak kalır;
+   * üretim sürer ama kare denetlenmiş adayın önüne geçmez ve sırf bunun için yeniden çizilmez.
    */
   private async inspect(state: EpisodeState, shot: PlannedShotState, frame: AssetRef, attempt: number): Promise<FrameQa> {
     const bytes = await this.bytes(frame.key);
     if (bytes.length > QA_MAX_BYTES) {
-      return { score: 0, issues: [], attempts: attempt, passed: true, skipped: "görsel çok büyük" };
+      return { score: 0, issues: [], attempts: attempt, passed: false, skipped: "görsel çok büyük" };
     }
     const selected = state.concept?.selected ?? {};
     const cast = (shot.characterIds ?? [])
@@ -673,7 +673,7 @@ export class EpisodePipeline {
       return judgeFrame(out, attempt);
     } catch (e) {
       this.log(msg("log.frame.checkFailed", { shot: shot.id, error: errorText(e) }));
-      return { score: 0, issues: [], attempts: attempt, passed: true, skipped: "denetim hatası" };
+      return { score: 0, issues: [], attempts: attempt, passed: false, skipped: "denetim hatası" };
     }
   }
 
@@ -2862,14 +2862,14 @@ export class EpisodePipeline {
           this.log(
             msg("log.keyframe.done", {
               shot: shot.id,
-              mark: review ? (review.passed ? "✓" : "✗") : "✓",
+              mark: review?.skipped ? "?" : review ? (review.passed ? "✓" : "✗") : "✓",
               provider: res.providerId,
               cached: res.cacheHit ? msg("log.cached") : "",
               check: review && !review.skipped ? msg("log.keyframe.check", { score: review.score }) : "",
               issues: review?.issues.length ? `: ${review.issues.map((i) => i.type).join(", ")}` : "",
             }),
           );
-          if (!review || review.passed) break;
+          if (!review || review.passed || review.skipped) break;
           prompt = redrawPrompt(shot.imagePrompt, review);
         }
         if (!best) return;
@@ -3068,6 +3068,8 @@ export class EpisodePipeline {
     review: async (state) => {
       const { timeline, shots } = state;
       if (!timeline || !shots) throw new LocalizedError(msg("err.missing", { what: "timeline/shots" }));
+      // Yeni denetim eksik kalırsa eski sonuç korunur ama aşama tamamlanmış görünmez.
+      delete state.done.review;
       const dir = resolve(this.deps.workDir, state.id);
       const book = await loadLessons(this.deps.store);
       // Render klasörünün public/ dizini hazır; kareler yereldir.
@@ -3075,6 +3077,8 @@ export class EpisodePipeline {
       // Hiçbir kare incelenemedi (kullanım sınırı vb.): aşama açık kalır, sınır kalkınca yeniden çalıştırılır; önceki
       // inceleme ve kareler olduğu gibi durur.
       if (unreviewed) throw new LocalizedError(msg("err.review.unreviewed", { error: unreviewed }));
+      const reviewed = shots.filter((s) => Object.hasOwn(review.shots, s.id)).length;
+      if (reviewed < shots.length) throw new LocalizedError(msg("err.review.incomplete", { reviewed, total: shots.length }));
       state.stills = {};
       await this.storeStills(state, files);
       state.review = review;

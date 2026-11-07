@@ -103,6 +103,20 @@ afterEach(() => {
 const out = (name: string) => join(mkdtempSync(join(DIR, "out-")), name);
 
 describe("renderEpisode", () => {
+  it.each([1, 2])("%i sahneli render'da tarayıcı ve x264 paralelliği sınırlıdır", async (scenes) => {
+    await renderEpisode({ timeline: make(scenes, 60), publicDir: DIR, outputPath: out("bounded.mp4") });
+    const video = remotion.renderMedia.mock.calls.find((c) => c[0].codec === "h264")![0];
+    expect(video.concurrency).toBeLessThanOrEqual(2);
+    expect(video.ffmpegOverride).toBeTypeOf("function");
+    const args = video.ffmpegOverride({ type: "pre-stitcher", args: ["-c:v", "libx264", "-y", "o.mp4"] });
+    expect(args.slice(args.indexOf("-threads"), args.indexOf("-threads") + 2)).toEqual(["-threads", "4"]);
+    expect(args.includes("-force_key_frames")).toBe(scenes > 1);
+    const copy = ["-c:v", "copy", "-y", "o.mp4"];
+    expect(video.ffmpegOverride({ type: "stitcher", args: copy })).toEqual(copy);
+    const noOutput = ["-c:v", "libx264"];
+    expect(video.ffmpegOverride({ type: "pre-stitcher", args: noOutput })).toEqual(noOutput);
+  });
+
   it("önbellekte olmayan sahneleri tek render'da, sınırlarında anahtar kareyle render edip böler; ses ayrı ve hafif; birleştirip -14 LUFS'a getirir", async () => {
     const output = out("bolum.MP4");
     const progress: number[] = [];
@@ -138,7 +152,7 @@ describe("renderEpisode", () => {
     }
     expect(calls[1]!.enforceAudioTrack).toBe(true);
     // İkinci sahnenin başına (göreli 90. kare) anahtar kare zorlanır.
-    expect(calls[0]!.ffmpegOverride({ type: "pre-stitcher", args: ["-c:v", "libx264", "-y", "o.mp4"] })).toEqual(["-c:v", "libx264", "-force_key_frames", "expr:eq(n,90)", "-y", "o.mp4"]);
+    expect(calls[0]!.ffmpegOverride({ type: "pre-stitcher", args: ["-c:v", "libx264", "-y", "o.mp4"] })).toEqual(["-c:v", "libx264", "-force_key_frames", "expr:eq(n,90)", "-threads", "4", "-y", "o.mp4"]);
     // Önbellekte iki parça (90'ar kare) ve ses izi; geçici dosya ve birleştirme listesi silinmiş.
     const files = readdirSync(cache).sort();
     expect(files.filter((f) => f.endsWith(".mp4")).map((f) => readFileSync(join(cache, f), "utf8"))).toEqual(["90", "90"]);
@@ -208,7 +222,7 @@ describe("renderEpisode", () => {
     await renderEpisode({ timeline: two, publicDir: DIR, outputPath: output });
     expect(remotion.renderMedia.mock.calls.map((c) => c[0].frameRange ?? "ses")).toEqual([[0, 179], [0, 89], [90, 179], "ses"]);
     // Tek parça render'ında anahtar kare zorlanmaz; önbellekte iki parça ve ses, artık dosya yok.
-    expect(remotion.renderMedia.mock.calls[1]![0].ffmpegOverride).toBeUndefined();
+    expect(remotion.renderMedia.mock.calls[1]![0].ffmpegOverride({ type: "pre-stitcher", args: ["-c:v", "libx264", "-y", "o.mp4"] })).toEqual(["-c:v", "libx264", "-threads", "4", "-y", "o.mp4"]);
     expect(readdirSync(cacheDirOf(output))).toHaveLength(3);
   });
 
@@ -475,7 +489,7 @@ describe("isTransientRenderFailure", () => {
   it("yalnız dosya/tarayıcı kurulum hatalarını ve bir karede asılı kalan sayfayı geçici sayar", () => {
     const hung = [
       "waiting for the page to render the React component at frame 4244 failed: timeout 123000ms exceeded",
-      'A delayRender() "pixi sparks" was called but not cleared after 120000ms.',
+      "A delayRender() \"pixi sparks\" was called but not cleared after 120000ms.",
     ];
     for (const m of ["ENOENT: x", "EBUSY: locked", "EPERM: operation", "No such file or directory", "while setting up the headless browser", ...hung]) {
       expect(isTransientRenderFailure(new Error(m))).toBe(true);
