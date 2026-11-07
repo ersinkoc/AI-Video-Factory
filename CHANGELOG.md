@@ -2,6 +2,13 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.4.4 (2026-11-07)
+
+- The final review sends the frames the critic left out once more instead of staying open
+- A map fits a focus country's home land, not its overseas parts: the USA map is no longer world-scale
+- The info card keeps off the key prop, held props and things on the wall
+- No macro insert when someone is in the frame: the holder or the people around the prop stay sharp, the magnifier opens instead
+
 ## v0.4.3 (2026-11-07)
 
 - Episode locks are taken by compare-and-swap; an incomplete review stays open, Studio reads lighter and renders use fewer tabs
