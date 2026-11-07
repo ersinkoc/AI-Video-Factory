@@ -1158,6 +1158,25 @@ describe("timeline, render ve inceleme", () => {
     expect(complete.lastError).toBeUndefined();
   });
 
+  it("reviews frames the critic left out once more and completes (7 Nov, LLM episode: 48/49)", async () => {
+    const h = harness();
+    const id = await ready(h);
+    await h.pipeline.run(id, { only: "timeline" });
+    let first = true;
+    onAgent("sceneCritic", (items: { shotId: string }[]) => {
+      // İlk turda ilk grubun ilk karesi yanıtta yok; ikinci turda hepsi var.
+      const drop = first && items.length === 6;
+      if (drop) first = false;
+      return { shots: (drop ? items.slice(1) : items).map((i) => ({ shotId: i.shotId, score: 7, issues: [] })), lessons: [] };
+    });
+    const done = await h.pipeline.run(id, { only: "review" });
+    expect(Object.keys(done.review!.shots)).toHaveLength(7);
+    expect(done.done.review).toBeDefined();
+    expect(h.logs).toContain("  incelenmeyen 1 kare yeniden inceleniyor");
+    // Yeniden deneme yalnız eksik kareyi gönderir.
+    expect((callsOf("sceneCritic").at(-1)!.args[0] as unknown[]).length).toBe(1);
+  });
+
 });
 
 describe("previewConcept", () => {

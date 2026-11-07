@@ -1447,11 +1447,14 @@ export class EpisodePipeline {
         .map((w) => w.text)
         .join(" ");
     const review: EpisodeReview = { at: new Date().toISOString(), shots: {}, lessons: [] };
-    const batches: (typeof shots)[] = [];
-    for (let i = 0; i < shots.length; i += 6) batches.push(shots.slice(i, i + 6));
     let reviewed = 0;
     const errors: unknown[] = [];
-    await mapLimit(batches, this.deps.concurrency ?? 3, async (batch) => {
+    const pass = (list: typeof shots) => {
+      const batches: (typeof shots)[] = [];
+      for (let i = 0; i < list.length; i += 6) batches.push(list.slice(i, i + 6));
+      return mapLimit(batches, this.deps.concurrency ?? 3, critique);
+    };
+    const critique = async (batch: typeof shots) => {
       const items = await Promise.all(
         batch
           .filter((s) => files[s.id])
@@ -1476,7 +1479,15 @@ export class EpisodePipeline {
         errors.push(e);
         this.log(msg("log.review.batchSkipped", { error: errorText(e) }));
       }
-    });
+    };
+    await pass(shots);
+    // Denetçinin yanıtta atladığı ya da grubu düşen kareler bir kez daha (7 Kas, LLM bölümü: denetçi 49 karenin birini
+    // yanıtına koymadı, inceleme "48/49" ile açık kaldı ve yeniden çalıştırmak 49 kareyi baştan inceletirdi).
+    const missing = shots.filter((s) => files[s.id] && !Object.hasOwn(review.shots, s.id));
+    if (missing.length && reviewed) {
+      this.log(msg("log.review.retry", { count: missing.length }));
+      await pass(missing);
+    }
     return { files, review, unreviewed: !reviewed && errors.length ? errorText(errors[0]) : undefined };
   }
 

@@ -147,6 +147,7 @@ export const PIPELINE_MESSAGES = {
   "log.shots.varied": { tr: "  {n} çekimin boyu değişti (aynı odada aynı kişilere art arda aynı boyda kesme)", en: "  {n} shot sizes changed (same room, same people, same size in a row)" },
   "log.shots.nameTags": { tr: "  {n} kişiye bölümdeki ilk görünüşünde ad etiketi kondu", en: "  {n} people got a name tag where they first appear in the episode" },
   "log.review.batchSkipped": { tr: "  inceleme grubu atlandı: {error}", en: "  review batch skipped: {error}" },
+  "log.review.retry": { tr: "  incelenmeyen {count} kare yeniden inceleniyor", en: "  reviewing {count} missed frames again" },
   "log.stills.wait": {
     tr: "  başka bir render sürüyor (süreç {pid}); kareler için sıra bekleniyor",
     en: "  another render is running (process {pid}); waiting in line for the frames",
