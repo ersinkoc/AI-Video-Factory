@@ -12,6 +12,21 @@ describe("harita: kenar durumlar", () => {
     expect(map.meta.labels?.map((l) => l.text)).toContain("TÜRKİYE");
   });
 
+  it("odak ülkenin denizaşırı parçaları kadrajı açmaz; adaları kalır (7 Kas, Netflix s2-sh2: ABD odağı Alaska'yla dünyayı kapsıyordu)", async () => {
+    const spread = async (focus: string, a: [number, number], b: [number, number]) => {
+      const map = await generateMap(MapSpec.parse({ focus: [focus], markers: [{ lon: a[0], lat: a[1], label: "A" }, { lon: b[0], lat: b[1], label: "B" }] }), "tr", palette);
+      const [p, q] = map.meta.labels!;
+      return Math.hypot(p!.x - q!.x, p!.y - q!.y);
+    };
+    // Kaliforniya – New York, Paris – Marsilya: ana kara karenin büyük kısmında (eskiden 212 ve 72 px).
+    expect(await spread("USA", [-122, 37.1], [-74, 40.7])).toBeGreaterThan(600);
+    expect(await spread("FRA", [2.35, 48.85], [5.37, 43.3])).toBeGreaterThan(350);
+    // Endonezya'nın iki ucu (Aceh, Papua) kadrajda kalır.
+    expect(await spread("IDN", [95.3, 5.5], [140.7, -2.5])).toBeGreaterThan(1400);
+    // Tek parçalı ülke (İsviçre) olduğu gibi; küçük bölge ölçeğinde Cenevre ile Zürih ayrı.
+    expect(await spread("CHE", [6.14, 46.2], [8.54, 47.37])).toBeGreaterThan(200);
+  });
+
   it("küre: odak yoksa sabit merkez, odak varsa ülkenin üstü; arka yüzdeki ülkeye etiket yazılmaz", async () => {
     const world = await generateMap(MapSpec.parse({ projection: "globe" }), "en", palette);
     expect(world.svg).toContain('fill="#1b2333"');

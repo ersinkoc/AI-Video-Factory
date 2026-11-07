@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { LocalizedError, msg, type FlagSpec, type MapLabel, type MapSpec, type VectorAssetMeta } from "@ys/core";
-import { geoBounds, geoCentroid, geoContains, geoEquirectangular, geoMercator, geoNaturalEarth1, geoOrthographic, geoPath, geoGraticule10, type GeoPath, type GeoProjection } from "d3-geo";
+import { geoBounds, geoCentroid, geoContains, geoDistance, geoEquirectangular, geoMercator, geoNaturalEarth1, geoOrthographic, geoPath, geoGraticule10, type GeoPath, type GeoProjection } from "d3-geo";
 import countries from "i18n-iso-countries";
 import type { Feature, FeatureCollection, Geometry, MultiPolygon, Polygon } from "geojson";
 import { feature } from "topojson-client";
@@ -86,6 +86,23 @@ function mainPart(f: Country): Feature<Polygon> {
   return parts.reduce((a, b) => (area.area(b) > area.area(a) ? b : a));
 }
 
+/** Odak ülkenin kadraja alınan parçaları ana parçanın ortasına bu kadar yakın (derece, büyük daire). */
+export const GEO_HOME = 30;
+
+/**
+ * Odak ülkenin kadraja sığdırılan parçaları: ana parçasına GEO_HOME'dan yakın olanlar. Denizaşırı topraklar kadrajı
+ * açmaz (7 Kas, Netflix s2-sh2: "USA" odağı Alaska'yı, Aleutlar 180. boylamı aştığı için neredeyse bütün dünyayı
+ * kapsıyordu; Kaliforniya ile New York 1920 px'lik haritada 212 px arayla, şehir etiketleri üst üste). Adalar (Japonya,
+ * Endonezya) kalır. Çizim değişmez: Alaska yine haritada, yalnız görünüm ana kara.
+ */
+function homeParts(f: Country): Feature<Polygon>[] {
+  if (f.geometry.type === "Polygon") return [f as Feature<Polygon>];
+  const centre = geoCentroid(mainPart(f));
+  return f.geometry.coordinates
+    .map((coordinates) => ({ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates } }) as Feature<Polygon>)
+    .filter((p) => (geoDistance(geoCentroid(p), centre) * 180) / Math.PI <= GEO_HOME);
+}
+
 /** Palet: stilin ilk iki rengi (koyu tonlar) ve vurgu rengi; deniz ve kara sakin, vurgu canlı. */
 function mapColors(palette: string[]) {
   // En doygun orta tonlu palet rengi (koyu lacivert ya da krem değil); yoksa sıcak turuncu.
@@ -154,7 +171,7 @@ export async function generateMap(spec: MapSpec, lang: string, palette: string[]
 
   // Görünüm: odak ülkeleri + işaretler + rotalar; hiçbiri yoksa vurgulananlar, o da yoksa bütün dünya.
   const fitTo: Feature<Geometry>[] = [
-    ...pick(spec.focus).map((x) => x.f),
+    ...pick(spec.focus).flatMap((x) => homeParts(x.f)),
     ...spec.markers.map((m) => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [m.lon, m.lat] } }) as Feature<Geometry>),
     ...spec.routes.map((r) => ({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: r.points.map((p) => [p.lon, p.lat]) } }) as Feature<Geometry>),
   ];

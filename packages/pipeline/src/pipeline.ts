@@ -152,8 +152,9 @@ type AssetBrief = VectorAssetBrief & { reference?: string; /** Kadro ya da nesne
 /** Harita/bayrak üreticisinin sürümü (kütüphane anahtarının parçası). */
 /** Manim tahtası betiği değişince eski klipler yeniden üretilsin. */
 const MATH_VERSION = "math1";
-// geo2: küre haritası 3D doku ve izdüşüm bilgisiyle (three.js küresi).
-const GEO_VERSION = "geo2";
+// geo2: küre haritası 3D doku ve izdüşüm bilgisiyle (three.js küresi). geo3: odak ülkenin denizaşırı parçaları kadrajı
+// açmaz (homeParts; ABD haritası Alaska yüzünden dünya ölçeğindeydi).
+const GEO_VERSION = "geo3";
 
 const ASSET_VERSION: Record<VectorAssetBrief["kind"], string> = { character: "rig2", background: "shell2", prop: "meta1" };
 
