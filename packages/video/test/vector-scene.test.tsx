@@ -1961,9 +1961,11 @@ describe("vektör sahne: konuşma balonu", () => {
 
 describe("vektör sahne: makro ek çekim", () => {
   const cam = { zoomFrom: 1.6, zoomTo: 1.8, panX: 0, focusX: 700, focusY: 700 };
-  const shot = (extra: object = {}) => VectorShot.parse({ layers: [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "check", x: 700, on: 0 }, { asset: "hero", x: 1300, depth: 0.4 }], camera: cam, ...extra });
+  const shot = (extra: object = {}) => VectorShot.parse({ layers: [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "check", x: 700, on: 0 }, { asset: "hero", x: 1650, depth: 0.4 }], camera: cam, ...extra });
   const chip = { ...PL, index: 1, x: 700, y: 640, width: 40, height: 10 };
   const face = { ...PL, index: 2, x: 1300, y: 900, width: 260, height: 520 };
+  // Kadraj dışındaki kişi (kadrajdaki kişinin üst gövdesi makroyu engeller).
+  const far = { ...face, x: 1650 };
   const prop = (i: number) => i !== 2;
   const person = (i: number) => i === 2;
 
@@ -1977,10 +1979,10 @@ describe("vektör sahne: makro ek çekim", () => {
   });
 
   it("yönetmen yakın çekimde odağını küçük nesneye koyduysa makro olur; yüze, geniş çekime, büyük nesneye, yüzeye değil", () => {
-    expect(macroOf(shot(), [chip, face], cam, true, 1, prop, person)).toBe(1);
+    expect(macroOf(shot(), [chip, far], cam, true, 1, prop, person)).toBe(1);
     // Odak verilmemişse karenin ortası.
     const centred = { zoomFrom: 1.6, zoomTo: 1.8 };
-    expect(macroOf(shot({ camera: centred }), [{ ...chip, x: 960, y: 545 }, face], cam, true, 1, prop, person)).toBe(1);
+    expect(macroOf(shot({ camera: centred }), [{ ...chip, x: 960, y: 545 }, far], cam, true, 1, prop, person)).toBe(1);
     // Kişisiz çekim de; özne yoksa anlatılan nesne.
     expect(macroOf(shot({ key: 1 }), [chip], cam, true, undefined, prop, person)).toBe(1);
     // Odak yüzde (tepkiyi anlatan çekim), ya da nesneyle yüz arası eşit uzaklıkta.
@@ -1990,10 +1992,18 @@ describe("vektör sahne: makro ek çekim", () => {
     expect(macroOf(shot({ camera: { ...cam, zoomFrom: 1, zoomTo: 1.2 } }), [chip, face], cam, true, 1, prop, person)).toBeUndefined();
     expect(macroOf(shot({ crowd: { size: "group" } }), [chip, face], cam, true, 1, prop, person)).toBeUndefined();
     // Okunur boydaki nesne, kişi, üstünde bir şey duran yüzey, özne de anlatılan nesne de yok.
-    expect(macroOf(shot(), [{ ...chip, width: 600, height: 300 }, face], cam, true, 1, prop, person)).toBeUndefined();
+    expect(macroOf(shot(), [{ ...chip, width: 600, height: 300 }, far], cam, true, 1, prop, person)).toBeUndefined();
     expect(macroOf(shot(), [chip, face], cam, true, 2, prop, person)).toBeUndefined();
     expect(macroOf(shot(), [{ ...chip, index: 0 }, face], cam, true, 0, prop, person)).toBeUndefined();
     expect(macroOf(shot(), [chip, face], cam, true, undefined, prop, person)).toBeUndefined();
+    // Kadrajda üst gövdesi görünen kişi (7 Kas, Netflix: zarfı tutan Marc makronun arkasında silik bir gölgeydi): yüzü
+    // kadrajda, yalnız gövdesi (eller masada, yüz kadrajın üstünde), ya da iki uçtan birinde; tamamen dışarıdaki engellemez.
+    const near = { zoomFrom: 1.6, zoomTo: 1.8, panX: 0, focusX: 700, focusY: 700 };
+    const at = (x: number, y: number) => ({ ...PL, index: 2, x, y, width: 260, height: 520 });
+    expect(macroOf(shot({ camera: near }), [chip, at(1000, 1150)], near, false, 1, prop, person)).toBeUndefined();
+    expect(macroOf(shot({ camera: near }), [chip, at(900, 1400)], near, false, 1, prop, person)).toBeUndefined();
+    expect(macroOf(shot({ camera: { ...near, zoomFrom: 1.2 } }), [chip, at(1600, 1150)], { ...near, zoomFrom: 1.2 }, false, 1, prop, person)).toBeUndefined();
+    expect(macroOf(shot({ camera: near }), [chip, at(1600, 1150)], near, false, 1, prop, person)).toBe(1);
     // Girişi çekimin sonlarında biten nesne (açılacak zaman yok).
     const late = shot({ layers: [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "check", x: 700, on: 0, anims: [{ type: "fade_in", start: 0.6, end: 0.8 }] }] });
     expect(macroOf(late, [chip], cam, true, 1, prop, person)).toBeUndefined();
@@ -2025,12 +2035,15 @@ describe("vektör sahne: makro ek çekim", () => {
     expect(surface!.clip.w).toBeCloseTo(2 * box.w * MACRO.spread, 6);
     // Çizimin görünen tabanı kutunun altında değilse (degrade gölge sayılmaz) yüzey o kadar yukarıda.
     const gappy = asset("gappy", "prop", '<svg viewBox="0 0 400 100"><rect width="400" height="80" fill="#888888"/><ellipse cx="200" cy="95" rx="200" ry="5" fill="url(#shade)"/></svg>', 400, 100, { realHeight: 0.04 });
-    const lifted = shotModel(shot({ layers: [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "gappy", x: 700, on: 0 }, { asset: "hero", x: 1300, depth: 0.4 }] }), { ...ASSETS, gappy }, "outline", 1920, 1080, false, 10);
+    const lifted = shotModel(shot({ layers: [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "gappy", x: 700, on: 0 }, { asset: "hero", x: 1650, depth: 0.4 }] }), { ...ASSETS, gappy }, "outline", 1920, 1080, false, 10);
     const lv = shotFrame(lifted, { shotId: "s1", frame: 150, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).macroView!;
     expect(lv.surface!.box.y).toBeCloseTo(lv.box.y + lv.box.h * 0.8, 6);
-    // Elde tutulan nesnenin yüzeyi yok.
+    // Elde tutulan nesneye makro yok (tutan kadrajda); yüzeyde durmayan nesnenin makrosunda yüzey şeridi yok.
     const held = shotModel(shot({ layers: [{ asset: "hero", x: 700, depth: 0.4 }, { asset: "check", x: 700, heldBy: 0 }], key: 1 }), ASSETS, "outline", 1920, 1080, false, 10);
-    expect(held.macro === undefined || shotFrame(held, { shotId: "s1", frame: 150, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).macroView!.surface === undefined).toBe(true);
+    expect(held.macro).toBeUndefined();
+    const loose = shotModel(shot({ layers: [{ asset: "check", x: 700, y: 640 }], key: 0 }), ASSETS, "outline", 1920, 1080, false, 10);
+    expect(loose.macro).toBe(0);
+    expect(shotFrame(loose, { shotId: "s1", frame: 150, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).macroView!.surface).toBeUndefined();
     // Giriş animasyonu bitmeden açılmaz; dik telefon da oranını korur.
     const entering = shotModel(shot({ layers: [{ asset: "desk", x: 700, depth: 0.4 }, { asset: "phone", x: 700, on: 0, anims: [{ type: "pop", start: 0, end: 0.3 }] }] }), ASSETS, "outline", 1920, 1080, false, 10);
     const at = (n: number) => shotFrame(entering, { shotId: "s1", frame: n, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).macroView!;
@@ -2187,11 +2200,11 @@ describe("vektör sahne: büyütme balonu ve atmosfer katmanı", () => {
       return Math.sqrt(pl.width * pl.height) * Math.max(m.cam.zoomFrom, m.cam.zoomTo) < CALLOUT.closeBelow * 1080;
     };
     // Masada çek, yanında kişi, yönetmenin odağı kişinin yüzünde: kamera başını da kadrajda tuttuğu için çek okunur
-    // boya gelemez. (Odak çekte olsaydı makro ek çekim olurdu, balon açılmazdı.)
+    // boya gelemez. Odak çekte olsa da kişi kadrajda olduğu için makro yok (onu bulanık bir gölgeye çevirirdi): balon.
     const layers = [{ asset: "walker", x: 600, depth: 0.3 }, { asset: "longtable", x: 1000, depth: 0.3 }, { asset: "check", x: 900, on: 1 }];
     const macro = frame(layers, 900);
-    expect(macro.m.macro).toBe(2);
-    expect(macro.f.inset).toBeUndefined();
+    expect(macro.m.macro).toBeUndefined();
+    expect(macro.f.inset?.asset.id).toBe("check");
     const one = frame(layers, 650, 480);
     expect(one.m.macro).toBeUndefined();
     expect(one.m.subject).toBe(2);

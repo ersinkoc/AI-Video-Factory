@@ -3063,7 +3063,7 @@ export interface ShotModel {
  * altında boyunun under katı, kenarları sahneye karışarak (5 Kas inceleme: makro çekimlerde "dizüstü küçük, ortada
  * havada süzülüyor"; target 0,45'ten büyüdü).
  */
-export const MACRO = { below: 0.25, target: 0.6, focus: 0.8, late: 0.6, start: 0.3, sec: 0.7, blur: 10, dim: 0.25, y: 0.52, maxW: 0.72, maxH: 0.66, spread: 0.95, under: 0.4 } as const;
+export const MACRO = { below: 0.25, target: 0.6, focus: 0.8, torso: 0.3, late: 0.6, start: 0.3, sec: 0.7, blur: 10, dim: 0.25, y: 0.52, maxW: 0.72, maxH: 0.66, spread: 0.95, under: 0.4 } as const;
 
 const bottoms = new WeakMap<VectorAsset, ReturnType<typeof drawnBottom> | null>();
 
@@ -3099,8 +3099,19 @@ export function macroOf(
   // Yönetmenin odağı nesnede mi (yüzün ortası kutunun tepesinden boyun ~%12'si aşağıda).
   const [fx, fy] = [asked.focusX ?? W / 2, asked.focusY ?? H / 2];
   const toObject = Math.hypot(pl.x - fx, pl.y - pl.height / 2 - fy);
-  const toFaces = placed.filter((p) => isPerson(p.index)).map((p) => Math.hypot(p.x - fx, p.y - p.height * 0.88 - fy));
+  const people = placed.filter((p) => isPerson(p.index));
+  const toFaces = people.map((p) => Math.hypot(p.x - fx, p.y - p.height * 0.88 - fy));
   if (toFaces.some((d) => toObject >= d * MACRO.focus)) return undefined;
+  // Kadrajda üst gövdesi (yüzünden beline) görünen biri varsa makro yok: arka plan bulanıklaşıp nesne ortaya büyüyünce o
+  // kişi (tutan, gösteren, reddeden) silik bir gölgeye döner ya da nesnenin arkasında kalır (7 Kas: makrolu 16 incelenmiş
+  // çekimin 16'sında "kişi bulanık, görünmüyor, nesne havada" notu, ortalama 4.19 / makrosuzlar 4.85; birinde yüzler
+  // kadraj dışındaydı, eller masada). Nesne yakın çekimde okunmuyorsa büyütme balonu açılır; o yüzleri örtmeyen yeri seçer.
+  const seen = (p: PlacedLayer) => [0, 1].some((k) => {
+    const v = viewAt(cam, k, centre);
+    const [x0, x1, y0, y1] = [p.x - p.width * MACRO.torso, p.x + p.width * MACRO.torso, p.y - p.height * 0.95, p.y - p.height * 0.5];
+    return x1 > v.x0 && x0 < v.x0 + v.w && y1 > v.y0 && y0 < v.y0 + v.h;
+  });
+  if (people.some(seen)) return undefined;
   const side = Math.sqrt(pl.width * pl.height) * cameraAt(cam, 1, centre).scale;
   return side < MACRO.below * H ? pl.index : undefined;
 }
