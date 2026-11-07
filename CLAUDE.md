@@ -1,5 +1,7 @@
 # AI Video Factory: project notes for Claude
 
+For scene planning, animation and effects, follow the HyperFrames skill routing and runtime boundaries in `AGENTS.md`. Production craft policies shared by the directors and visual reviewers live in `packages/agents/src/motion-design.ts`; the runnable motion fixtures and engine contracts are documented in `docs/SCENE_MOTION.md`.
+
 Plan and architecture: `docs/PROJE_PLANI.md` (Turkish). Before changing a major decision, read the relevant section there and update it if needed.
 The README is English (`README.md`) with a Turkish copy (`README-TR.md`): when you change one, update the other. CHANGELOG and release notes are English. This file is English.
 

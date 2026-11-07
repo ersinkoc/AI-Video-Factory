@@ -11,6 +11,8 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p apps/studio/tsconfig.json",
+    "motion:preview": "tsx scripts/preview-scene-motion.ts",
+    "motion:hyperframes:export": "tsx scripts/export-hyperframes-motion.ts",
     "studio": "pnpm --filter @ys/studio dev",
     "studio:build": "pnpm --filter @ys/studio build",
     "studio:start": "pnpm --filter @ys/studio start",

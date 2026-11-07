@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MOTION_DESIGN_POLICY, MOTION_REVIEW_POLICY } from "./motion-design.ts";
 import { lessonsBlock, models, runStructured, type AgentDeps, type AgentImage, type AgentResult } from "./runner.ts";
 import { CastOut, FrameReviewOut, ScriptDoctorOut, ScriptOut, ShotPlanOut, StoryOut, StyleBibleOut } from "./schemas.ts";
 
@@ -268,6 +269,7 @@ Rules:
 - For every scene, split the narration into shots by giving the word index where each shot starts. The first shot of a scene starts at 0; indices strictly increase.
 - Estimate shot length from scene duration / word count. Cut on meaning, not mid-phrase.
 ${MOTION_RULES[opts.motionMode ?? "mixed"](opts.aiClipRatio)}
+${MOTION_DESIGN_POLICY}
 - imagePrompt: one concrete frame, describe action, composition, framing. The style prefix and the cast/location reference images are added automatically — refer to cast members by name, do not redescribe their looks. Never ask for text in the image.
 - characterIds/locationId: tag every shot with the cast ids that appear in it, so reference images can be attached.
 - ambience: a subtle animated overlay that makes still_motion shots feel alive. It must match what is in the frame: "rain"/"snow" only outdoors in that weather, "fog" for night, mist or mystery, "dust" for old rooms, workshops, attics, "embers" near fire or forges, "flicker" for candle/lamp/screen light, "rays" for sunlight through windows or trees, "confetti" only for a celebration moment (a launch, a win, a record). Use "none" when nothing fits; keep the same ambience across shots of one location and moment.
@@ -299,6 +301,7 @@ export function frameInspector(input: FrameReviewInput, deps?: AgentDeps): Promi
       schema: FrameReviewOut,
       images: [input.frame, ...input.refs.map((r) => r.image)],
       system: `You are a strict quality inspector for keyframes of an animated narrated video. Image 1 is the generated frame; any further images are cast reference sheets.
+${MOTION_REVIEW_POLICY}
 Report only real, visible problems:
 - text: any readable letters, words, numbers, signs, captions or watermarks in image 1.
 - panels: image 1 is a collage, comic panels, split screen, book page or has borders/frames.

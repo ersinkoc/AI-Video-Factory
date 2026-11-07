@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { FigureSpec } from "./figure.ts";
 import { MapLabel } from "./geo.ts";
+import { SceneEffect, SceneThree } from "./effects.ts";
 
 /**
  * Vektör modu: Claude sahneyi kısa bir JSON olarak tarif eder, Remotion deterministik bileşenlerle çizer.
@@ -428,6 +429,8 @@ export const VectorCrowd = z.object({
 export type VectorCrowd = z.infer<typeof VectorCrowd>;
 
 export const VectorShot = z.object({
+  effects: z.array(SceneEffect).max(3).optional().describe("Timed PixiJS and compositing accents; keep titles and faces readable"),
+  three: z.array(SceneThree).max(2).optional().describe("Procedural Three.js illustrations, staged beside characters"),
   /** Arka plan varlığı; yoksa paletten degrade. */
   background: z.string().optional(),
   mood: VectorMood.default("neutral"),

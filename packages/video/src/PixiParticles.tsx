@@ -8,7 +8,7 @@ import { drawShapes, particleFrame, type ParticleKind, type Pen } from "./partic
  * `particleFrame`'den yeniden çizilir ve elle render edilir, kare yalnız zamana bağlıdır. Pixi hazırlanana kadar render
  * bekletilir; WebGL açılamazsa katman boş kalır (atmosfer yüzünden bölüm render'ı düşmesin).
  */
-export function PixiParticles({ kind, seed, size }: { kind: ParticleKind; seed: string; size?: readonly [number, number] }) {
+export function PixiParticles({ kind, seed, size, time, tint }: { kind: ParticleKind; seed: string; size?: readonly [number, number]; time?: number; tint?: number }) {
   const frame = useCurrentFrame();
   const config = useVideoConfig();
   const { fps } = config;
@@ -56,12 +56,12 @@ export function PixiParticles({ kind, seed, size }: { kind: ParticleKind; seed: 
 
   useLayoutEffect(() => {
     if (!ready) return;
-    const f = particleFrame(kind, seed, frame / fps, width, height);
+    const f = particleFrame(kind, seed, time ?? frame / fps, width, height, tint);
     ready.pen.blendMode = f.blend;
     drawShapes(ready.pen as unknown as Pen, f.shapes);
     ready.app.render();
     continueRender(handle);
-  }, [ready, kind, seed, frame, fps, width, height, handle]);
+  }, [ready, kind, seed, frame, fps, width, height, handle, time, tint]);
 
   return <canvas ref={canvas} width={width} height={height} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />;
 }

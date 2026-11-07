@@ -52,6 +52,7 @@ import { CALLOUT, CALLOUT_SPOTS, calloutBlocked, calloutCost, calloutScale, call
 import { Figure3D } from "./Figure3D.tsx";
 import { clapClosed, GESTURE_RHYTHM, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
+import { SceneEffects, SceneIllustrations } from "./SceneEffects.tsx";
 import { anatomical, flexion, STRETCH, type Strain } from "./anatomy.ts";
 import { splitBrows, type BrowPart, type SplitBrows } from "./browShape.ts";
 import { bend, reach, type Reach } from "./ik.ts";
@@ -3763,6 +3764,7 @@ function ShotStage({
         )}
         {BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} />}
         {DEPTH.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} part="far" />}
+        <SceneIllustrations spec={spec} p={p} durationSec={dur} />
         <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>
           {placed.flatMap((pl, n) => {
             const layer = spec.layers[pl.index]!;
@@ -3811,6 +3813,7 @@ function ShotStage({
       )}
       <AbsoluteFill style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.32) 100%)" }} />
       {!BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} {...(DEPTH.has(ambience) ? { part: "near" as const } : {})} />}
+      <SceneEffects spec={spec} p={p} durationSec={dur} seed={visual.shotId} />
       {inset && <Callout {...inset} p={p} prefix={`${visual.shotId}-co-`} accent={readable(accent) ?? "#ffd84d"} paper={paper} />}
       {macroView && macroView.q > 0 && <Macro {...macroView} prefix={`${visual.shotId}-mc-`} paper={paper} light={light} />}
       {/* Konuşma balonları kameranın dışında (yazı karede hep aynı boyda); konuşanın yüzünün yanında. */}

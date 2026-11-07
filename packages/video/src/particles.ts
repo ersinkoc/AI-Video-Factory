@@ -1,7 +1,8 @@
 import { random } from "remotion";
+import type { PARTICLE_EFFECTS } from "@ys/core";
 
 /** PixiJS ile çizilen parçacıklı atmosferler (sis, titreme, huzme CSS'te kalır). */
-export type ParticleKind = "rain" | "snow" | "dust" | "embers" | "confetti";
+export type ParticleKind = "rain" | "snow" | "dust" | "embers" | "confetti" | (typeof PARTICLE_EFFECTS)[number];
 
 /** Bir karede çizilecek tek şekil: çizgi (damla), nokta (kar, toz; glow ile yumuşak), halka (sıçrama), kâğıt (konfeti). */
 export type Shape =
@@ -53,9 +54,47 @@ function seeds(seed: string, n: number): number[][] {
  * render sekmeleri ve tekrar render aynı kareyi verir. Eski SVG sürümü 90–140 parçacıkla sınırlıydı ve bulanıklık
  * filtresi yavaştı; WebGL'de derinlik katmanlı yüzlerce parçacık ve yere çarpan damla sıçramaları çizilir.
  */
-export function particleFrame(kind: ParticleKind, seed: string, t: number, width: number, height: number): ParticleFrame {
+export function particleFrame(kind: ParticleKind, seed: string, t: number, width: number, height: number, tint = 0x70d6ff): ParticleFrame {
   const shapes: Shape[] = [];
   switch (kind) {
+    case "sparks":
+    case "fireflies":
+    case "bubbles":
+    case "starfield":
+    case "speed_lines":
+    case "energy_rings": {
+      const count = kind === "energy_rings" ? 8 : kind === "speed_lines" ? 64 : 120;
+      for (const [i, [rx, ry, rs, rz, rp]] of (seeds(`${seed}-${kind}`, count) as [number, number, number, number, number][]).entries()) {
+        const phase = rp * Math.PI * 2;
+        if (kind === "energy_rings") {
+          const age = wrap(t * 0.35 + rx);
+          const r = age * width * 0.48;
+          shapes.push({ shape: "ring", x: width / 2, y: height / 2, rx: r, ry: r * 0.55, width: 2 + rs * 3, color: tint, alpha: Math.sin(age * Math.PI) * 0.65 });
+        } else if (kind === "speed_lines" || kind === "starfield") {
+          const depth = wrap(rz + t * (kind === "speed_lines" ? 0.7 : 0.08) * (0.5 + rs));
+          const radius = 0.08 + depth * 0.75;
+          const x = width / 2 + Math.cos(phase) * width * radius;
+          const y = height / 2 + Math.sin(phase) * height * radius;
+          if (kind === "starfield") shapes.push({ shape: "dot", x, y, r: 0.8 + depth * 3, color: tint, alpha: Math.sin(depth * Math.PI), glow: depth > 0.7 });
+          else shapes.push({ shape: "streak", x, y, x2: x + Math.cos(phase) * (20 + depth * 160), y2: y + Math.sin(phase) * (12 + depth * 90), width: 1 + rs * 2, color: tint, alpha: Math.sin(depth * Math.PI) * 0.7 });
+        } else if (kind === "sparks") {
+          const age = wrap(t * 0.65 + ry);
+          const vx = (rx - 0.5) * width * 0.8;
+          const vy = -(0.3 + rs * 0.6) * height;
+          const x = width / 2 + vx * age;
+          const y = height * 0.65 + vy * age + height * age * age * 0.6;
+          shapes.push({ shape: "streak", x, y, x2: x - vx * 0.018, y2: y - (vy + height * age * 1.2) * 0.018, width: 1 + rz * 3, color: tint, alpha: (1 - age) * 0.95 });
+        } else if (kind === "bubbles") {
+          const y = (1 - wrap(ry + t * (0.035 + rs * 0.05))) * height;
+          shapes.push({ shape: "ring", x: wrap(rx + Math.sin(t + phase) * 0.018) * width, y, rx: 4 + rz * 18, ry: 4 + rz * 18, width: 1.5, color: tint, alpha: 0.2 + rs * 0.5 });
+        } else {
+          const x = wrap(rx + Math.sin(t * (0.4 + rs) + phase) * 0.035) * width;
+          const y = wrap(ry + Math.cos(t * 0.6 + phase) * 0.04) * height;
+          shapes.push({ shape: "dot", x, y, r: 1.5 + rz * 3, color: tint, alpha: 0.15 + 0.7 * (0.5 + 0.5 * Math.sin(t * 2 + i)), glow: true });
+        }
+      }
+      return { shapes, blend: kind === "bubbles" ? "normal" : "add" };
+    }
     case "rain": {
       const slant = 0.18;
       for (const [li, layer] of LAYERS.rain.entries()) {

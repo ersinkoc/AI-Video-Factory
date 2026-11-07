@@ -138,6 +138,11 @@ describe("yönetmen", () => {
     expect(a.prompt).toContain("## s2 (0.0 s, location: desert");
     expect(a.prompt.startsWith("## s1")).toBe(true);
     expect(a.system).toContain('About 25% of shots should be "ai_clip"');
+    expect(a.system).toContain("Give each shot one clear hero");
+    expect(a.system).toContain("Keep titles and key numbers steady after their entrance");
+    expect(a.system).toContain("fields and values supported by the supplied output schema");
+    expect(a.options.skills).toEqual([]);
+    expect(a.options.tools).toEqual([]);
   });
 
   it("kadroyu listeler ve hareket kipine göre kural yazar", async () => {
@@ -157,6 +162,8 @@ describe("görsel denetçiler", () => {
       frameInspector({ frame: img(1), refs: [{ image: img(2), label: "Billy" }], description: "d", imagePrompt: "ip", characters: ["Billy"] }, d),
     );
     expect(a.images).toEqual(["AQ==", "Ag=="]);
+    expect(a.system).toContain("A single still cannot prove animation timing");
+    expect(a.system).toContain("reference images are identity references, not an animation sequence");
     expect(a.prompt).toBe("Shot description: d\nImage prompt used: ip\nExpected characters: Billy\nImage 2: reference for Billy");
     const b = await capture((d) => frameInspector({ frame: img(1), refs: [], description: "d", imagePrompt: "ip", characters: [] }, d));
     expect(b.prompt).toContain("Expected characters: none specified");
@@ -166,6 +173,8 @@ describe("görsel denetçiler", () => {
     const shots = [{ shotId: "sh1", image: img(3), intent: "atlı" }, { shotId: "sh2", image: img(4), intent: "çöl" }];
     const a = await capture((d) => sceneCritic(shots, [], d));
     expect(a.system).toContain("- (none yet)");
+    expect(a.system).toContain("effects, highlights or particles must not obscure it");
+    expect(a.system).toContain("do not invent motion failures");
     expect(a.images).toEqual(["Aw==", "BA=="]);
     expect(a.prompt).toBe("Image 1 = sh1: atlı\nImage 2 = sh2: çöl");
     const b = await capture((d) => sceneCritic(shots, ["Yazıyı üste koy"], d));
@@ -338,6 +347,15 @@ describe("vektör ajanları", () => {
         "## s1 (9.9 s, location: station, emotion: tense)\nVisual intent: rider arrives\nNarration: [0]Bir [1]gün [2]atlı [3]geldi",
     );
     expect(a.system).toContain("Never stage an event in a room where it did not happen.");
+    expect(a.system).toContain("procedural Three.js illustrations, PixiJS particles");
+    expect(a.system).toContain("spec.three: up to 2");
+    expect(a.system).toContain("spec.effects: up to 3");
+    expect(a.system).toContain("aim for at least two thirds");
+    expect(a.system).toContain("Give each shot one clear hero");
+    expect(a.system).toContain("shorten or omit the on-screen text instead of changing the narration timing");
+    expect(a.system).toContain("do not claim registry searches or completed renders");
+    expect(a.options.skills).toEqual([]);
+    expect(a.options.tools).toEqual([]);
     expect(a.system).toContain("that shot is a close-up on it");
     expect(a.system).toContain("counts the card lines and the name tags together");
     // Başka sahnenin mekânı işaretlenmez.
