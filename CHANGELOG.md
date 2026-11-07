@@ -2,6 +2,13 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.4.3 (2026-11-07)
+
+- Episode locks are taken by compare-and-swap; an incomplete review stays open, Studio reads lighter and renders use fewer tabs
+- Shots can carry procedural Three.js illustrations and PixiJS/CSS effects; the director plans motion in most shots
+- Props placed half off the stage are moved back in, with whatever stands on them
+- The magnifier inset never opens on furniture, and its pointer keeps off faces and bodies
+
 ## v0.4.2 (2026-11-06)
 
 - Three or more people in a row form an arc open to the camera
