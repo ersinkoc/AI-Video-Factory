@@ -106,7 +106,7 @@ describe("senaryo ajanları", () => {
   it("senarist ve doktor kelime bütçesini dilin konuşma hızından hesaplar, dersleri ekler", async () => {
     const a = await capture((d) => screenwriter({ ...brief, lessons: ["Kısa yaz"] }, story, d));
     expect(a.system).toContain("Total narration ≈ 230 words (115 wpm");
-    expect(a.system).toContain("Lessons from previous episodes (follow them, but they never override the channel's art style and palette):\n- Kısa yaz");
+    expect(a.system).toContain("Lessons from previous episodes (follow them, but they never override the channel's art style and palette, and never forbid the code's own camera devices: depth of field, motion blur and the round magnifier inset):\n- Kısa yaz");
     expect(a.prompt).toBe(`Story:\n${JSON.stringify(story, null, 2)}`);
     const b = await capture((d) => scriptDoctor({ ...brief, lang: "en", wordsPerMinute: 100 }, story, script, d));
     expect(b.system).toContain("keep total narration ≈ 200 words");
@@ -175,6 +175,8 @@ describe("görsel denetçiler", () => {
     expect(a.system).toContain("- (none yet)");
     expect(a.system).toContain("effects, highlights or particles must not obscure it");
     expect(a.system).toContain("do not invent motion failures");
+    // Büyütme balonu kodun bilinçli aracı (7 Kas, LLM incelemesi: "yasaklı bindirme" diye 9 not).
+    expect(a.system).toContain("give no lesson against it; report it only when it covers a face");
     expect(a.images).toEqual(["Aw==", "BA=="]);
     expect(a.prompt).toBe("Image 1 = sh1: atlı\nImage 2 = sh2: çöl");
     const b = await capture((d) => sceneCritic(shots, ["Yazıyı üste koy"], d));
