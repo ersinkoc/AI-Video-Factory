@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONVERSE, floorYOf, GIANT, ON_SURFACE, READABLE_SIDE, resolveLayout, STAGE, surfaceRoom, VectorShot, type VectorAsset } from "../src/index.ts";
+import { CONVERSE, floorYOf, GIANT, ON_SURFACE, POINT_REACH, READABLE_SIDE, resolveLayout, STAGE, surfaceRoom, VectorShot, type VectorAsset } from "../src/index.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({
   id,
@@ -415,5 +415,73 @@ describe("sahne fiziği: konuşma mesafesi", () => {
     expect(by(seated, 0).x).toBe(400);
     expect(xs(place(two({}), { camera: { zoomFrom: 1, zoomTo: 1.6 } }))).toEqual([400, 1500]);
     expect(xs(place(two({}), { math: { steps: ["a = b"] } }))).toEqual([400, 1500]);
+  });
+});
+
+describe("sahne fiziği: işaret eden hedefinin yanına geçer", () => {
+  const assets = {
+    a: asset("a", "character", {}, 400, 800),
+    b: asset("b", "character", {}, 400, 800),
+    box: asset("box", "prop", { realHeight: 1, grounded: true }),
+    desk: asset("desk", "prop", { realHeight: 0.75, surface: 1, grounded: true }, 1000, 500),
+    cup: asset("cup", "prop", { realHeight: 0.3 }, 200, 300),
+    chair: asset("chair", "prop", { realHeight: 0.9, surface: 0.5, grounded: true }, 400, 600),
+  };
+  const place = (layers: unknown[], extra: object = {}) => resolveLayout(VectorShot.parse({ layers, ...extra }), assets);
+  const by = (placed: ReturnType<typeof resolveLayout>, i: number) => placed.find((p) => p.index === i)!;
+  const pointer = (target: number, more: object = {}) => ({ asset: "a", x: 300, depth: 0.3, anims: [{ type: "point", target }], ...more });
+  // Derinlik 0,3: ölçek 0,85; kişi 578 px boyunda, 289 px genişliğinde; kutu 340 px.
+  const h = 800 * STAGE.pxPerMeter * 0.85 * 1.7 / 800;
+  const edge = (pl: ReturnType<typeof resolveLayout>[number], side: number) => pl.x - side * pl.width * POINT_REACH.edge;
+
+  it("hedefin yakın kenarı boyun yarısından uzaksa kişi kenara erim kadar yaklaşır; yakınsa kıpırdamaz", () => {
+    const placed = place([pointer(1), { asset: "box", x: 1400, depth: 0.3 }]);
+    const p = by(placed, 0);
+    expect(p.height).toBeCloseTo(h, 6);
+    expect(edge(by(placed, 1), 1) - p.x).toBeCloseTo(POINT_REACH.to * p.height, 6);
+    expect(p.fixes).toContain(POINT_REACH.note);
+    // Solundaki hedefe de yürür.
+    const left = place([pointer(1, { x: 1600 }), { asset: "box", x: 400, depth: 0.3 }]);
+    expect(by(left, 0).x - edge(by(left, 1), -1)).toBeCloseTo(POINT_REACH.to * h, 6);
+    const near = place([pointer(1), { asset: "box", x: 700, depth: 0.3 }]);
+    expect(by(near, 0).x).toBe(300);
+    expect(by(near, 0).fixes).not.toContain(POINT_REACH.note);
+  });
+
+  it("en çok walk metre yürür ve sahneden çıkmaz", () => {
+    const placed = place([pointer(1, { x: 100 }), { asset: "box", x: 1900, depth: 0.3 }]);
+    // Önce kadraja alınır (kenardan 20 px), sonra 2,5 m yürür.
+    expect(by(placed, 0).x).toBeCloseTo(289 / 2 + 20 + POINT_REACH.walk * STAGE.pxPerMeter * 0.85, 6);
+  });
+
+  it("aynı derinlikte aradaki kişiyi ve gövde hizasındaki yerdeki eşyayı aşmaz, kenarında durur; başka derinlikteki ve masadaki engel değil", () => {
+    const person = place([pointer(1), { asset: "box", x: 1400, depth: 0.3 }, { asset: "b", x: 700, depth: 0.3 }]);
+    expect(by(person, 0).x).toBeCloseTo(700 - 289 * 2 * 0.32, 6);
+    const desk = place([pointer(1), { asset: "box", x: 1400, depth: 0.3 }, { asset: "desk", x: 800, depth: 0.3 }, { asset: "cup", x: 800, on: 2 }]);
+    const d = by(desk, 2);
+    expect(by(desk, 0).x).toBeCloseTo(d.x - d.width / 2 - 289 * CONVERSE.body, 6);
+    // Arkadaki masa yolu kesmez; oturan kişi de (sandalyesi engel olur, burada hedefin ötesinde).
+    const far = place([pointer(1), { asset: "box", x: 1400, depth: 0.3 }, { asset: "desk", x: 800, depth: 0.9 }]);
+    expect(edge(by(far, 1), 1) - by(far, 0).x).toBeCloseTo(POINT_REACH.to * h, 6);
+    const seated = place([pointer(1), { asset: "box", x: 1400, depth: 0.3 }, { asset: "chair", x: 1750, depth: 0.3 }, { asset: "b", x: 1750, on: 2 }]);
+    expect(edge(by(seated, 1), 1) - by(seated, 0).x).toBeCloseTo(POINT_REACH.to * h, 6);
+    // Engel kişinin üstündeyse kıpırdamaz.
+    const stuck = place([pointer(1), { asset: "box", x: 1400, depth: 0.3 }, { asset: "desk", x: 400, depth: 0.3 }]);
+    expect(by(stuck, 0).x).toBe(300);
+  });
+
+  it("kişiyi ya da eldekini göstereni, oturanı, gireni, iş başındakini, yakın çekimi ve Manim tahtasını yerinde bırakır", () => {
+    const xs = (layers: unknown[], extra: object = {}) => by(place(layers, extra), 0).x;
+    const box = { asset: "box", x: 1400, depth: 0.3 };
+    expect(xs([pointer(1), { asset: "b", x: 1400, depth: 0.6 }])).toBe(300);
+    expect(xs([pointer(1), { asset: "cup", x: 0, heldBy: 2 }, { asset: "b", x: 1500, depth: 0.6 }])).toBe(300);
+    expect(xs([pointer(1, { anims: [{ type: "point", target: 1 }, { type: "walk", toX: 500 }] }), box])).toBe(300);
+    expect(xs([pointer(1, { anims: [{ type: "point", target: 1 }, { type: "typing" }] }), box])).toBe(300);
+    expect(xs([pointer(1), box, { asset: "chair", x: 300, depth: 0.3 }].map((l, i) => (i === 0 ? { ...l, on: 2 } : l)))).toBe(300);
+    expect(xs([pointer(1), box], { camera: { zoomFrom: 1, zoomTo: 1.6 } })).toBe(300);
+    expect(xs([pointer(1), box], { math: { steps: ["a = b"] } })).toBe(300);
+    // Hedefsiz ya da kendini gösteren işaret (render yanındakini gösterir).
+    expect(xs([{ asset: "a", x: 300, depth: 0.3, anims: [{ type: "point" }] }, box])).toBe(300);
+    expect(xs([pointer(0), box])).toBe(300);
   });
 });

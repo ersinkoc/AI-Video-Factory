@@ -1,6 +1,7 @@
-import { resolveLayout, VectorShot, type VectorAsset } from "@ys/core";
+import { POINT_REACH, resolveLayout, VectorShot, type VectorAsset } from "@ys/core";
 import { describe, expect, it } from "vitest";
 import { BURST, CLASH, dropEmptyBubbles, emptyBubble, IN_HAND, PORTABLE_M, stageAfter, stageBefore } from "../src/staging.ts";
+import { POINT } from "../src/Vector.tsx";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({ id, kind, svg: "<svg/>", width: w, height: h, meta });
 const ASSETS = {
@@ -44,6 +45,32 @@ describe("sahneleme: yerleşimden önce", () => {
     expect(problems).toEqual([{ layer: 1, code: "action_without_prop", detail: "reading without holding anything: now holds layer 2", replan: false }]);
     const screen = stageBefore(shot([desk, { asset: "hero", x: 760, depth: 0.4, anims: [{ type: "reading" }] }, { asset: "book", x: 950, on: 0, screen: { kind: "text", lines: ["x"] } }]), ASSETS, 10);
     expect(screen.spec.layers[2]!.heldBy).toBeUndefined();
+  });
+
+  it("kendini, elindekini, olmayan ya da çizilmemiş katmanı gösteren işaret anahtar nesneye döner; anahtar yoksa hedef silinir (Linux s7-sh1)", () => {
+    const point = (target: number) => ({ asset: "hero", x: 760, depth: 0.3, anims: [{ type: "point", target }, { type: "talk" }] });
+    const layers = (target: number) => [point(target), { asset: "book", x: 0, heldBy: 0 }, { asset: "thing", x: 1300 }, { asset: "ghost", x: 1500 }];
+    const fixed = "points at itself, at what it holds or at a missing layer: now points at the key prop, layer 2";
+    for (const target of [0, 1, 3, 9]) {
+      const { spec, problems } = stageBefore(VectorShot.parse({ layers: layers(target), key: 2 }), ASSETS, 10);
+      expect(spec.layers[0]!.anims.map((a) => [a.type, a.target])).toEqual([
+        ["point", 2],
+        ["talk", undefined],
+      ]);
+      expect(problems).toEqual([{ layer: 0, code: "point_at_nothing", detail: fixed, replan: false }]);
+    }
+    // Anahtar yok ya da kendisi (elindeki kitap): hedef silinir, render yanındakini gösterir.
+    for (const key of [undefined, 1]) {
+      const { spec, problems } = stageBefore(VectorShot.parse({ layers: layers(0), key }), ASSETS, 10);
+      expect(spec.layers[0]!.anims[0]).not.toHaveProperty("target");
+      expect(problems[0]!.detail).toBe("points at itself, at what it holds or at a missing layer: now points at what stands beside it");
+    }
+    // Yerleşimin işaret erimi render'ın nişan aldığı kenarla aynı.
+    expect(POINT_REACH.edge).toBe(POINT.edge);
+    // Geçerli hedefe dokunulmaz.
+    const ok = stageBefore(VectorShot.parse({ layers: layers(2), key: 2 }), ASSETS, 10);
+    expect(ok.problems).toEqual([]);
+    expect(ok.spec.layers[0]!.anims[0]!.target).toBe(2);
   });
 
   it("elinde zaten bir şey varsa dokunulmaz; jestsiz ve nesne katmanı da", () => {

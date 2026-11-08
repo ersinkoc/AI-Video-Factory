@@ -401,6 +401,49 @@ function toWork(spec: VectorShot, assets: Record<string, VectorAsset>, list: Pla
 }
 
 /**
+ * İşaret erimi (boy kesri): hedefin yakın kenarı (kutunun ortasından edge × genişlik; Vector.tsx POINT.edge ile aynı)
+ * kişinin ortasından far'dan uzaksa kişi kenarı to kadar uzakta kalana dek ona yürür, en çok walk metre. Düz kol omuzdan
+ * parmak ucuna boyun ~%37'si kadar uzanır.
+ */
+export const POINT_REACH = { far: 0.5, to: 0.4, edge: 0.4, walk: 2.5, note: "işaret ettiği şeyden uzaktı, yanına geçti" } as const;
+
+/**
+ * İşaret eden kişi gösterdiği şeyin yanına geçer (8 Kas, Linux taslak incelemesi: "Linus's arm points at the bookshelf
+ * beside the board", "the pointer stops in empty space well short of the empty chair"; düz kol hedefe yetişmeyince el
+ * boşlukta ya da aradaki başka bir eşyanın önünde kalıyor, izleyici onu gösterilen sanıyordu). Ölçüm: incelenen 403
+ * işaretin hedefi boyun yarısından yakınken %11'inde, uzakken %22'sinde "boşluğu / başka şeyi gösteriyor" notu vardı.
+ * Yalnız geniş çekimde, Manim tahtası yokken; ayakta duran, girmeyen, iş başında olmayan kişi; hedef bir kişi değil ve
+ * elde değil (birini göstermek için yanına yürünmez). Aynı derinlikteki kişiyi ve gövde yüksekliğinde duran yerdeki eşyayı
+ * aşmaz, onun kenarında durur (aradaki dekor eşyası böylece o çekimden çıkar: yerleşimi değiştiren eşya konmaz).
+ */
+function toPoint(spec: VectorShot, assets: Record<string, VectorAsset>, list: PlacedLayer[], moved: (p: PlacedLayer, note: string) => void): void {
+  if (Math.max(spec.camera.zoomFrom, spec.camera.zoomTo) >= CONVERSE.zoom || spec.math) return;
+  const layer = (p: PlacedLayer) => spec.layers[p.index]!;
+  const person = (p: PlacedLayer) => assets[layer(p).asset]!.kind === "character";
+  for (const p of list) {
+    if (!person(p) || p.sitting || p.heldBy !== undefined || entering(layer(p)) || layer(p).anims.some(working)) continue;
+    const aim = layer(p).anims.find((a) => a.type === "point" && a.target !== undefined)?.target;
+    const t = list.find((o) => o.index === aim && o !== p);
+    if (!t || person(t) || t.heldBy !== undefined) continue;
+    const side = Math.sign(t.x - p.x) || 1;
+    const gap = (t.x - side * t.width * POINT_REACH.edge - p.x) * side;
+    if (gap <= POINT_REACH.far * p.height) continue;
+    const top = p.y - p.height * 0.95;
+    const bottom = p.y - p.height * 0.2;
+    const stops = list.flatMap((o) => {
+      if (o === p || o === t || o.heldBy !== undefined || Math.abs(o.z - p.z) > CONVERSE.depth || (o.x - p.x) * side <= 0) return [];
+      if (person(o)) return o.sitting ? [] : [(o.x - p.x) * side - (p.width + o.width) * 0.32];
+      return o.grounded && o.on === undefined && o.y - o.height < bottom && o.y > top ? [(o.x - p.x) * side - o.width / 2 - p.width * CONVERSE.body] : [];
+    });
+    const step = Math.min(gap - POINT_REACH.to * p.height, POINT_REACH.walk * STAGE.pxPerMeter * p.scale, ...stops);
+    const x = clamp(p.x + side * step, p.width / 2 + 20, STAGE.width - p.width / 2 - 20);
+    if ((x - p.x) * side < 1) continue;
+    p.x = x;
+    moved(p, POINT_REACH.note);
+  }
+}
+
+/**
  * Yanından geçme: aynı derinlikte (fark same'den az) birinin durduğu yerden geçen kişi depth kadar öne alınır (önünden
  * geçer; kameranın dibindeyse arkasından). margin: duruş yeri yolun ucundan en az bu kadar (iki genişliğin toplamının
  * kesri) içerideyse geçiş sayılır.
@@ -621,6 +664,7 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
   }
 
   toWork(spec, assets, list, note);
+  toPoint(spec, assets, list, note);
   converse(spec, assets, list, (p) => note(p, CONVERSE.note));
   arc(spec, assets, list, floorY, (p) => note(p, ARC.note));
 

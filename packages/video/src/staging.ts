@@ -113,6 +113,21 @@ export function stageBefore(spec: VectorShot, assets: Record<string, VectorAsset
       }
     }
 
+    // Hedefi kendisi, elindeki, olmayan ya da çizilmemiş bir katman olan işaret (8 Kas, Linux s7-sh1: Linus kendini gösteriyordu, el
+    // en yakın şeye, pencereye gitti; "gestures at the window, not at the modem"; tüm planlarda 426 işaretin 15'i): hedef
+    // çekimin anahtar nesnesi olur, o da yoksa ya da kişinin elindeyse hedef silinir (render yanındakini gösterir).
+    const invalid = (t: number) => t === i || !layers[t] || !assets[layers[t]!.asset] || layers[t]!.heldBy === i;
+    if (l.anims.some((a) => a.type === "point" && a.target !== undefined && invalid(a.target))) {
+      const key = spec.key !== undefined && !invalid(spec.key) ? spec.key : undefined;
+      l.anims = l.anims.map((a) => {
+        if (a.type !== "point" || a.target === undefined || !invalid(a.target)) return a;
+        const { target: _bad, ...rest } = a;
+        return key === undefined ? rest : { ...rest, target: key };
+      });
+      const to = key === undefined ? "now points at what stands beside it" : `now points at the key prop, layer ${key}`;
+      problems.push({ layer: i, code: "point_at_nothing", detail: `points at itself, at what it holds or at a missing layer: ${to}`, replan: false });
+    }
+
     // Patlama jesti en çok BURST saniye sürer.
     l.anims = l.anims.map((a) => {
       const max = BURST[a.type];
