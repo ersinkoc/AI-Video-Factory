@@ -1,4 +1,4 @@
-import type { Ambience as AmbienceKind } from "@ys/core";
+import type { Ambience as AmbienceKind, VectorAsset } from "@ys/core";
 import { useMemo } from "react";
 import { AbsoluteFill, random, useCurrentFrame, useVideoConfig } from "remotion";
 import { PixiParticles } from "./PixiParticles.tsx";
@@ -37,6 +37,27 @@ export function Ambience({ kind, seed, size, part }: { kind: AmbienceKind; seed:
     default:
       return null;
   }
+}
+
+/**
+ * Yağmur ve kar yalnız açık havada yağar (8 Kas: Linus'un öğrenci odasında ve Musk'ın Moskova odasında kar odanın
+ * içine, kişilerin ve ekranın üstüne yağdı; karlı ya da yağmurlu incelenen 18 çekimin 15'inde "kar taneleri bütün
+ * kareyi, yüzü kaplıyor" notu vardı. Yönetmene "yalnız dışarıda" deniyordu, ama mekân tarifi "karlı pencere" deyince
+ * odaya kar verdi). Arka plan iç mekânsa atmosfer düşer; pencerenin dışı çizimde zaten karlı ya da yağmurlu. İç mekân
+ * kalite kapısının çizime bakarak yazdığı kör tahminden okunur: oda, salon, sahne… der ve cephe, sokak, güverte demez.
+ */
+const INDOOR =
+  /\b(rooms?|interior|indoors?|inside|hallway|corridor|classroom|kitchen|bedroom|lobby|warehouse|workshop|cabin|cockpit|lab|laboratory|library|studio|stage|theat(?:er|re)|hall)\b/i;
+const OUTDOOR = /\b(exterior|fa[cç]ade|desert scene|street scene|city street|outdoors?|deck|office building|house with|construction site)\b/i;
+
+export function indoors(bg: VectorAsset | undefined): boolean {
+  const guess = bg?.meta.check?.guess ?? "";
+  return INDOOR.test(guess) && !OUTDOOR.test(guess);
+}
+
+/** Çekimde gerçekten çizilecek atmosfer: iç mekânda yağmur ve kar yok. */
+export function weatherIn(kind: AmbienceKind, bg: VectorAsset | undefined): AmbienceKind {
+  return (kind === "rain" || kind === "snow") && indoors(bg) ? "none" : kind;
 }
 
 /**

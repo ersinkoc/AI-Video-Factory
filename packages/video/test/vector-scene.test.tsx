@@ -21,7 +21,8 @@ vi.mock("../src/Globe3D.tsx", () => ({
 }));
 
 // Atmosfer ayrı testte (episode.test.tsx): burada yalnız sahnenin hangi katmanında, hangi boyda çizildiği.
-vi.mock("../src/Ambience.tsx", () => ({
+vi.mock("../src/Ambience.tsx", async (actual) => ({
+  ...(await actual<typeof import("../src/Ambience.tsx")>()),
   Ambience: ({ kind, size, part }: { kind: string; size?: number[]; part?: string }) => (kind === "none" ? null : <div data-ambience={kind} data-size={size?.join("x")} data-part={part} />),
 }));
 
@@ -2267,6 +2268,22 @@ describe("vektör sahne: büyütme balonu ve atmosfer katmanı", () => {
     expect(far).toBeGreaterThan(-1);
     expect(far).toBeLessThan(layer);
     expect(near).toBeGreaterThan(layer);
+  });
+
+  it("odada kar ve yağmur yağmaz: iç mekân arka planında atmosfer düşer, sokakta kalır", () => {
+    const place = (guess: string) => ({
+      place: asset("place", "background", '<svg viewBox="0 0 1920 1080"><rect width="1920" height="1080" fill="#334455"/></svg>', 1920, 1080, {
+        check: { kind: "background", name: "place", guess, recognizable: 8, passed: true },
+      }),
+    });
+    const snow = (guess: string) => {
+      const c = scene({ ...held, background: "place" }, { frame: 150, ambience: "snow", assets: place(guess) });
+      const r = c.querySelector("[data-ambience]")?.getAttribute("data-ambience");
+      cleanup();
+      return r;
+    };
+    expect(snow("an empty room interior with a snowy window")).toBeUndefined();
+    expect(snow("a night city street scene with lit windows")).toBe("snow");
   });
 });
 

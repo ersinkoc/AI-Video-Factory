@@ -66,7 +66,7 @@ vi.mock("pixi.js", () => {
 
 const { Episode } = await import("../src/index.ts");
 const { EpisodeAudio, CutIn } = await import("../src/Episode.tsx");
-const { Ambience, FOG } = await import("../src/Ambience.tsx");
+const { Ambience, FOG, indoors, weatherIn } = await import("../src/Ambience.tsx");
 const { Thumbnail } = await import("../src/Thumbnail.tsx");
 const { CROSSFADE, SCENE_CUT } = await import("../src/cut.ts");
 type ThumbnailProps = import("../src/Thumbnail.tsx").ThumbnailProps;
@@ -138,6 +138,29 @@ describe("atmosfer katmanları", () => {
     const offset = random("f-fog") * 100;
     expect(parseFloat(layers[0]!.style.transform.slice("translateX(".length))).toBeCloseTo(Math.sin((t + offset) * 0.07) * 12);
     expect(parseFloat(layers[1]!.style.transform.slice("translateX(".length))).toBeCloseTo(Math.sin((t + offset) * -0.05) * 12);
+  });
+
+  it("yağmur ve kar yalnız açık havada: kalite kapısının tahmini oda, salon, sahne diyorsa düşer; cephe, sokak, güverte dışarıdır", () => {
+    const bg = (guess?: string) =>
+      VectorAsset.parse({ id: "b", kind: "background", svg: "<svg/>", width: 1920, height: 1080, meta: guess === undefined ? {} : { check: { kind: "background", name: "b", guess, recognizable: 8, passed: true } } });
+    const room = bg("An empty room interior with a snowy window and a corkboard");
+    expect(indoors(room)).toBe(true);
+    expect(indoors(bg("an empty theater stage with dark curtains"))).toBe(true);
+    expect(indoors(bg("airplane cabin interior with an oval window showing a landscape"))).toBe(true);
+    // Dış cephe, sokak, güverte ve çöl: içinde "office", "cabin" geçse de dışarısı.
+    expect(indoors(bg("a modern glass office building with double entrance doors"))).toBe(false);
+    expect(indoors(bg("a red brick office building exterior with a plaza"))).toBe(false);
+    expect(indoors(bg("a ship's deck at night with a cabin and a lifeboat"))).toBe(false);
+    expect(indoors(bg("A flat desert scene at dusk: a small cabin with a chimney"))).toBe(false);
+    expect(indoors(bg("a sepia city street scene with brown buildings"))).toBe(false);
+    // Tahmin yoksa (eski çizim) ya da arka plan yoksa bilinmez: atmosfer korunur.
+    expect(indoors(bg())).toBe(false);
+    expect(indoors(undefined)).toBe(false);
+    expect(weatherIn("snow", room)).toBe("none");
+    expect(weatherIn("rain", room)).toBe("none");
+    expect(weatherIn("dust", room)).toBe("dust");
+    expect(weatherIn("snow", bg("a sepia city street scene"))).toBe("snow");
+    expect(weatherIn("snow", undefined)).toBe("snow");
   });
 
   it("sisin uzak kısmı bankalar ve pus, yakın kısmı yalnız ayak hizasında ince yer sisi; ikisi birden durağan karede", () => {

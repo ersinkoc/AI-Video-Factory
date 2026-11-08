@@ -45,7 +45,7 @@ import { coverIn, drawnBottom, gridFor, hollowBacked, luminance as lightness, sc
 import { cameraDrift, depthOfField, lensScale, motionBlur, screenGlow } from "./lens.ts";
 import { keyLight, lightOf } from "./light.ts";
 import { visualVector } from "./entrance.ts";
-import { Ambience } from "./Ambience.tsx";
+import { Ambience, weatherIn } from "./Ambience.tsx";
 import { Crowd, crowdFigures, crowdZ, type CrowdFigure } from "./crowd.tsx";
 import { armBeats, BEAT, pulseAt, speechBeats, strokeAt } from "./beats.ts";
 import { CALLOUT, CALLOUT_SPOTS, calloutBlocked, calloutCost, calloutScale, calloutTarget, isFurniture, leaderTip, overlap, type Box } from "./callout.ts";
@@ -3021,7 +3021,9 @@ export function VectorScene({
   const paper = paperOf(texture, palette);
   // Paletin en açık rengi: içi boş makro nesnenin zemini (kâğıt rengi yoksa).
   const light = [...palette].sort((a, b) => lightness(b) - lightness(a))[0] ?? "#ffffff";
-  return <ShotStage {...model} {...shot} {...{ visual, lineStyle, ambience, grain, texture, paper, light, c0, c1, accent, width, height }} />;
+  // Yağmur ve kar odanın içine yağmaz (Ambience weatherIn).
+  const weather = weatherIn(ambience, model.bg);
+  return <ShotStage {...model} {...shot} {...{ visual, lineStyle, grain, texture, paper, light, c0, c1, accent, width, height }} ambience={weather} />;
 }
 
 /** Çekimin kareden bağımsız kurgusu: temizlenmiş varlıklar, yerleşim ve son kamera (render ve denetim aynı sonucu görür). */
