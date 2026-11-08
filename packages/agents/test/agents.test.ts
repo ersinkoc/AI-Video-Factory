@@ -367,6 +367,8 @@ describe("vektör ajanları", () => {
     expect(a.options.tools).toEqual([]);
     expect(a.system).toContain("that shot is a close-up on it");
     expect(a.system).toContain("counts the card lines and the name tags together");
+    // İlan panosu, tabela ve afiş de ekran yazısı alır (8 Kas, Linux: 12 mantar pano çekiminin 11'inde yazı yoktu, "boş notlar").
+    expect(a.system).toContain("a surface people write, pin or post on (whiteboard, blackboard, flip chart, cork or notice board, sign, poster)");
     // Başka sahnenin mekânı işaretlenmez.
     const other = await capture((d) => vectorDirector({ ...input, scene: { ...input.scene, id: "s2" } }, style, d));
     expect(other.prompt).toContain("- l1 (background room shell): Station\n");
