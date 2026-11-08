@@ -472,6 +472,17 @@ function passBy(spec: VectorShot, assets: Record<string, VectorAsset>, floorY: n
   return out;
 }
 
+/**
+ * Yüzeydeki nesnenin yeri: ortası yüzeyin yarı eninin center kesrinde, iki kenarı edge kesrinde kalır (8 Kas, IPv4
+ * s1-sh3: yalnız orta sınırlanıyordu; masanın kenarına konan geniş Commons dizüstüsü yarısıyla boşlukta kaldı, inceleme
+ * "dizüstü masanın yanında havada" dedi; bütün zaman çizelgelerinde yüzeydeki 595 nesnenin 90'ı yüzeyden taşıyordu).
+ * Yüzeyden geniş nesne ortalanır. Arkadaki yüzü açmak için kayarken yer yoksa yalnız ortası yüzeyde kalır.
+ */
+export const ON_SURFACE = { center: 0.8, edge: 0.9 } as const;
+
+/** Yüzeydeki nesnenin ortasının yüzeyin ortasından en çok bu kadar (px) sapabileceği. */
+export const surfaceRoom = (halfBase: number, width: number): number => Math.max(0, Math.min(halfBase * ON_SURFACE.center, halfBase * ON_SURFACE.edge - width / 2));
+
 export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAsset>): PlacedLayer[] {
   const floorY = floorYOf(spec, assets);
   const passing = passBy(spec, assets, floorY);
@@ -513,8 +524,8 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
       } else {
         // Yüzeyin üstünde: yüzey yüksekliği tabanın boyundan; yüzeyden taşmasın.
         const surfaceY = base.y - base.height * (baseAsset.meta.surface ?? (baseAsset.kind === "character" ? 0.5 : 1));
-        const halfBase = base.width / 2;
-        const x = clamp(layer.x, base.x - halfBase * 0.8, base.x + halfBase * 0.8);
+        const room = surfaceRoom(base.width / 2, h * aspect);
+        const x = clamp(layer.x, base.x - room, base.x + room);
         if (x !== layer.x) fixes.push("yüzeyin dışına taşıyordu, içeri alındı");
         out = { index: i, x, y: surfaceY, height: h, scale: base.scale, z: base.z + 0.4, sitting: false, grounded: true, on: base.index, fixes };
       }
@@ -654,12 +665,20 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
     const blocks = (x: number) => faces.some((q) => faceHidden({ ...o, x }, q));
     if (!blocks(o.x)) continue;
     const base = placed.get(o.on)!;
-    const x = nearest(o.x, (x) => !blocks(x), base.x - base.width * 0.4, base.x + base.width * 0.4);
+    // Önce nesnenin tamamı yüzeyde kalarak; olmazsa ortası yüzeyde (yüzün açılması kenardan biraz taşmaktan önemli:
+    // masada oturanın önündeki monitör ancak böyle açılıyordu).
+    const room = surfaceRoom(base.width / 2, o.width);
+    const loose = (base.width / 2) * ON_SURFACE.center;
+    const asked = clamp(spec.layers[o.index]!.x, base.x - loose, base.x + loose);
+    const x = nearest(o.x, (x) => !blocks(x), base.x - room, base.x + room) ?? (blocks(asked) ? nearest(o.x, (x) => !blocks(x), base.x - loose, base.x + loose) : asked);
     if (x !== undefined) {
       o.x = x;
       note(o, "arkasındaki kişinin yüzünü örtüyordu, yüzeyde kaydırıldı");
       continue;
     }
+    // Yer yok: eski kuraldaki yerine (yönetmenin yeri, ortası yüzeyde) döner; kaba ölçü iki yeri de örtük sayabilir, çizimin
+    // kendisi orada yüzü açık bırakabiliyor (NVIDIA s8-sh4: içeri alınan kasa oturanın yüzünün üçte ikisini örttü).
+    o.x = asked;
     for (const q of faces.filter((q) => !q.sitting && !entering(spec.layers[q.index]!) && faceHidden(o, q))) {
       const half = q.width / 2;
       const qx = nearest(q.x, (x) => !faceHidden(o, { ...q, x }), half + 20, STAGE.width - half - 20);

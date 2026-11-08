@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONVERSE, floorYOf, GIANT, READABLE_SIDE, resolveLayout, STAGE, VectorShot, type VectorAsset } from "../src/index.ts";
+import { CONVERSE, floorYOf, GIANT, ON_SURFACE, READABLE_SIDE, resolveLayout, STAGE, surfaceRoom, VectorShot, type VectorAsset } from "../src/index.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({
   id,
@@ -238,6 +238,31 @@ describe("sahne fiziği: olmayan katmana başvuru", () => {
     const stuck = at([table, man, { asset: "banner", x: 960, on: 0 }], 1);
     expect(stuck.x).toBe(960);
     expect(stuck.fixes).not.toContain("önündeki nesne yüzünü örtüyordu, kenara çekildi");
+  });
+
+  it("yüzeydeki nesnenin tamamı yüzeyde kalır: geniş nesne kenardan içeri alınır, yüzeyden genişi ortalanır", () => {
+    const assets = {
+      desk: asset("desk", "prop", { realHeight: 0.75, surface: 1, grounded: true }, 1000, 500),
+      laptop: asset("laptop", "prop", { realHeight: 0.3 }, 1600, 1000),
+      pen: asset("pen", "prop", { realHeight: 0.02 }, 100, 100),
+      banner: asset("banner", "prop", { realHeight: 0.6 }, 9000, 300),
+    };
+    const on = (item: string, x: number) => {
+      const placed = resolveLayout(shot([{ asset: "desk", x: 960, depth: 0.3 }, { asset: item, x, on: 0 }]), assets);
+      return [placed.find((p) => p.index === 0)!, placed.find((p) => p.index === 1)!] as const;
+    };
+    // Masanın sağ ucuna konan dizüstü: sağ kenarı yüzeyin yarı eninin edge kesrinde.
+    const [desk, laptop] = on("laptop", 1600);
+    expect(laptop.x + laptop.width / 2).toBeCloseTo(desk.x + (desk.width / 2) * ON_SURFACE.edge, 6);
+    expect(laptop.fixes).toContain("yüzeyin dışına taşıyordu, içeri alındı");
+    expect(on("laptop", 320)[1].x - laptop.width / 2).toBeCloseTo(desk.x - (desk.width / 2) * ON_SURFACE.edge, 6);
+    // Küçük nesne (okunur boya büyütülmüş kalem) aynı sınırla; yüzeyden geniş nesne ortalanır. Çok küçük nesnenin ortası
+    // eskisi gibi yarı enin center kesrinde.
+    const pen = on("pen", 1600)[1];
+    expect(pen.x).toBeCloseTo(desk.x + surfaceRoom(desk.width / 2, pen.width), 6);
+    expect(on("banner", 1600)[1].x).toBe(desk.x);
+    expect(surfaceRoom(100, 1)).toBe(100 * ON_SURFACE.center);
+    expect(surfaceRoom(100, 500)).toBe(0);
   });
 
   it("aynı oturağa oturan kişiler yönetmenin x sırasıyla yan yana dizilir; tek kişi oturağın ortasında kalır", () => {
