@@ -178,8 +178,10 @@ describe("görsel denetçiler", () => {
     // Büyütme balonu kodun bilinçli aracı (7 Kas, LLM incelemesi: "yasaklı bindirme" diye 9 not).
     expect(a.system).toContain("give no lesson against it; report it only when it covers a face");
     // Orta ve yakın planda bacakların kadraj altında kalması film dilidir (7 Kas: uyluktan kesilen kişilerin çekimlerinin
-    // %46'sında "bacaklar kesik" notu); kesik yalnız baş, kenarda şerit ya da incik/bilek hizasında.
-    expect(a.system).toContain("legs and feet below the frame edge are intended there, not character_cut_off");
+    // %46'sında "bacaklar kesik" notu); kesik yalnız baş, kenarda şerit ya da inciğin bir kısmını gösteren alt kenar. 8 Kas,
+    // Linux: dizden kesilen kişide "baldırlar kesik" yazıyordu; tümüyle kadraj altındaki bacak kesik sayılmaz.
+    expect(a.system).toContain("legs, shins and feet that are wholly below the frame edge are intended there, not character_cut_off");
+    expect(a.system).toContain("give no lesson asking for feet in frame");
     // İsim etiketi ilk görünüşte bir kez (8 Kas, IPv4: 30 çekimin 10'unda "Cerf'in isim etiketi yok"; 26 bölümde 90 not).
     expect(a.system).toContain("do not report missing name labels and give no lesson asking for them");
     expect(a.images).toEqual(["Aw==", "BA=="]);
