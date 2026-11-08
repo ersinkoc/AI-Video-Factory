@@ -82,7 +82,9 @@ export function stageBefore(spec: VectorShot, assets: Record<string, VectorAsset
     if (l.on !== undefined && l.on !== i && kind(l.on) === "character")
       problems.push({ layer: i, code: "unsupported_staging", detail: `rides layer ${l.on} (a character); riding is not supported, the two figures overlap`, replan: true });
 
-    // Elde nesne isteyen jest: tutulan yoksa en yakın taşınabilir, serbest nesne ele alınır; yoksa jest düşer.
+    // Elde nesne isteyen jest: tutulan yoksa en yakın taşınabilir, serbest nesne ele alınır; yoksa jest düşer. Masadaki
+    // nesne de alınır (8 Kas: masasındaki patenti, tomarı okuyan kişinin jesti düşüyor, sahne boşuna yeniden
+    // planlanıyordu); ekran yazısı verilen (okunsun diye masada duran monitör) ve üstünde bir şey duran alınmaz.
     const wants = l.anims.find((a) => IN_HAND.has(a.type));
     if (wants && !layers.some((q) => q.heldBy === i)) {
       const j = layers
@@ -93,7 +95,7 @@ export function stageBefore(spec: VectorShot, assets: Record<string, VectorAsset
             j !== i &&
             a?.kind === "prop" &&
             q.heldBy === undefined &&
-            q.on === undefined &&
+            (q.on === undefined || !q.screen) &&
             !bases.has(j) &&
             a.meta.surface === undefined &&
             (a.meta.realHeight ?? Infinity) <= PORTABLE_M &&
@@ -102,7 +104,8 @@ export function stageBefore(spec: VectorShot, assets: Record<string, VectorAsset
         })
         .sort((a, b) => Math.abs(a.q.x - l.x) - Math.abs(b.q.x - l.x))[0]?.j;
       if (j !== undefined) {
-        layers[j] = { ...layers[j]!, heldBy: i };
+        const { on: _left, ...rest } = layers[j]!;
+        layers[j] = { ...rest, heldBy: i };
         problems.push({ layer: i, code: "action_without_prop", detail: `${wants.type} without holding anything: now holds layer ${j}`, replan: false });
       } else {
         l.anims = l.anims.filter((a) => !IN_HAND.has(a.type));

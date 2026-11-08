@@ -174,7 +174,9 @@ export const GESTURE_TRAVEL: Partial<Record<VectorAnim["type"], number>> = {
   clap: 150,
   point: 160,
   give: 100,
-  reading: 105,
+  // Okuma hep elde bir şeyle (staging): sağ ön kol tutma duruşundan (-72°) okuma pozuna (+104°) gelir (8 Kas: 105° sayılınca
+  // masadan alınan sayfayı okuyan kişinin ön kolu bir karede 25–32° döndü).
+  reading: 180,
   arms_crossed: 95,
   hands_on_hips: 75,
   explain: 90,

@@ -36,6 +36,16 @@ describe("sahneleme: yerleşimden önce", () => {
     expect(problems).toEqual([{ layer: 0, code: "action_without_prop", detail: "reading without holding anything: now holds layer 2", replan: false }]);
   });
 
+  it("masadaki küçük nesne de ele alınır ve masadan kalkar; ekran yazısı verilen masada kalır", () => {
+    const desk = { asset: "desk", x: 900, depth: 0.3 };
+    const { spec, problems } = stageBefore(shot([desk, { asset: "hero", x: 760, depth: 0.4, anims: [{ type: "reading" }] }, { asset: "book", x: 950, on: 0 }]), ASSETS, 10);
+    expect(spec.layers[2]).toMatchObject({ heldBy: 1 });
+    expect(spec.layers[2]!.on).toBeUndefined();
+    expect(problems).toEqual([{ layer: 1, code: "action_without_prop", detail: "reading without holding anything: now holds layer 2", replan: false }]);
+    const screen = stageBefore(shot([desk, { asset: "hero", x: 760, depth: 0.4, anims: [{ type: "reading" }] }, { asset: "book", x: 950, on: 0, screen: { kind: "text", lines: ["x"] } }]), ASSETS, 10);
+    expect(screen.spec.layers[2]!.heldBy).toBeUndefined();
+  });
+
   it("elinde zaten bir şey varsa dokunulmaz; jestsiz ve nesne katmanı da", () => {
     const held = shot([{ asset: "hero", x: 760, anims: [{ type: "show" }] }, { asset: "book", x: 0, heldBy: 0 }, { asset: "plate", x: 800, anims: [{ type: "show" }] }]);
     const out = stageBefore(held, ASSETS, 10);
@@ -43,7 +53,7 @@ describe("sahneleme: yerleşimden önce", () => {
     expect(out.spec.layers).toEqual(held.layers);
   });
 
-  it("taşınamayan, yüzey olan, üstünde bir şey duran, başka yerde duran, uzak, boyu bilinmeyen nesne ele alınmaz: jest düşer", () => {
+  it("taşınamayan, yüzey olan, üstünde bir şey duran, ekran yazısı verilmiş, uzak, boyu bilinmeyen nesne ele alınmaz: jest düşer", () => {
     const { spec, problems } = stageBefore(
       shot([
         { asset: "hero", x: 960, depth: 0.3, anims: [{ type: "show", start: 0.2, end: 0.8 }, { type: "talk" }] },
@@ -51,10 +61,11 @@ describe("sahneleme: yerleşimden önce", () => {
         { asset: "engine", x: 900, depth: 0.3 },
         { asset: "desk", x: 700, depth: 0.3 },
         { asset: "plate", x: 700, on: 3 },
+        { asset: "plate", x: 720, on: 4, screen: { kind: "text", lines: ["menü"] } },
         { asset: "book", x: 2100 },
         { asset: "thing", x: 1000 },
         { asset: "pal", x: 1100, depth: 0.3 },
-        { asset: "book", x: 1000, heldBy: 7 },
+        { asset: "book", x: 1000, heldBy: 8 },
         { asset: "yok", x: 1000 },
       ]),
       ASSETS,
@@ -62,7 +73,7 @@ describe("sahneleme: yerleşimden önce", () => {
     );
     expect(PORTABLE_M).toBeLessThan(1.4);
     expect(types(spec, 0)).toEqual(["talk@0-1"]);
-    expect(spec.layers.slice(1, 7).every((l) => l.heldBy === undefined)).toBe(true);
+    expect(spec.layers.slice(1, 8).every((l) => l.heldBy === undefined)).toBe(true);
     expect(problems).toEqual([{ layer: 0, code: "action_without_prop", detail: "show without holding anything and nothing small to hold nearby: gesture dropped", replan: true }]);
   });
 
