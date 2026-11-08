@@ -48,7 +48,7 @@ import { visualVector } from "./entrance.ts";
 import { Ambience } from "./Ambience.tsx";
 import { Crowd, crowdFigures, crowdZ, type CrowdFigure } from "./crowd.tsx";
 import { armBeats, BEAT, pulseAt, speechBeats, strokeAt } from "./beats.ts";
-import { CALLOUT, CALLOUT_SPOTS, calloutBlocked, calloutCost, calloutScale, calloutTarget, isFurniture, overlap, type Box } from "./callout.ts";
+import { CALLOUT, CALLOUT_SPOTS, calloutBlocked, calloutCost, calloutScale, calloutTarget, isFurniture, leaderTip, overlap, type Box } from "./callout.ts";
 import { Figure3D } from "./Figure3D.tsx";
 import { clapClosed, GESTURE_RHYTHM, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
@@ -3405,22 +3405,25 @@ function cardAvoid(model: ShotModel, shotId: string, dur: number, fps: number, w
  * bindi; incelemede "ikisi de okunmuyor"). Ekranı bulunamayan nesnede içerik çizilmez, kutusu da yok.
  */
 function screensAt(model: ShotModel, motions: Map<number, Motion>, k: number): Box[] {
+  return [...drawnAtOf(model, motions).values()].flatMap((at) => screenAt(model, motions, k, at) ?? []);
+}
+
+/** Ekran yazısı verilmiş katmanın ekranının o anki kare kutusu; ekranı bulunmazsa undefined. */
+function screenAt(model: ShotModel, motions: Map<number, Motion>, k: number, at: PlacedLayer): Box | undefined {
   const { spec, safe, cam, centre } = model;
-  return [...drawnAtOf(model, motions).values()].flatMap((at) => {
-    const layer = spec.layers[at.index]!;
-    const asset = safe[layer.asset]!;
-    const rect = layer.screen && asset.kind === "prop" ? screenFor(asset) : undefined;
-    if (!rect) return [];
-    const tr = motions.get(at.index)!.tr;
-    const [w, h] = [at.width * tr.scale, at.height * tr.scale];
-    const s = screenBox(asset.svg, rect, w, h);
-    // Aynalı katmanda ekran da aynalanır (içeriği okunur kalır ama yeri yansır).
-    const left = at.x + tr.x - w / 2 + (layer.flip ? w - s.x - s.w : s.x);
-    const top = at.y + tr.y - h + s.y;
-    const [x0, y0] = cameraPoint(cam, k, centre, [left, top]);
-    const [x1, y1] = cameraPoint(cam, k, centre, [left + s.w, top + s.h]);
-    return [{ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }];
-  });
+  const layer = spec.layers[at.index]!;
+  const asset = safe[layer.asset]!;
+  const rect = layer.screen && asset.kind === "prop" ? screenFor(asset) : undefined;
+  if (!rect) return undefined;
+  const tr = motions.get(at.index)!.tr;
+  const [w, h] = [at.width * tr.scale, at.height * tr.scale];
+  const s = screenBox(asset.svg, rect, w, h);
+  // Aynalı katmanda ekran da aynalanır (içeriği okunur kalır ama yeri yansır).
+  const left = at.x + tr.x - w / 2 + (layer.flip ? w - s.x - s.w : s.x);
+  const top = at.y + tr.y - h + s.y;
+  const [x0, y0] = cameraPoint(cam, k, centre, [left, top]);
+  const [x1, y1] = cameraPoint(cam, k, centre, [left + s.w, top + s.h]);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
 /** Kartın örtmediği nesneler: duvarın yarısından geniş olan (pano, savaş gemisi) kartın yerini belirlemez. */
@@ -3674,8 +3677,9 @@ export function shotFrame(
       .reduce((end, a) => (ENTRANCE_ANIMS.has(a.type) ? Math.max(end, a.end) : end), 0);
     const spot = insetSpot(model, shotId, dur, fps, width, height, index, entered);
     if (!spot) return undefined;
-    // İşaret çizgisi nesneyi kare kare izler; balonun kendisi yerinde durur.
-    const { target } = insetScene(model, k, motions, drawnAt, heads, texts, bubbles, index);
+    // İşaret çizgisi nesneyi kare kare izler; balonun kendisi yerinde durur. Ekran yazısında çizgi ekranın kenarında biter.
+    const { target: point } = insetScene(model, k, motions, drawnAt, heads, texts, bubbles, index);
+    const target = leaderTip(spot, point, screenAt(model, motions, k, drawnAt.get(index)!));
     return { asset: safe[layer.asset]!, target, at: [spot[0], spot[1]] as [number, number], ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}), ...(entered ? { from: entered } : {}) };
   })();
   return { p, t, k, dur, motions, texts, drawnAt, ...(inset ? { inset } : {}), ...(close ? { macroView: close } : {}), bubbles };

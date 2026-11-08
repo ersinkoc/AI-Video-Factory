@@ -165,6 +165,17 @@ export function leaderOf(c: Point, target: Point, prop?: Box): [Point, Point] | 
   return [start, [start[0] + (target[0] - start[0]) * enter, start[1] + (target[1] - start[1]) * enter]];
 }
 
+/**
+ * Çizilen işaret çizgisinin ucu (balonun ortasından nesnenin noktasına giden çizgi): ekran yazısı olan nesnede çizgi
+ * ekranın kenarında durur, nokta da orada (8 Kas, Linux s1-sh1 ve s4-sh5: çizgi nesnenin ortasındaki noktaya kadar
+ * uzanıp yazının üstünden geçiyordu, "the dashed pointer line runs across the screen text"; incelemelerde 6 not). Çizgi
+ * ekrana değmiyorsa ya da balon ekranın içindeyse uç nesnenin noktasıdır.
+ */
+export function leaderTip(at: Point, target: Point, screen?: Box): [number, number] {
+  const t = screen ? clipSegment(at, target, screen)?.[0] : undefined;
+  return t === undefined || t === 0 ? [target[0], target[1]] : [at[0] + (target[0] - at[0]) * t, at[1] + (target[1] - at[1]) * t];
+}
+
 /** Çizginin kutuların içinde kalan toplam boyu (px). */
 export function leaderIn(line: [Point, Point] | undefined, boxes: Box[]): number {
   if (!line) return 0;

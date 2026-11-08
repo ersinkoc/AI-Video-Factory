@@ -1,6 +1,6 @@
 import { VectorShot, type PlacedLayer } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { CALLOUT, calloutBlocked, calloutCost, calloutScale, calloutSpot, calloutTarget, clipSegment, isFurniture, leaderIn, leaderOf, overlap } from "../src/callout.ts";
+import { CALLOUT, calloutBlocked, calloutCost, calloutScale, calloutSpot, calloutTarget, clipSegment, isFurniture, leaderIn, leaderOf, leaderTip, overlap } from "../src/callout.ts";
 
 const pl = (index: number, height: number, extra: Partial<PlacedLayer> = {}): PlacedLayer => ({ index, x: 960, y: 800, height, width: height, scale: 1, z: 0, sitting: false, grounded: true, fixes: [], ...extra });
 const shot = (extra: object = {}) => VectorShot.parse({ layers: [{ asset: "a", x: 0 }, { asset: "b", x: 0 }, { asset: "c", x: 0 }], ...extra });
@@ -78,6 +78,18 @@ describe("büyütme balonu: hangi nesne", () => {
 });
 
 describe("büyütme balonu: yer ve açılış", () => {
+  it("ekran yazısı olan nesnede çizgi ekranın kenarında biter, yazının üstünden geçmez (Linux s1-sh1)", () => {
+    const screen = { x: 900, y: 400, w: 200, h: 100 };
+    // Balon solda, nesnenin noktası ekranın ortasında: uç ekranın sol kenarı.
+    expect(leaderTip([500, 450], [1000, 450], screen)).toEqual([900, 450]);
+    // Nokta ekranın altında (kasada) ama çizgi ekrandan geçiyor: yine ilk değdiği yerde biter.
+    expect(leaderTip([1000, 100], [1000, 600], screen)).toEqual([1000, 400]);
+    // Çizgi ekrana değmiyor, ekran yok ya da balon ekranın içinde: uç nesnenin noktası.
+    expect(leaderTip([500, 700], [1000, 700], screen)).toEqual([1000, 700]);
+    expect(leaderTip([500, 450], [1000, 450])).toEqual([1000, 450]);
+    expect(leaderTip([950, 450], [1000, 450], screen)).toEqual([1000, 450]);
+  });
+
   it("kesişim alanı", () => {
     expect(overlap({ x: 0, y: 0, w: 10, h: 10 }, { x: 5, y: 5, w: 10, h: 10 })).toBe(25);
     expect(overlap({ x: 0, y: 0, w: 10, h: 10 }, { x: 20, y: 0, w: 5, h: 5 })).toBe(0);
