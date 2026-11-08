@@ -3546,8 +3546,29 @@ function insetScene(model: ShotModel, k: number, motions: Map<number, Motion>, d
     ...faces,
     ...texts.map(textBoxOf),
     ...bubbles.map((b) => b.box),
+    ...otherProps(model, k, motions, drawnAt, index),
   ];
   return { target, avoid, faces, bodies, prop };
+}
+
+/**
+ * Balonun örtmemesi gereken öteki nesneler (ekran px): hedef dışındaki nesneler; mobilya (masa, tezgâh), oda dekoru ve
+ * duvarın yarısından geniş olanlar (pano, gemi) sayılmaz. 8 Kas: inceleme karelerinde 181 balonun 20'si başka bir nesnenin
+ * dörtte birinden çoğunu örtüyordu, 7'sinde "balon prizi, krokiyi, kilidi örtüyor" notu (öteki balonlarda %9): Android
+ * s15-sh4'te fişin takılacağı priz, IPv4 s7-sh6'da masadaki kroki balonun altında kaldı.
+ */
+function otherProps(model: ShotModel, k: number, motions: Map<number, Motion>, drawnAt: Map<number, PlacedLayer>, index: number): Box[] {
+  const { spec, safe, cam, centre, framing } = model;
+  return framing.flatMap((pl) => {
+    const asset = safe[spec.layers[pl.index]!.asset]!;
+    if (pl.index === index || asset.kind !== "prop" || isFurniture(asset)) return [];
+    const at = drawnAt.get(pl.index)!;
+    const tr = motions.get(pl.index)!.tr;
+    const [w, h] = [at.width * tr.scale, at.height * tr.scale];
+    const [x0, y0] = cameraPoint(cam, k, centre, [at.x + tr.x - w / 2, at.y + tr.y - h]);
+    const [x1, y1] = cameraPoint(cam, k, centre, [at.x + tr.x + w / 2, at.y + tr.y]);
+    return x1 - x0 > W * CARD_PROPS.wide ? [] : [{ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }];
+  });
 }
 
 const insetSpots = new WeakMap<ShotModel, Map<number, readonly [number, number] | null>>();

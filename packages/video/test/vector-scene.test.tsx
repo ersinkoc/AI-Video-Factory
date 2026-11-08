@@ -1904,6 +1904,24 @@ describe("vektör sahne: konuşma balonu", () => {
     expect(overlap(f.bubbles[0]!.box, { x: at[0] - CALLOUT.r, y: at[1] - CALLOUT.r, w: 2 * CALLOUT.r, h: 2 * CALLOUT.r })).toBe(0);
   });
 
+  it("büyütme balonu sahnedeki öteki nesneyi örtmez: duvardaki tabela balonun yerindeyse balon başka köşeye geçer", () => {
+    // 8 Kas, Android s15-sh4: fişin takılacağı priz balonun altında kalıyordu ("the magnifier covers the wall socket").
+    const wall = { asset: "panorama", x: 960, y: 1080, height: 1080 };
+    const base = [{ asset: "hero", x: 1300, depth: 0.5 }, { asset: "cup", x: 0, heldBy: 0 }, wall];
+    const spot = (layers: object[], assets: Record<string, VectorAsset> = ASSETS) =>
+      shotFrame(shotModel(VectorShot.parse({ layers }), assets, "outline", 1920, 1080, false, 10), { shotId: "s1", frame: 150, fps: 30, durationInFrames: 300, width: 1920, height: 1080, insets: true, overlay: false }).inset!.at;
+    const [x, y] = spot(base);
+    const sign = asset("sign", "prop", '<svg viewBox="0 0 100 100"><rect id="sign" width="100" height="100" fill="#3366ff"/></svg>', 100, 100);
+    const box = { x: x - 110, y: y - 110, w: 220, h: 220 };
+    const moved = spot([...base, { asset: "sign", x, y: y + 110, height: 220 }], { ...ASSETS, sign });
+    expect(moved).not.toEqual([x, y]);
+    const circle = { x: moved[0] - CALLOUT.r, y: moved[1] - CALLOUT.r, w: 2 * CALLOUT.r, h: 2 * CALLOUT.r };
+    expect(overlap(circle, box) / (box.w * box.h)).toBeLessThan(0.25);
+    // Mobilya (yüzeyi olan büyük nesne) odanın parçası: balonun yerini belirlemez.
+    const desk = asset("bench", "prop", '<svg viewBox="0 0 100 100"><rect id="bench" width="100" height="100" fill="#885533"/></svg>', 100, 100, { realHeight: 0.9, surface: 0.9 });
+    expect(spot([...base, { asset: "bench", x, y: y + 110, height: 220 }], { ...ASSETS, bench: desk })).toEqual([x, y]);
+  });
+
   it("geniş çekim duvardaki nesneyi de kenarda kesmez: kamera onu da kadraja alır", () => {
     // 5 Kas: kadrajda tutulanlar yalnız kişiler ve yerde ya da elde duran nesnelerdi; duvardaki takvim, saat, pano
     // inceleme anında kenarda kesik kalıyordu (mevcut çekimlerde 38).
