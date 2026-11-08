@@ -36,6 +36,14 @@ const LAYERS: Record<"rain" | "snow", { n: number; depth: number }[]> = {
 
 export const CONFETTI_COLORS = [0xff5a5f, 0xffd84d, 0x3ec1d3, 0x7bd389, 0xa78bfa, 0xff9f43];
 
+/**
+ * Konfeti bir kez atılır, düşer ve yere serilir (8 Kas: çekim boyunca kesintisiz yağan 240 kâğıt, konfetili 46 çekimin
+ * 40'ında "konfeti yüzleri, ekranı, bütün kareyi kaplıyor" notu aldı; toz %19, atmosfersiz %2). Her kâğıt ilk `launch`
+ * saniye içinde tepeden çıkar, `speed` px/s ile düşer, sahnenin `floor` bandında (zemin) yassı (`lie`) yatar ve kalır;
+ * inceleme karesinde havada kâğıt kalmaz, kutlama yerdeki kâğıtlarla okunur.
+ */
+export const CONFETTI = { n: 180, launch: 0.8, speed: [300, 440], floor: [0.74, 0.97], lie: 0.3 } as const;
+
 /** Parçacık başına sabit rastgele sayılar (tohumdan): her karede yeniden hash'lenmesin diye önbellekte. */
 const cache = new Map<string, number[][]>();
 function seeds(seed: string, n: number): number[][] {
@@ -161,14 +169,25 @@ export function particleFrame(kind: ParticleKind, seed: string, t: number, width
       return { shapes, blend: "add" };
     }
     case "confetti": {
-      for (const [rx, ry, rs, rz, rp, rc] of seeds(`${seed}-confetti`, 240) as [number, number, number, number, number, number][]) {
+      const [slow, fast] = CONFETTI.speed;
+      const [top, bottom] = CONFETTI.floor;
+      const land = seeds(`${seed}-confetti-land`, CONFETTI.n);
+      for (const [i, [rx, ry, rs, rz, rp, rc]] of (seeds(`${seed}-confetti`, CONFETTI.n) as [number, number, number, number, number, number][]).entries()) {
+        const age = t - ry * CONFETTI.launch;
+        if (age < 0) continue;
         const ph = rp * Math.PI * 2;
-        const travel = height + 40;
-        const y = wrap(ry + (t * (120 + 140 * rs)) / travel) * travel - 20;
-        const x = wrap(rx + Math.sin(t * (0.8 + rs) + ph) * 0.02) * width;
+        const floor = height * (top + (bottom - top) * land[i]![0]!);
+        const speed = slow + (fast - slow) * rs;
+        const fall = (floor + 20) / speed;
+        // Yere değince o anki yerinde kalır, yere yatık (açı ±0.4 rad) ve yassı (dikey ölçek `lie`) görünür.
+        const at = Math.min(age, fall);
+        const landed = age >= fall;
+        const y = Math.min(floor, -20 + at * speed);
+        const x = wrap(rx + Math.sin(at * (0.8 + rs) + ph) * 0.02) * width;
         const color = CONFETTI_COLORS[Math.floor(rc * CONFETTI_COLORS.length)]!;
-        // Kâğıt düşerken döner ve takla atar (dikey ölçek kosinüsle daralıp açılır).
-        shapes.push({ shape: "chip", x, y, w: 16 + 10 * rz, h: 9 + 5 * rs, angle: ph + t * (2 + 4 * rs), flip: Math.cos(t * (5 + 6 * rz) + ph), color, alpha: 0.95 });
+        const angle = landed ? (rp - 0.5) * 0.8 : ph + at * (2 + 4 * rs);
+        const flip = landed ? CONFETTI.lie : Math.cos(at * (5 + 6 * rz) + ph);
+        shapes.push({ shape: "chip", x, y, w: 16 + 10 * rz, h: 9 + 5 * rs, angle, flip, color, alpha: 0.95 });
       }
       return { shapes, blend: "normal" };
     }

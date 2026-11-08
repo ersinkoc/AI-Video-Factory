@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONFETTI_COLORS, drawShapes, particleFrame, type Pen, type Shape } from "../src/particles.ts";
+import { CONFETTI, CONFETTI_COLORS, drawShapes, particleFrame, type Pen, type Shape } from "../src/particles.ts";
 
 const W = 1920;
 const H = 1080;
@@ -56,15 +56,29 @@ describe("parçacık atmosferi (PixiJS kareleri)", () => {
     expect(new Set(dots.map((d) => d.color)).size).toBe(3);
   });
 
-  it("konfeti 240 renkli kâğıt: paletten renk, döner ve takla atar", () => {
-    const chips = of(particleFrame("confetti", "c", 1.5, W, H).shapes, "chip");
-    expect(chips).toHaveLength(240);
-    for (const c of chips) {
-      expect(CONFETTI_COLORS).toContain(c.color);
-      expect(Math.abs(c.flip)).toBeLessThanOrEqual(1);
+  it("konfeti bir kez atılır: ilk saniyede tepeden çıkar, düşerken döner, sonra zeminde yassı yatıp kalır", () => {
+    const at = (t: number) => of(particleFrame("confetti", "c", t, W, H).shapes, "chip");
+    // Başta yalnız atılma anı gelmiş kâğıtlar, hepsi tepede.
+    const start = at(0.3);
+    expect(start.length).toBeGreaterThan(0);
+    expect(start.length).toBeLessThan(CONFETTI.n);
+    for (const c of start) expect(c.y).toBeLessThan(H * 0.5);
+    // Atılma bitince hepsi sahnede, renkleri paletten; havadakiler takla atar.
+    const mid = at(1.5);
+    expect(mid).toHaveLength(CONFETTI.n);
+    for (const c of mid) expect(CONFETTI_COLORS).toContain(c.color);
+    const flying = mid.filter((c) => Math.abs(c.flip) !== CONFETTI.lie);
+    expect(flying.length).toBeGreaterThan(CONFETTI.n / 2);
+    expect(at(1.6)[0]!.angle).not.toBe(mid[0]!.angle);
+    // Birkaç saniye sonra havada kâğıt yok: hepsi zemin bandında yatık ve yassı, kare değişmez.
+    const rest = at(6);
+    for (const c of rest) {
+      expect(c.y).toBeGreaterThanOrEqual(H * CONFETTI.floor[0]);
+      expect(c.y).toBeLessThanOrEqual(H * CONFETTI.floor[1]);
+      expect(c.flip).toBe(CONFETTI.lie);
+      expect(Math.abs(c.angle)).toBeLessThanOrEqual(0.4);
     }
-    const later = of(particleFrame("confetti", "c", 1.6, W, H).shapes, "chip");
-    expect(later[0]!.angle).not.toBe(chips[0]!.angle);
+    expect(at(9)).toEqual(rest);
   });
 
   it("çok sayıda tohumda önbellek temizlenir ama sonuç değişmez", () => {
