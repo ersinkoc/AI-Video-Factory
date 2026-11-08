@@ -2,6 +2,11 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.4.7 (2026-11-08)
+
+- A prop on a desk stays on it whole instead of hanging off the edge
+- The frame reviewer does not ask for a name label in every shot: code tags each person where they first appear
+
 ## v0.4.6 (2026-11-07)
 
 - The frame reviewer treats medium and close framing that leaves the legs out as film grammar, not a cut-off character
