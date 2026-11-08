@@ -2,6 +2,12 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.4.10 (2026-11-08)
+
+- Confetti is thrown once and settles on the floor instead of raining through the whole shot
+- Rain and snow no longer fall inside a room
+- The magnifier inset keeps off the shot's other props
+
 ## v0.4.9 (2026-11-08)
 
 - The magnifier's pointer stops at the edge of a screen instead of running across its text
