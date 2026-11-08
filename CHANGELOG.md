@@ -2,6 +2,12 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.4.9 (2026-11-08)
+
+- The magnifier's pointer stops at the edge of a screen instead of running across its text
+- The director gives cork boards, notice boards, signs and posters their text, as it does screens
+- The frame reviewer treats legs wholly below the frame edge as framing, not cut-off feet or shins
+
 ## v0.4.8 (2026-11-08)
 
 - A pointing person walks up to what they point at, and a point at itself aims at the key prop
