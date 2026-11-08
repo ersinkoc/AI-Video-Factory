@@ -2,6 +2,11 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.4.8 (2026-11-08)
+
+- A pointing person walks up to what they point at, and a point at itself aims at the key prop
+- A reader or presenter picks up a small prop from the desk instead of losing the gesture
+
 ## v0.4.7 (2026-11-08)
 
 - A prop on a desk stays on it whole instead of hanging off the edge
