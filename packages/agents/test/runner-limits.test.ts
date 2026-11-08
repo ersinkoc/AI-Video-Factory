@@ -262,7 +262,7 @@ describe("yardımcılar", () => {
   it("ders bloğu boşsa hiçbir şey eklemez", () => {
     expect(lessonsBlock(undefined)).toBe("");
     expect(lessonsBlock([])).toBe("");
-    expect(lessonsBlock(["a", "b"])).toBe("\nLessons from previous episodes (follow them, but they never override the channel's art style and palette, and never forbid the code's own camera devices: depth of field, motion blur, the round magnifier inset and medium or close framing that leaves the legs below the frame):\n- a\n- b");
+    expect(lessonsBlock(["a", "b"])).toBe("\nLessons from previous episodes (follow them, but they never override the channel's art style and palette, and never forbid the code's own camera devices: depth of field, motion blur, the round magnifier inset and medium or close framing that leaves the legs below the frame, and never ask for a name label in every shot: code tags each person where they first appear):\n- a\n- b");
   });
 
   it("AgentError maliyeti, modeli ve ajanı taşır", () => {

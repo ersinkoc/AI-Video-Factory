@@ -106,7 +106,7 @@ describe("senaryo ajanları", () => {
   it("senarist ve doktor kelime bütçesini dilin konuşma hızından hesaplar, dersleri ekler", async () => {
     const a = await capture((d) => screenwriter({ ...brief, lessons: ["Kısa yaz"] }, story, d));
     expect(a.system).toContain("Total narration ≈ 230 words (115 wpm");
-    expect(a.system).toContain("Lessons from previous episodes (follow them, but they never override the channel's art style and palette, and never forbid the code's own camera devices: depth of field, motion blur, the round magnifier inset and medium or close framing that leaves the legs below the frame):\n- Kısa yaz");
+    expect(a.system).toContain("Lessons from previous episodes (follow them, but they never override the channel's art style and palette, and never forbid the code's own camera devices: depth of field, motion blur, the round magnifier inset and medium or close framing that leaves the legs below the frame, and never ask for a name label in every shot: code tags each person where they first appear):\n- Kısa yaz");
     expect(a.prompt).toBe(`Story:\n${JSON.stringify(story, null, 2)}`);
     const b = await capture((d) => scriptDoctor({ ...brief, lang: "en", wordsPerMinute: 100 }, story, script, d));
     expect(b.system).toContain("keep total narration ≈ 200 words");
@@ -180,6 +180,8 @@ describe("görsel denetçiler", () => {
     // Orta ve yakın planda bacakların kadraj altında kalması film dilidir (7 Kas: uyluktan kesilen kişilerin çekimlerinin
     // %46'sında "bacaklar kesik" notu); kesik yalnız baş, kenarda şerit ya da incik/bilek hizasında.
     expect(a.system).toContain("legs and feet below the frame edge are intended there, not character_cut_off");
+    // İsim etiketi ilk görünüşte bir kez (8 Kas, IPv4: 30 çekimin 10'unda "Cerf'in isim etiketi yok"; 26 bölümde 90 not).
+    expect(a.system).toContain("do not report missing name labels and give no lesson asking for them");
     expect(a.images).toEqual(["Aw==", "BA=="]);
     expect(a.prompt).toBe("Image 1 = sh1: atlı\nImage 2 = sh2: çöl");
     const b = await capture((d) => sceneCritic(shots, ["Yazıyı üste koy"], d));

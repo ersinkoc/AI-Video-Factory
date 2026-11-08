@@ -96,7 +96,7 @@ export function lessonsBlock(lessons: readonly string[] | undefined): string {
   // Dersler bütün paketlerden birikir: "parlak doygun renk kullan" gibi bir ders sepya ya da tek renkli paketin paletini
   // ezmesin (4 Kas: defterdeki iki ders griyi, sepyayı, kahverengiyi yasaklıyordu).
   return lessons?.length
-    ? `\nLessons from previous episodes (follow them, but they never override the channel's art style and palette, and never forbid the code's own camera devices: depth of field, motion blur, the round magnifier inset and medium or close framing that leaves the legs below the frame):\n${lessons.map((l) => `- ${l}`).join("\n")}`
+    ? `\nLessons from previous episodes (follow them, but they never override the channel's art style and palette, and never forbid the code's own camera devices: depth of field, motion blur, the round magnifier inset and medium or close framing that leaves the legs below the frame, and never ask for a name label in every shot: code tags each person where they first appear):\n${lessons.map((l) => `- ${l}`).join("\n")}`
     : "";
 }
 
