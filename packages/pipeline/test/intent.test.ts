@@ -57,6 +57,19 @@ describe("intent plan consistency", () => {
     shot.intent = intent(); delete shot.vector;
     expect(collectIntentFindings(s)[0]!.code).toBe("intent_still_action");
     s.archives = { [shot.id]: {} as never }; expect(collectIntentFindings(s)).toEqual([]);
+    s.archives[shot.id] = { key: "archive.jpg", mimeType: "image/jpeg", width: 1, height: 1, downloadedAt: "t", originalSha256: "hash", source: { id: `nasa-${"a".repeat(24)}`, provider: "nasa", sourceId: "fixture", title: "Fixture", creator: "NASA", date: "", sourceUrl: "https://images.nasa.gov/details/fixture", imageUrl: "https://images-assets.nasa.gov/image/fixture.jpg" } };
+    expect(buildTimeline(s, (key) => key).visuals[0]!.intent).toEqual(shot.intent);
     delete s.archives; shot.kind = "ai_clip"; expect(collectIntentFindings(s)).toEqual([]);
+  });
+  it("rejects invalid duration and recognizes declared background/3D subjects and text exit timing", () => {
+    const s = state(), shot = s.shots![0]!;
+    shot.endMs = NaN; expect(collectIntentFindings(s)[0]!.code).toBe("intent_duration");
+    shot.endMs = 0; expect(collectIntentFindings(s)[0]!.code).toBe("intent_duration"); shot.endMs = 4000;
+    shot.intent = { ...intent(), subject: "background", action: "hold", target: undefined }; shot.vector!.background = "room";
+    expect(collectIntentFindings(s)).toEqual([]); shot.intent.subject = "room"; expect(collectIntentFindings(s)).toEqual([]);
+    shot.intent.subject = "three:0"; shot.vector!.three = [{ kind: "box" }] as never; expect(collectIntentFindings(s)).toEqual([]);
+    shot.intent = { ...intent(), subject: "text:0", target: undefined, action: "reveal" };
+    shot.vector!.texts = [{ text: "Title", x: 100, y: 100, style: "title", anims: [{ type: "fade_out", start: .6, end: 1 }] }];
+    expect(collectIntentFindings(s).map((f) => f.code)).toContain("intent_text_timing");
   });
 });

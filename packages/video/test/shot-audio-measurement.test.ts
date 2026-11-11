@@ -5,6 +5,10 @@ const metadata = (start: number, rms = "-20", peak = "-10", samples = 4800) => `
 const blocks = (count: number, rmsDbfs: number | null): AudioBlock[] => Array.from({ length: count }, (_, i) => ({ startSec: i / 10, endSec: (i + 1) / 10, rmsDbfs, sampledPeakDbfs: rmsDbfs === null ? null : rmsDbfs + 3 }));
 
 describe("audio metadata measurements", () => {
+  it("does not call an empty decoded source measured silence", () => {
+    const result = measureShotAudio([], 48000, 1, [{ id: "missing", startSec: 0, endSec: 1 }], 1);
+    expect(result.coveredUntilSec).toBe(0); expect(result.windows[0]).toMatchObject({ coverage: 0, quietShare: 0, rmsDbfs: null });
+  });
   it("parses native-rate levels and a partial final block without inventing zeroes", () => {
     const parsed = parseAudioBlocks(metadata(0) + metadata(.1, "-inf", "-inf", 2400), 48000);
     expect(parsed).toEqual([{ startSec: 0, endSec: .1, rmsDbfs: -20, sampledPeakDbfs: -10 }, { startSec: .1, endSec: .15000000000000002, rmsDbfs: null, sampledPeakDbfs: null }]);

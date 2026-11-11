@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act as reactAct, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act as reactAct, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PronunciationPanel } from "../../src/app/episodes/[id]/pronunciation-panel.tsx";
 import { LocaleProvider } from "../../src/app/locale-provider.tsx";
@@ -45,5 +45,39 @@ describe("pronunciation editor", () => {
     fireEvent.click(screen.getByRole("button", { name: tr("pronunciation.preview") }));
     rerender(<LocaleProvider locale="tr"><PronunciationPanel id="e" busy version="1" /></LocaleProvider>);
     await reactAct(async () => finish(Response.json(impact()))); expect(screen.queryByRole("button", { name: tr("pronunciation.apply") })).toBeNull();
+  });
+  it("edits/removes scoped rules, pages effective terms and explains a no-change impact", async () => {
+    const data = { ...view(), shared: [{ lang: "tr", written: "Shared", spoken: "ortak" }], overrides: { Local: "yerel" }, pending: { scenes: ["s1"] }, effective: Array.from({ length: 31 }, (_, i) => ({ written: `Term ${i}`, spoken: "term", origin: "shared" })) };
+    const empty = { ...impact(), affected: [], retained: [], stages: [], scenes: [{ ...impact().scenes[0]!, recorded: undefined, status: "missing" }] };
+    const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => init?.method === "POST" ? Response.json(JSON.parse(init.body as string).type === "preview" ? empty : { ok: true }) : Response.json(data)); vi.stubGlobal("fetch", fetcher);
+    renderIn(<PronunciationPanel id="e" busy={false} version="1" />, "en"); fireEvent.click(screen.getByRole("button", { name: en("pronunciation.title") })); await screen.findByLabelText(en("pronunciation.written"));
+    fireEvent.click(within(screen.getByText(/Shared → ortak/).closest("li")!).getByRole("button", { name: en("research.edit") }));
+    expect(screen.getByLabelText(en("pronunciation.written"))).toHaveProperty("value", "Shared");
+    fireEvent.change(screen.getByLabelText(en("pronunciation.spoken")), { target: { value: "updated" } });
+    fireEvent.click(screen.getByRole("button", { name: en("research.cancel") }));
+    const local = screen.getByText(/Local → yerel/).closest("li")!;
+    fireEvent.click(within(local).getByRole("button", { name: en("pronunciation.remove") }));
+    await waitFor(() => expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(true));
+    await waitFor(() => expect(screen.getByRole("button", { name: en("pronunciation.preview") })).toHaveProperty("disabled", false));
+    const details = screen.getByText(en("pronunciation.effective")).closest("details")!; fireEvent.click(within(details).getByText(en("pronunciation.effective")));
+    fireEvent.click(within(details).getByRole("button", { name: en("quality.next") })); expect(within(details).getByText(/Term 30 →/)).toBeTruthy();
+    fireEvent.click(within(details).getByRole("button", { name: en("quality.previous") })); expect(within(details).getByText(/Term 0 →/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: en("pronunciation.preview") })); expect(await screen.findByRole("button", { name: en("pronunciation.apply") })).toHaveProperty("disabled", true);
+    expect(screen.getByText(en("pronunciation.recorded") + ": " + en("voiceAudit.unknown"))).toBeTruthy();
+  });
+  it.each(["http", "network"])("preserves a new rule after a %s save failure", async (failure) => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: unknown, init?: RequestInit) => { if (init?.method !== "POST") return Response.json(view()); if (failure === "network") throw "offline"; return Response.json({}, { status: 400 }); }));
+    renderIn(<PronunciationPanel id="e" busy={false} version="1" />, "en"); fireEvent.click(screen.getByRole("button", { name: en("pronunciation.title") })); await screen.findByLabelText(en("pronunciation.written"));
+    fireEvent.change(screen.getByLabelText(en("pronunciation.written")), { target: { value: "Word" } }); fireEvent.change(screen.getByLabelText(en("pronunciation.spoken")), { target: { value: "word" } });
+    fireEvent.click(screen.getByRole("button", { name: en("pronunciation.save") })); expect((await screen.findByRole("alert")).textContent).toBe(en("pronunciation.error"));
+    expect(screen.getByLabelText(en("pronunciation.written"))).toHaveProperty("value", "Word");
+  });
+  it("ignores an obsolete write failure after production starts", async () => {
+    let reject!: (e: Error) => void;
+    vi.stubGlobal("fetch", vi.fn(async (_url: unknown, init?: RequestInit) => init?.method === "POST" ? new Promise<Response>((_yes, no) => { reject = no; }) : Response.json(view())));
+    const v = renderIn(<PronunciationPanel id="e" busy={false} version="1" />, "en"); fireEvent.click(screen.getByRole("button", { name: en("pronunciation.title") })); await screen.findByLabelText(en("pronunciation.written"));
+    fireEvent.click(screen.getByRole("button", { name: en("pronunciation.preview") }));
+    v.rerender(<LocaleProvider locale="en"><PronunciationPanel id="e" busy version="1" /></LocaleProvider>); await reactAct(async () => reject(new Error("Obsolete write failure")));
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

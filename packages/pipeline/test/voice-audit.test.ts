@@ -49,6 +49,18 @@ describe("voice-only evidence", () => {
     expect(truncated.findings.map((f) => f.kind)).toEqual(expect.arrayContaining(["voice_duration_mismatch", "voice_decode_coverage"]));
     expect(truncated.checks).toContainEqual(expect.objectContaining({ name: "word_activity", status: "failed" }));
   });
+  it("keeps absent decoded blocks unmeasured and reports string decoder/storage failures", async () => {
+    const empty = measurement(); empty.blocks = [];
+    expect(auditVoiceEvidence("s1", script, voice(), empty).findings).toContainEqual(expect.objectContaining({ kind: "voice_decode_coverage", startMs: 0 }));
+    const v = voice(); delete v.spoken;
+    expect(auditVoiceEvidence("s1", script, v).forms.spoken).toBe(script);
+    const store = new MemStore(), s = state(); await store.put(voice().key, new Uint8Array([1]));
+    s.voiceAudit = await collectVoiceAudit(s, store, async () => { throw "decoder offline"; });
+    expect((await readVoiceAudit(store, s))!.report.scenes[0]!.checks).toContainEqual(expect.objectContaining({ name: "source", reason: "decoder offline" }));
+    await store.delete(voice().key); expect((await readVoiceAudit(store, s))!.current).toBe(false);
+    store.put = async () => { throw "storage offline"; };
+    expect(await collectVoiceAudit(s, store, async () => measurement())).toMatchObject({ status: "failed", error: "storage offline" });
+  });
 });
 describe("voice audit persistence and integration", () => {
   it("saves a bounded summary, verifies byte identity and exposes read-only working findings", async () => {

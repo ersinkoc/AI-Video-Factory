@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 import type { AssetCheck } from "@ys/core";
 import type { EpisodeState, PlannedShotState } from "@ys/pipeline/light";
-import { act as reactAct, cleanup, fireEvent, screen } from "@testing-library/react";
+import { act as reactAct, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConceptTab, ScriptTab, ShotsTab } from "../../src/app/episodes/[id]/steps.tsx";
 import { en, fmtTr, makeData, makeEstimate, makeState, okAct, renderIn, row, tr } from "./fixtures.tsx";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 const story = { title: "Kahve Yasağı", logline: "Bir sultan kahveyi yasaklar.", premise: "", hook: "Gece baskını", beats: [] };
 const script = {
@@ -19,6 +19,17 @@ const script = {
 // ---------------- senaryo ----------------
 
 describe("ScriptTab", () => {
+  it("keeps approval blocked for repeated dirty edits and exposes grounded rewrite and revision undo", async () => {
+    const act = okAct(), state = makeState({ script, story, narrationEdit: { id: "revision", at: "t" } });
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ revision: 0, sources: [{ id: "source", title: "Lab", url: "https://example.org/", excerpt: "Evidence" }], claims: [], unresolved: 0 })));
+    renderIn(<ScriptTab data={makeData(state)} busy={false} act={act} />);
+    const text = screen.getAllByRole("textbox")[0]!; fireEvent.change(text, { target: { value: "New draft" } }); fireEvent.change(text, { target: { value: "New draft " } });
+    expect(screen.getByRole("button", { name: new RegExp(tr("script.approve")) })).toHaveProperty("disabled", true);
+    fireEvent.change(text, { target: { value: script.scenes[0]!.narration } }); expect(screen.getByRole("button", { name: new RegExp(tr("script.approve")) })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: tr("edit.undoPreview") })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: tr("research.title") })); fireEvent.click(await screen.findByRole("button", { name: tr("research.rewrite") }));
+    expect(act).toHaveBeenCalledWith({ type: "rewrite-script" });
+  });
   it("senaryo yokken üret düğmesi eylemi gönderir; iş sürerken yazılıyor mesajı", () => {
     const act = okAct();
     const { rerender } = renderIn(<ScriptTab data={makeData(makeState())} busy={false} act={act} />);
@@ -408,6 +419,30 @@ function shotsState(over: Partial<EpisodeState> = {}, input: Parameters<typeof m
 }
 
 describe("ShotsTab", () => {
+  it("shows the chosen archive image and suppresses generated-media reviews until a new export review exists", () => {
+    const source = { id: `nasa-${"a".repeat(24)}`, provider: "nasa" as const, sourceId: "fixture", title: "Archive", creator: "NASA", date: "", sourceUrl: "https://images.nasa.gov/details/fixture", imageUrl: "https://images-assets.nasa.gov/image/fixture.jpg" };
+    const photo = { key: "photo.jpg", mimeType: "image/jpeg" as const, source, width: 1, height: 1, downloadedAt: "t", originalSha256: "hash" };
+    const state = shotsState({ archives: { sh1: photo, sh2: photo } });
+    const view = renderIn(<ShotsTab data={makeData(state)} busy={false} act={okAct()} />);
+    expect(screen.getByRole("img", { name: "sh1" }).getAttribute("src")).toContain("photo.jpg"); expect(screen.queryByText("4/10 · 1!")).toBeNull(); expect(screen.queryByText(`▶ 5 ${tr("unit.sec")}`)).toBeNull();
+    fireEvent.click(screen.getByRole("img", { name: "sh1" })); expect(within(screen.getByRole("dialog")).queryByText("yazı")).toBeNull(); view.unmount();
+    state.done.review = "t"; state.review!.shots.sh1 = { score: 3, issues: [{ type: "off_story", detail: "Review archive content" }] };
+    renderIn(<ShotsTab data={makeData(state)} busy={false} act={okAct()} />); expect(screen.getByText("3/10 · 1!")).toBeTruthy();
+    fireEvent.click(screen.getByRole("img", { name: "sh1" })); expect(within(screen.getByRole("dialog")).getByText(/Review archive content/)).toBeTruthy();
+  });
+  it("labels actor and object intent selectors from saved cast/prop descriptions and tolerates legacy absent intent", () => {
+    const state = shotsState({ vectorProps: { keyboard: { description: "Keyboard prop" }, actor: { description: "Object actor" } }, cast: { characters: [{ id: "c1", name: "Hero", kind: "person", role: "presenter", visualDescription: "Hero", scenes: ["s1"] }], locations: [] } });
+    const intent = { subject: "c1", target: "keyboard", action: "point" as const, payoff: "A key lights up", narration: { startWord: 0, endWord: 1 }, reveal: .3, holdSec: 1 };
+    state.shots![0]!.intent = intent; state.shots![1]!.intent = { ...intent, subject: "actor", target: "c1" };
+    renderIn(<ShotsTab data={makeData(state)} busy={false} act={okAct()} />);
+    for (const id of ["sh1", "sh2", "sh3"]) {
+      fireEvent.click(screen.getByRole("img", { name: id })); const dialog = within(screen.getByRole("dialog"));
+      if (id !== "sh3") expect(dialog.getByText(/Hero/)).toBeTruthy();
+      if (id === "sh1") expect(dialog.getByText(/Keyboard prop/)).toBeTruthy();
+      if (id === "sh2") expect(dialog.getByText(/Object actor/)).toBeTruthy();
+      fireEvent.click(dialog.getByRole("button", { name: tr("shots.close") }));
+    }
+  });
   it("çekim yoksa boş mesajı", () => {
     renderIn(<ShotsTab data={makeData(makeState())} busy={false} act={okAct()} />);
     expect(screen.getByText(tr("shots.empty"))).toBeTruthy();

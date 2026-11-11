@@ -51,6 +51,15 @@ describe("reviewed narration revisions", () => {
     record.before.id = "other"; f.store.putJsonSync(key, record);
     await expect(previewNarrationUndo(f.store, next, next.narrationEdit!.id)).rejects.toThrow("artık geri alınamaz");
   });
+  it.each(["script", "scene"])("refuses a hash-consistent undo record without the original %s", async (missing) => {
+    const f = await fixture(); await f.save(); const next = await f.repo.load(f.state.id);
+    const key = (await f.store.list(`episodes/${next.id}/edits/`))[0]!, record = f.store.json(key);
+    if (missing === "script") delete record.before.script;
+    else record.before.script.scenes = record.before.script.scenes.filter((s: { id: string }) => s.id !== record.sceneId);
+    record.beforeFingerprint = episodeFingerprint(record.before); f.store.putJsonSync(key, record);
+    await expect(previewNarrationUndo(f.store, next, next.narrationEdit!.id)).rejects.toThrow("artık geri alınamaz");
+    expect(await f.repo.load(next.id)).toEqual(next);
+  });
   it("retains the prior state on history or state write failure and excludes concurrent producers", async () => {
     const f = await fixture(), before = await f.repo.load(f.state.id);
     f.store.failPut = (key) => key.includes("/edits/");

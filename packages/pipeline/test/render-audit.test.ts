@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
 import { Timeline } from "@ys/core";
 import type { RenderAudit } from "@ys/video/audit";
 import { acquireLock } from "../src/lock.ts";
+import { collectRenderAudit } from "../src/render-audit.ts";
 import { harness, makeState, SCRIPT, voiceOf } from "./pipeline-harness.ts";
 
 const render = vi.hoisted(() => vi.fn(async (o: { outputPath: string }) => o.outputPath));
@@ -140,5 +142,23 @@ describe("episode render audit integration", () => {
     await expect(h.pipeline.auditRender(id)).rejects.toThrow("timeline/render");
     const release = await acquireLock(h.store, id);
     try { await expect(h.pipeline.auditRender(id)).rejects.toThrow(); } finally { await release(); }
+  });
+  it("rejects unknown targets/missing Shorts and preserves a report despite a lock-release I/O failure", async () => {
+    const h = harness({ analyzeRender: async () => report() }), id = await h.seed(makeState({}, { timeline: timeline(), render: { path: "main.mp4", at: "t" } }));
+    await expect(h.pipeline.auditRender(id, "other" as never)).rejects.toThrow("Unknown export target");
+    await expect(h.pipeline.auditRender(id, "short")).rejects.toThrow("short");
+    const compare = h.store.compareAndSwap.bind(h.store);
+    h.store.compareAndSwap = async (key, expected, bytes) => { if (new TextDecoder().decode(bytes) === "null") throw new Error("Release unavailable"); return compare(key, expected, bytes); };
+    expect((await h.pipeline.auditRender(id)).render!.audit!.status).toBe("complete");
+  });
+  it("keeps standalone collection failures and absent range metadata explicit", async () => {
+    const h = harness(), opts = { episodeId: "e", render: { path: "main", at: "t" }, store: h.store };
+    expect(await collectRenderAudit(opts)).toMatchObject({ status: "failed", error: "No render or timeline ranges are available" });
+    const measured = { ...report(), audio: { integratedLufs: -14, truePeakDbfs: -2 } };
+    expect(await collectRenderAudit({ ...opts, timeline: timeline(), analyze: async () => measured })).toMatchObject({ status: "complete", target: "main", audio: measured.audio });
+    expect(await collectRenderAudit({ ...opts, target: "short", analyze: async () => { throw "decoder offline"; } })).toMatchObject({ status: "failed", error: "decoder offline" });
+    expect((await collectRenderAudit({ ...opts, target: "short", render: { path: join(h.workDir, "missing-video.mp4"), at: "t" } })).status).toBe("failed");
+    const id = await h.seed(makeState()); expect((await h.pipeline.auditVoice(id)).voiceAudit!.status).toBe("failed");
+    await expect(h.pipeline.rewriteScript(id)).rejects.toThrow("story");
   });
 });

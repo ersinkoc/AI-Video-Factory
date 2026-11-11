@@ -22,4 +22,12 @@ describe("voice media measurement boundary", () => {
     await expect(measureVoiceAudio(new Uint8Array([1]), "audio/wav")).rejects.toThrow("1,200");
     await expect(measureVoiceAudio(new Uint8Array(), "audio/wav")).rejects.toThrow("64 MiB");
   });
+  it("uses format duration when the stream omits it and rejects absent channels or streams", async () => {
+    tool.mockResolvedValueOnce({ stdout: JSON.stringify({ format: { duration: "0.1" }, streams: [{ codec_type: "audio", channels: 1, sample_rate: "48000" }] }), stderr: "" }).mockResolvedValueOnce({ stdout: "frame:0 pts:0 pts_time:0\nlavfi.astats.Overall.RMS_level=-20\nlavfi.astats.Overall.Peak_level=-15\nlavfi.astats.Overall.Number_of_samples=4800\n", stderr: "" });
+    expect((await measureVoiceAudio(new Uint8Array([1]), "audio/flac")).durationMs).toBe(100);
+    for (const info of [{}, { streams: [{ codec_type: "audio", duration: ".1", sample_rate: "48000" }] }]) {
+      tool.mockResolvedValueOnce({ stdout: JSON.stringify(info), stderr: "" });
+      await expect(measureVoiceAudio(new Uint8Array([1]), "audio/ogg")).rejects.toThrow();
+    }
+  });
 });

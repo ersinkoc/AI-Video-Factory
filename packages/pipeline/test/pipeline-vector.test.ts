@@ -421,6 +421,22 @@ function keyframeReady(h: Harness, input: object, extra: Partial<EpisodeState> =
   );
 }
 
+it("sends deliberate archive inserts and structured shot intent to the frame reviewer", async () => {
+  const h = harness(); agents();
+  const id = await keyframeReady(h, {}, { vectorProps: {} });
+  const state = await h.load(id), first = state.shots![0]!;
+  first.intent = { subject: "background", action: "hold", payoff: "Original document remains visible", narration: { startWord: 0, endWord: 1 }, reveal: 0, holdSec: .5 };
+  const source = { id: `nasa-${"a".repeat(24)}`, provider: "nasa" as const, sourceId: "fixture", title: "Original document", creator: "NASA", date: "", sourceUrl: "https://images.nasa.gov/details/fixture", imageUrl: "https://images-assets.nasa.gov/image/fixture.jpg" };
+  state.archives = { [first.id]: { key: "archive.jpg", mimeType: "image/jpeg", source, width: 1, height: 1, downloadedAt: "t", originalSha256: "hash" } };
+  await h.store.put("archive.jpg", Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==", "base64")); await h.pipeline.save(state);
+  onAgent("sceneCritic", (items: { shotId: string; intent: string }[]) => {
+    return { shots: items.map((i) => ({ shotId: i.shotId, score: 8, issues: [] })), lessons: [] };
+  });
+  await h.pipeline.run(id, { only: "keyframes" });
+  const item = (callsOf("sceneCritic")[0]!.args[0] as { shotId: string; intent: string }[]).find((i) => i.shotId === first.id)!;
+  expect(item.intent).toContain("Intentional real archive photograph/document insert"); expect(item.intent).toContain("Original document remains visible");
+});
+
 describe("vektör nesneleri ve önizleme (kare denetimi kapalı)", () => {
   it("harita ve bayrak gerçek veriden, diğerleri tasarımcıdan; kullanılmayan çizilmez; önizleme kareleri saklanır", async () => {
     const h = harness();

@@ -38,4 +38,22 @@ describe("quality issue board", () => {
     fireEvent.click(screen.getByRole("button", { name: en("quality.refresh") }));
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Evidence changed");
   });
+  it("filters target/status, pages backward and links authoring evidence without an export approval", async () => {
+    const data = { ...page(), historicalDecisions: 0, issues: [{ ...page().issues[0]!, shotId: undefined }, ...["voice", "research"].map((source, i) => ({ ...page().issues[1]!, key: String(i), source }))] };
+    const fetcher = vi.fn(async (_url: string) => Response.json(data)); vi.stubGlobal("fetch", fetcher);
+    renderIn(<QualityIssueBoard id="e" busy={false} version="v1" onSeek={() => {}} />, "en"); fireEvent.click(screen.getByRole("button", { name: en("quality.title") })); await screen.findByText("Held shot");
+    expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["#script", "#script"]);
+    fireEvent.change(screen.getByLabelText(en("quality.target")), { target: { value: "main" } }); await screen.findByText("Held shot");
+    fireEvent.change(screen.getByLabelText(en("quality.status")), { target: { value: "open" } }); await screen.findByText("Held shot");
+    fireEvent.click(screen.getByRole("button", { name: en("quality.next") })); await screen.findByText("Held shot");
+    fireEvent.click(screen.getByRole("button", { name: en("quality.previous") })); await screen.findByText("Held shot");
+    expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain("target=main"); expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain("offset=0");
+  });
+  it.each(["http", "network", "explicit"])("preserves evidence and reports a %s decision failure", async (failure) => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: unknown, opts?: RequestInit) => { if (opts?.method !== "POST") return Response.json(page()); if (failure === "network") throw "offline"; if (failure === "explicit") throw new Error("Decision failed"); return Response.json({}, { status: 400 }); }));
+    renderIn(<QualityIssueBoard id="e" busy={false} version="v1" onSeek={() => {}} />, "en"); fireEvent.click(screen.getByRole("button", { name: en("quality.title") })); await screen.findByText("Held shot");
+    fireEvent.change(screen.getByRole("combobox", { name: "Decision freeze s1" }), { target: { value: "accepted" } });
+    expect((await screen.findByRole("alert")).textContent).toBe(failure === "explicit" ? "Decision failed" : en("quality.error"));
+    expect(screen.getByRole("combobox", { name: "Decision freeze s1" })).toHaveProperty("value", "open");
+  });
 });

@@ -130,6 +130,7 @@ export async function decideQuality(opts: {
       if (file.size !== source.bytes || file.mtime.toISOString() !== source.modifiedAt) throw new Error("Export file changed; rerun the audit");
     } else {
       const prefix = `episodes/${opts.id}/style-comparisons/`;
+      /* v8 ignore next -- qualityView yalnız doğrulanmış stil raporu yollarına exportId ekler */
       if (!issue.evidence.startsWith(prefix) || !/^[a-z0-9-]+\.json$/.test(issue.evidence.slice(prefix.length))) throw new Error("Rerun the style comparison before recording a decision");
       const report = await getJson<{ renderedAt: string; source: { size: number; mtimeMs: number } }>(opts.store, issue.evidence);
       const file = await stat(output.path);

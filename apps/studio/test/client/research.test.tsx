@@ -50,4 +50,45 @@ describe("research panel", () => {
     fireEvent.submit(screen.getByRole("button", { name: en("research.saveClaim") }).closest("form")!);
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Record changed");
   });
+  it("edits metadata, links several sources, saves a new claim and reviews a current claim", async () => {
+    const base = view(), data = { ...base, sources: [...base.sources, { ...base.sources[0]!, id: "source-2", title: "Second note" }], claims: [{ ...base.claims[0]!, anchorCurrent: true }, { ...base.claims[0]!, id: "claim-2", statement: "Reconstruction", kind: "reconstruction", anchorCurrent: true, dependentShots: [], links: [{ sourceId: "missing-source", relation: "context" }] }] };
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => Response.json(init?.method === "POST" ? { ok: true } : data)); vi.stubGlobal("fetch", fetcher);
+    renderIn(<ResearchPanel id="e" scenes={[{ id: "s1", narration: "48 cycles" }]} busy={false} />, "en"); fireEvent.click(screen.getByRole("button", { name: en("research.title") })); await screen.findByText("The rig completed 48 cycles");
+    const sourceForm = screen.getByRole("button", { name: en("research.saveSource") }).closest("form")!;
+    for (const [field, value] of [["sourceTitle", "Edited source"], ["url", "https://example.org/edited"], ["locator", "Page 3"], ["publisher", "Press"], ["date", "2026"], ["excerpt", "48 cycles"]] as const) fireEvent.change(screen.getByLabelText(en(`research.${field}`)), { target: { value } });
+    fireEvent.submit(sourceForm); await waitFor(() => expect(screen.getByLabelText(en("research.sourceTitle"))).toHaveProperty("value", ""));
+    const sourceItem = screen.getByText("Lab note", { selector: "a" }).closest("li")!;
+    fireEvent.click(within(sourceItem).getByRole("button", { name: en("research.edit"), hidden: true }));
+    fireEvent.click(within(sourceForm).getByRole("button", { name: en("research.cancel") }));
+    fireEvent.change(screen.getByLabelText(en("research.scene")), { target: { value: "s1" } });
+    fireEvent.change(screen.getByLabelText(en("research.quote")), { target: { value: "48 cycles" } });
+    fireEvent.change(screen.getByLabelText(en("research.statement")), { target: { value: "New claim" } });
+    fireEvent.change(screen.getByLabelText(en("research.kind")), { target: { value: "estimate" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Lab note" })); fireEvent.click(screen.getByRole("checkbox", { name: "Second note" }));
+    fireEvent.change(screen.getByLabelText(`${en("research.relation")} Lab note`), { target: { value: "contradicts" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Lab note" })); fireEvent.click(screen.getByRole("checkbox", { name: "Lab note" }));
+    fireEvent.change(screen.getByLabelText(`${en("research.relation")} Lab note`), { target: { value: "context" } });
+    const claimForm = screen.getByRole("button", { name: en("research.saveClaim") }).closest("form")!;
+    fireEvent.submit(claimForm); await waitFor(() => expect(screen.getByLabelText(en("research.quote"))).toHaveProperty("value", ""));
+    const post = fetcher.mock.calls.filter(([, opts]) => opts?.method === "POST").map(([, opts]) => JSON.parse(opts!.body as string));
+    expect(post[0].mutation.source).toMatchObject({ locator: "Page 3", publisher: "Press", date: "2026" });
+    expect(post[1].mutation.claim).toMatchObject({ kind: "estimate", links: [{ sourceId: "source-2", relation: "supports" }, { sourceId: "source-1", relation: "context" }] });
+    const item = screen.getByText("The rig completed 48 cycles").closest("li")!;
+    fireEvent.click(within(item).getByRole("button", { name: en("research.edit") })); fireEvent.click(within(claimForm).getByRole("button", { name: en("research.cancel") }));
+    fireEvent.click(within(item).getByRole("button", { name: en("research.status.disputed") }));
+    await waitFor(() => expect(fetcher.mock.calls.filter(([, opts]) => opts?.method === "POST")).toHaveLength(3));
+    expect(screen.getByText(/missing-source/)).toBeTruthy();
+  });
+  it.each(["http", "network"])("keeps rejected source edits on %s failure", async (failure) => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => { if (init?.method !== "POST") return Response.json(view()); if (failure === "network") throw "offline"; return Response.json({}, { status: 400 }); }));
+    renderIn(<ResearchPanel id="e" scenes={[{ id: "s1", narration: "48 cycles" }]} busy={false} />, "en"); fireEvent.click(screen.getByRole("button", { name: en("research.title") })); await screen.findByText("The rig completed 48 cycles");
+    fireEvent.change(screen.getByLabelText(en("research.sourceTitle")), { target: { value: "Keep this draft" } }); fireEvent.change(screen.getByLabelText(en("research.url")), { target: { value: "https://example.org/new" } });
+    fireEvent.submit(screen.getByRole("button", { name: en("research.saveSource") }).closest("form")!);
+    expect((await screen.findByRole("alert")).textContent).toBe(en("research.error")); expect(screen.getByLabelText(en("research.sourceTitle"))).toHaveProperty("value", "Keep this draft");
+  });
+  it("loads an empty book without a script and prevents claims without scene anchors", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ revision: 0, sources: [], claims: [], unresolved: 0 })));
+    renderIn(<ResearchPanel id="e" busy={false} />, "en"); fireEvent.click(screen.getByRole("button", { name: en("research.title") }));
+    expect(await screen.findByRole("button", { name: en("research.saveClaim") })).toHaveProperty("disabled", true);
+  });
 });

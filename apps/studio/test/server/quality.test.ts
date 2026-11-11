@@ -43,4 +43,11 @@ describe("quality HTTP workflow", () => {
     expect((await route.POST(post({ ...body, status: "approved-for-publication" }), ctx)).status).toBe(400);
     expect((await route.GET(new Request("http://localhost/?offset=-1"), ctx)).status).toBe(400);
   });
+  it("rejects invalid episode IDs, oversized decisions and invalid field types before writing", async () => {
+    const { store } = await fixture(), bad = { params: Promise.resolve({ id: ".." }) };
+    expect((await route.GET(new Request("http://localhost/"), bad)).status).toBe(400); expect((await route.POST(post({}), bad)).status).toBe(400);
+    expect((await route.POST(new Request("http://localhost/", { method: "POST", body: "x".repeat(4097) }), ctx)).status).toBe(400);
+    for (const body of [null, {}, { issueKey: 1 }, { issueKey: "a", exportId: 1 }, { issueKey: "a", exportId: "x".repeat(129), status: "open" }, { issueKey: "a", exportId: "v1", status: 1 }]) expect((await route.POST(post(body), ctx)).status).toBe(400);
+    expect(await store.get("episodes/e/quality-decisions.json")).toBeNull();
+  });
 });

@@ -84,4 +84,28 @@ describe("claim/source lifecycle", () => {
     expect(context.sources[0]!.excerpt).toContain("48 cycles"); expect(context.claims).toHaveLength(2);
     expect(await loadResearch(new MemStore(), "legacy")).toMatchObject({ revision: 0, sources: [], claims: [] });
   });
+  it("rejects missing record IDs, source limits and invalid frozen paths", async () => {
+    const f = await fixture(), book = await loadResearch(f.store, "e"), claim = book.claims[0]!;
+    await expect(f.mutate({ type: "put-source", source: { ...f.source, id: "unknown" } })).rejects.toThrow("bulunamadı");
+    await expect(f.mutate({ type: "put-claim", claim: { ...claim, id: "unknown" } })).rejects.toThrow("bulunamadı");
+    await expect(f.mutate({ type: "review-claim", claimId: "unknown", fingerprint: "a".repeat(64), status: "needs-source" })).rejects.toThrow("bulunamadı");
+    book.sources = Array.from({ length: 80 }, (_, i) => ({ ...f.source, id: `source-${i}` }));
+    f.store.putJsonSync("episodes/e/research/book.json", book);
+    await expect(f.mutate({ type: "put-source", source: { title: "One too many", url: "https://example.org/" } })).rejects.toThrow("geçersiz");
+    expect((await loadResearch(f.store, "e")).sources).toHaveLength(80);
+    expect(researchView({ ...book, sources: [] }, f.state).claims[0]!.status).toBe("unreviewed");
+    await expect(readResearchExport(f.store, f.state)).rejects.toThrow("bulunamadı");
+    f.state.render = { path: "main.mp4", at: "t", research: { reportKey: "other/report.json", revision: 0, fingerprint: "f", claims: 0, sources: 0, unresolved: 0 } };
+    for (const key of ["other/report.json", "episodes/e/research/exports/../bad.json", "episodes/e/research/exports/missing.json"]) { f.state.render.research!.reportKey = key; await expect(readResearchExport(f.store, f.state)).rejects.toThrow("bulunamadı"); }
+    expect(await collectWriterClaims(new MemStore(), makeState())).toBe(0);
+    expect(await collectWriterClaims(new MemStore(), makeState({}, { script: SCRIPT }))).toBe(0);
+  });
+  it("includes publisher/date in English credits and leaves unsupported sources uncredited", async () => {
+    const f = await fixture(); f.state.input.lang = "en";
+    await f.mutate({ type: "put-source", source: { ...f.source, publisher: "Lab", date: "2026" } }); await f.review("supported");
+    f.state.render = { path: "main.mp4", at: "t" }; f.state.render.research = await freezeResearch(f.store, f.state);
+    expect(await researchCredits(f.store, f.state)).toEqual(["Narration sources:", "Lab note — Lab (2026) — https://example.org/lab"]);
+    await f.review("needs-source"); f.state.render.research = await freezeResearch(f.store, f.state);
+    expect(await researchCredits(f.store, f.state)).toEqual([]);
+  });
 });

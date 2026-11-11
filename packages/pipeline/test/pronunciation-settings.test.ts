@@ -82,4 +82,26 @@ describe("layered pronunciation settings", () => {
     const s = makeState(); const before = pronunciationRulesFingerprint(s, emptyPronunciationBook()); s.pronunciations = { "New word": "nyu vörd" };
     expect(pronunciationRulesFingerprint(s, emptyPronunciationBook())).toBe(before);
   });
+  it("rejects corrupt dictionaries and invalid updates and bounds global/local rules", async () => {
+    const store = new MemStore(); store.putText("settings/pronunciations.json", "not json");
+    await expect(loadPronunciationBook(store)).rejects.toThrow("geçersiz");
+    await expect(mutateSharedPronunciations(store, 0, entry())).rejects.toThrow("geçersiz");
+    await expect(mutateSharedPronunciations(store, 0, {})).rejects.toThrow("geçersiz");
+    const book = { ...emptyPronunciationBook(), entries: Array.from({ length: 1000 }, (_, i) => ({ lang: "tr", written: `Term ${i}`, spoken: "term" })) };
+    store.putJsonSync("settings/pronunciations.json", book);
+    await expect(mutateSharedPronunciations(store, 0, entry())).rejects.toThrow("geçersiz");
+    await mutateSharedPronunciations(store, 0, { type: "remove", lang: "tr", written: "Term 0" });
+    expect((await loadPronunciationBook(store)).entries).toHaveLength(999);
+    await mutateSharedPronunciations(store, 1, { type: "remove", lang: "tr", written: "missing" });
+    expect((await loadPronunciationBook(store)).revision).toBe(1);
+    const f = await fixture(), opts = { id: f.state.id, store: f.store, repo: f.repo, fingerprint: episodeFingerprint(f.state) };
+    await expect(mutateEpisodePronunciation({ ...opts, mutation: {} })).rejects.toThrow("geçersiz");
+    await expect(mutateEpisodePronunciation({ ...opts, mutation: entry("word", "Term", "en") })).rejects.toThrow("geçersiz");
+    f.state.pronunciationOverrides = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`Term ${i}`, "term"])); await f.repo.save(f.state);
+    await expect(mutateEpisodePronunciation({ ...opts, fingerprint: episodeFingerprint(f.state), mutation: entry() })).rejects.toThrow("geçersiz");
+    await mutateEpisodePronunciation({ ...opts, fingerprint: episodeFingerprint(f.state), mutation: entry("updated", "Term 0") });
+    expect((await f.repo.load(f.state.id)).pronunciationOverrides!["Term 1"]).toBe("term");
+    expect(effectivePronunciations(makeState({ lang: "zz" }, { pronunciations: { "": "word", "Whitespace": " " } }), emptyPronunciationBook())).toEqual([]);
+    expect(previewPronunciationImpact(makeState(), emptyPronunciationBook()).scenes).toEqual([]);
+  });
 });

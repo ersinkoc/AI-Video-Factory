@@ -44,4 +44,12 @@ describe("pronunciation dictionary API", () => {
     expect((await post({ type: "remove", scope: "episode", written: "c++", fingerprint: view.fingerprint })).status).toBe(200);
     view = await (await get()).json(); expect(view.effective.find((e: { written: string }) => e.written === "C++").spoken).toBe("shared");
   });
+  it("rejects malformed/oversized requests before changing records and reports unreadable dictionaries", async () => {
+    const f = await fixture();
+    for (const body of [null, {}, { type: "put", scope: "invalid" }, { type: "put", scope: "shared", written: "Word", spoken: "word" }, { type: "put", scope: "episode", written: "Word", spoken: "word" }, { type: "apply", fingerprint: "fp", rulesFingerprint: "rules", revision: .5 }]) expect((await post(body)).status).toBe(400);
+    expect((await route.POST(new Request("http://localhost/", { method: "POST", body: "x".repeat(4097) }), ctx)).status).toBe(400);
+    expect((await route.POST(new Request("http://localhost/", { method: "POST", body: "{}" }), { params: Promise.resolve({ id: ".." }) })).status).toBe(400);
+    expect(await f.repo.load(f.state.id)).toEqual(f.state);
+    (deps.store as MemStore).putText("settings/pronunciations.json", "invalid JSON"); expect((await get()).status).toBe(400);
+  });
 });

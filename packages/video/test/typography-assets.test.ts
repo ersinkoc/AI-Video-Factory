@@ -31,6 +31,9 @@ describe("bundled font staging", () => {
     await expect(stageTypography(undefined, join(dir, "unused"))).resolves.toBeUndefined();
     await expect(readFile(join(dir, "unused"))).rejects.toThrow();
   });
+  it("rejects an unknown persisted typography pair", async () => {
+    await expect(stageTypography({ pair: "removed-pair" } as never, dir)).rejects.toThrow("Unknown typography pair");
+  });
   it("invalidates picture cache keys when the selected pair or staged font bytes change", async () => {
     const timeline = Timeline.parse({ episodeId: "fonts", lang: "tr", durationInFrames: 90, visuals: [], audio: [], typography: { pair: "clear" } });
     await stageTypography(timeline.typography, dir);

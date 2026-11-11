@@ -219,14 +219,15 @@ function findingsOf(state: EpisodeState, shot: { id: string; sceneId: string }):
 export function replanShots(state: EpisodeState, shotIds: string[], note: string): void {
   if (motionModeOf(state.input) !== "vector") throw new LocalizedError(msg("err.action.replanVector"));
   const text = note.trim();
-  const picked = (state.shots ?? []).filter((s) => shotIds.includes(s.id));
+  const allShots = state.shots ?? [];
+  const picked = allShots.filter((s) => shotIds.includes(s.id));
   if (!picked.length) throw new LocalizedError(msg("err.action.noShots"));
   const findings = new Map(picked.map((s) => [s.id, findingsOf(state, s)]));
   if (!text && ![...findings.values()].some((f) => f.length)) throw new LocalizedError(msg("err.action.noNote"));
   state.replans ??= {};
   const at = new Date().toISOString();
   for (const sceneId of new Set(picked.map((s) => s.sceneId))) {
-    for (const shot of state.shots ?? []) if (shot.sceneId === sceneId) delete state.archives?.[shot.id];
+    for (const shot of allShots) if (shot.sceneId === sceneId) delete state.archives?.[shot.id];
     const prev = state.replans[sceneId];
     const shots = picked.filter((s) => s.sceneId === sceneId);
     state.replans[sceneId] = {

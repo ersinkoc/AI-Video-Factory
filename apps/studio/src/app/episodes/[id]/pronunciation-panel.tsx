@@ -22,7 +22,6 @@ export function PronunciationPanel({ id, busy, version }: { id: string; busy: bo
     return () => { generation.current++; active = false; clearTimeout(timer); controller.abort(); };
   }, [open, id, busy, version, refresh, t]);
   const post = async (body: Record<string, unknown>, preview = false): Promise<boolean> => {
-    if (!view) return false;
     const request = generation.current;
     setSaving(true); setError("");
     try {
@@ -48,12 +47,12 @@ export function PronunciationPanel({ id, busy, version }: { id: string; busy: bo
       {view && <>
         <p className="text-xs text-muted">{t("pronunciation.revision", { lang: view.lang, revision: view.revision })}</p>
         {view.pending && <p className="text-sm">{t("pronunciation.pending", { scenes: view.pending.scenes.join(", ") })}</p>}
-        <form className="grid min-w-0 gap-2 rounded-lg border border-line p-3" onSubmit={async (event) => { event.preventDefault(); if (await post({ type: "put", scope, written, spoken, ...(base ?? { fingerprint: view.fingerprint, revision: view.revision }) })) reset(); }}>
+        <form className="grid min-w-0 gap-2 rounded-lg border border-line p-3" onSubmit={async (event) => { event.preventDefault(); if (await post({ type: "put", scope, written, spoken, ...base })) reset(); }}>
           <label className="text-sm">{t("pronunciation.scope")}<select className="field w-full" value={scope} disabled={locked} onChange={(e) => { bind(); setScope(e.target.value as Scope); }}><option value="episode">{t("pronunciation.origin.episode")}</option><option value="shared">{t("pronunciation.origin.shared")}</option></select></label>
           <label className="text-sm">{t("pronunciation.written")}<input className="field w-full" required maxLength={120} value={written} disabled={locked} onChange={(e) => { bind(); setWritten(e.target.value); }} /></label>
           <label className="text-sm">{t("pronunciation.spoken")}<input className="field w-full" required maxLength={240} value={spoken} disabled={locked} onChange={(e) => { bind(); setSpoken(e.target.value); }} /></label>
           <p className="text-xs text-muted">{t("pronunciation.scopeHint")}</p>
-          <div className="flex flex-wrap gap-2"><button className="btn-primary" disabled={locked}>{t("pronunciation.save")}</button><button type="button" className="btn-ghost" disabled={locked} onClick={reset}>{t("research.cancel")}</button></div>
+          <div className="flex flex-wrap gap-2"><button className="btn-primary" disabled={locked || !base || !written.trim() || !spoken.trim()}>{t("pronunciation.save")}</button><button type="button" className="btn-ghost" disabled={locked} onClick={reset}>{t("research.cancel")}</button></div>
         </form>
         {(written || spoken) && <p className="text-xs text-muted">{t("pronunciation.unsaved")}</p>}
         <ul className="space-y-2">{rules.map((entry) => <li key={`${entry.scope}:${entry.written}`} className="flex min-w-0 flex-wrap items-center gap-2 border-t border-line pt-2 text-sm"><span className="break-words">{entry.written} → {entry.spoken} · {t(`pronunciation.origin.${entry.scope}`)}</span><button type="button" className="btn-ghost" disabled={locked} onClick={() => { setWritten(entry.written); setSpoken(entry.spoken); setScope(entry.scope); setBase({ fingerprint: view.fingerprint, revision: view.revision }); setImpact(undefined); }}>{t("research.edit")}</button><button type="button" className="btn-ghost" disabled={locked} onClick={() => void post({ type: "remove", scope: entry.scope, written: entry.written, fingerprint: view.fingerprint, revision: view.revision })}>{t("pronunciation.remove")}</button></li>)}</ul>

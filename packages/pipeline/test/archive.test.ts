@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ArchiveImage, ArchiveCandidate } from "@ys/core";
 import { searchArchives, importArchiveImage } from "../src/archive.ts";
 import { archiveCredits } from "../src/archive-credits.ts";
@@ -18,6 +18,7 @@ function endpoints(url: string) {
 }
 const source: ArchiveCandidate = { id: `nasa-${"a".repeat(24)}`, provider: "nasa", title: "Apollo 11", creator: "NASA", date: "1969", sourceId: "apollo-photo", sourceUrl: "https://images.nasa.gov/details/apollo-photo", imageUrl: "https://images-assets.nasa.gov/image/apollo/photo.jpg" };
 const photo: ArchiveImage = { key: "assets/archive/photo.jpg", mimeType: "image/jpeg", source, width: 80, height: 120, originalSha256: "original-hash", downloadedAt: "then" };
+afterEach(() => vi.unstubAllGlobals());
 
 describe("official archive discovery and ingestion", () => {
   it("searches three official APIs and reuses a successful normalized query", async () => {
@@ -72,6 +73,52 @@ describe("official archive discovery and ingestion", () => {
     await expect(searchArchives(" ", { store, fetch: fetcher })).rejects.toThrow("2–180");
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it("reports malformed provider data and missing bodies instead of caching a successful search", async () => {
+    for (const fetcher of [async () => Response.json({}), async () => new Response(null), async () => { throw "offline"; }]) {
+      const store = new MemStore(), result = await searchArchives("test", { store, fetch: fetcher as typeof fetch });
+      expect(result.items).toEqual([]); expect(result.errors).toHaveLength(3);
+      expect([...store.map.keys()]).toEqual([]);
+    }
+  });
+  it("discards non-public, incomplete, invalid and unsupported-host candidates", async () => {
+    const payloads = [
+      { data: [{ id: 1 }, { id: 2, is_public_domain: true, image_id: "invalid!" }, { id: 3, is_public_domain: true, image_id: "abc" }] },
+      { data: [{ id: 1 }, { id: 2, share_license_status: "CC-BY", images: { web: { url: source.imageUrl } } }, { id: 3, share_license_status: "CC0", images: { web: { url: "https://example.com/x" } } }] },
+      { collection: { items: [{}, { data: [{ nasa_id: "missing-image" }] }, { data: [{ nasa_id: "bad-url", title: "A" }], links: [{ render: "thumbnail", href: source.imageUrl }, { render: "image", href: "invalid-url" }] }] } },
+    ];
+    let index = 0;
+    const result = await searchArchives("test", { store: new MemStore(), fetch: (async () => Response.json(payloads[index++])) as typeof fetch });
+    expect(result.items).toEqual([]); expect(result.errors).toEqual([]);
+  });
+  it("keeps provider metadata optional and uses global fetch only as the explicit default boundary", async () => {
+    const payloads = [
+      { data: [] },
+      { data: [{ id: 8, title: "Object", share_license_status: "CC0", images: { web: { url: "https://openaccess-cdn.clevelandart.org/a.jpg" } }, creators: [{}, { description: "Maker" }] }] },
+      { collection: { items: ["photographer", "secondary_creator", "none"].map((field) => ({ data: [{ nasa_id: field, title: field, ...(field === "none" ? {} : { [field]: "Creator" }) }], links: [{ render: "image", href: source.imageUrl }] })) } },
+    ];
+    let index = 0; vi.stubGlobal("fetch", vi.fn(async () => Response.json(payloads[index++])));
+    const result = await searchArchives("test", { store: new MemStore() });
+    expect(result.items).toHaveLength(4); expect(result.items[0]!.sourceUrl).toBe("https://www.clevelandart.org/art/8");
+    expect(result.items.at(-1)!.creator).toBe("NASA");
+  });
+  it("bounds streamed responses even without a Content-Length and handles cancellation failure", async () => {
+    const cancel = vi.fn(async () => { throw new Error("already closed"); });
+    const fetcher = async () => new Response(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(4 * 1024 * 1024 + 1)); }, cancel }));
+    const result = await searchArchives("test", { store: new MemStore(), fetch: fetcher as typeof fetch });
+    expect(result.errors.map((e) => e.message)).toEqual(Array(3).fill("Archive response exceeds size limit."));
+    expect(cancel).toHaveBeenCalledTimes(3);
+  });
+  it("blocks credentials, non-HTTPS and ports and repairs a missing cached image", async () => {
+    for (const imageUrl of ["http://images-assets.nasa.gov/a.jpg", "https://user@images-assets.nasa.gov/a.jpg", "https://:password@images-assets.nasa.gov/a.jpg", "https://images-assets.nasa.gov:444/a.jpg"]) {
+      const store = new MemStore(); store.putJsonSync(`library/archive/items/${source.id}.json`, { ...source, imageUrl });
+      await expect(importArchiveImage(source.id, { store })).rejects.toThrow("host");
+    }
+    const store = new MemStore(); store.putJsonSync(`library/archive/items/${source.id}.json`, source);
+    store.putJsonSync(`library/archive/imports/${source.id}.json`, photo);
+    const png = await sharp({ create: { width: 1, height: 1, channels: 3, background: "white" } }).png().toBuffer();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(png)));
+    expect((await importArchiveImage(source.id, { store })).width).toBe(1);
+  });
 });
 
 describe("archive shot selection and credits", () => {
@@ -119,5 +166,13 @@ describe("archive shot selection and credits", () => {
     expect(archiveCredits(state).join("\n")).toContain(source.sourceUrl);
     state.archives = {};
     expect(archiveCredits(state)).toHaveLength(2);
+  });
+  it("localizes credits and omits absent creator/date metadata", () => {
+    expect(archiveCredits(makeState())).toEqual([]);
+    const state = makeState({ lang: "tr" }, { render: { path: "video", at: "t", archiveSources: [{ shotId: "s", key: photo.key, source: { ...source, creator: "", date: "" } }] } });
+    expect(archiveCredits(state)).toEqual(["Görsel kaynakları:", `${source.title} — ${source.sourceUrl}`]);
+    state.input.lang = "en"; expect(archiveCredits(state)[0]).toBe("Image sources:");
+    const noArchive = makeState({ motionMode: "vector" }, { shots: [{ id: "shot", sceneId: "s1", kind: "still_motion", startMs: 0, endMs: 1000, camera: "static", description: "Hero", imagePrompt: "", motionPrompt: "" }] });
+    replanShots(noArchive, ["shot"], "Replan"); expect(noArchive.archives).toBeUndefined();
   });
 });

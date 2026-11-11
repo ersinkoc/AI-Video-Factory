@@ -185,6 +185,7 @@ interface Opts {
   overlay?: string;
   /** Varsayılan varlıkların üstüne eklenen ya da yerlerine geçen varlıklar. */
   assets?: Record<string, VectorAsset>;
+  typography?: { pair: "editorial" };
 }
 
 function scene(shot: object, o: Opts = {}) {
@@ -206,9 +207,18 @@ function scene(shot: object, o: Opts = {}) {
     ...(o.texture ? { texture: o.texture } : {}),
     ...(o.ambience ? { ambience: o.ambience as never } : {}),
     ...(o.insets === undefined ? {} : { insets: o.insets }),
+    ...(o.typography ? { typography: o.typography } : {}),
   };
   return render(o.lineStyle ? <VectorScene {...props} lineStyle={o.lineStyle} /> : <VectorScene {...props} />).container;
 }
+
+it("uses the episode heading/body pair for title and label text", () => {
+  const c = scene({ texts: [{ text: "Heading", style: "title", x: 300, y: 200 }, { text: "Label", style: "label", x: 1000, y: 600 }] }, { frame: 150, typography: { pair: "editorial" } });
+  const heading = [...c.querySelectorAll<HTMLElement>("[data-text]")].find((el) => el.textContent === "Heading")!;
+  const label = [...c.querySelectorAll<HTMLElement>("[data-text]")].find((el) => el.textContent === "Label")!;
+  expect(heading.style.fontFamily).toContain("source-serif-4"); expect(label.style.fontFamily).toContain("ibm-plex-sans");
+  expect(heading.style.fontWeight).toBe("700"); expect(label.style.fontWeight).toBe("600");
+});
 
 /** Bir varlığın çizildiği katman kutusu (svg → iç div → katman div). */
 /** Kamera dönüşümü, önündeki kamera nefesi (lens.ts cameraDrift) atılmış. */

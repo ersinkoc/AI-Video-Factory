@@ -18,3 +18,12 @@ it("keeps legacy exports without a frozen reference free of fabricated compariso
   const view = renderIn(<StyleComparisonCard state={{ render: { path: "old.mp4", at: "old" } } as EpisodeResponse["state"]} busy={false} onSeek={() => {}} />);
   expect(view.container.textContent).toBe("");
 });
+it("distinguishes absent comparisons, no eligible samples and a measured match", () => {
+  const state = { id: "e", render: { styleReference: { profile: { palette: [] } }, styleSampling: {} } } as unknown as EpisodeResponse["state"];
+  const v = renderIn(<StyleComparisonCard state={state} busy={false} onSeek={() => {}} />); expect(screen.getByText(tr("comparison.absent"))).toBeTruthy(); v.unmount();
+  for (const compared of [0, 1]) {
+    state.render!.styleComparison = { status: "incomplete", at: "t", compared, eligible: 1, excludedArchive: 0, findings: [], error: "Missing frame" };
+    const view = renderIn(<StyleComparisonCard state={state} busy onSeek={() => {}} />);
+    expect(screen.getByText(tr(compared ? "comparison.noFlags" : "comparison.noSamples"))).toBeTruthy(); expect(screen.getByText("Missing frame")).toBeTruthy(); view.unmount();
+  }
+});

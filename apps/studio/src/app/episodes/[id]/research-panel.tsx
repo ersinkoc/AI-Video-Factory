@@ -26,11 +26,10 @@ export function ResearchPanel({ id, scenes, busy, onRewrite }: { id: string; sce
     }).catch((e: unknown) => { if (active) setError(e instanceof Error ? e.message : t("research.error")); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; clearTimeout(timer); controller.abort(); };
   }, [open, id, busy, refresh, scriptVersion, t]);
-  const save = async (mutation: ResearchMutation, revision?: number): Promise<boolean> => {
-    if (!view) return false;
+  const save = async (mutation: ResearchMutation, revision: number): Promise<boolean> => {
     setSaving(true); setError("");
     try {
-      const res = await fetch(`/api/episodes/${id}/research`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: revision ?? view.revision, mutation }), signal: AbortSignal.timeout(30_000) });
+      const res = await fetch(`/api/episodes/${id}/research`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: revision, mutation }), signal: AbortSignal.timeout(30_000) });
       if (!res.ok) throw new Error((await res.json()).error ?? t("research.error"));
       setRefresh((n) => n + 1); return true;
     } catch (e) { setError(e instanceof Error ? e.message : t("research.error")); return false; }
@@ -48,7 +47,7 @@ export function ResearchPanel({ id, scenes, busy, onRewrite }: { id: string; sce
         <p className="text-sm">{t("research.count", { sources: view.sources.length, claims: view.claims.length, unresolved: view.unresolved })}</p>
         {onRewrite && view.sources.some((s) => s.excerpt) && <button type="button" className="btn-ghost" disabled={locked} onClick={() => void onRewrite()}>{t("research.rewrite")}</button>}
         <div className="grid min-w-0 gap-4 xl:grid-cols-2">
-          <form className="min-w-0 space-y-2 rounded-lg border border-line p-3" onSubmit={async (e) => { e.preventDefault(); if (await save({ type: "put-source", source }, sourceRevision)) { setSource(emptySource); setSourceRevision(undefined); } }}>
+          <form className="min-w-0 space-y-2 rounded-lg border border-line p-3" onSubmit={async (e) => { e.preventDefault(); if (await save({ type: "put-source", source }, sourceRevision ?? view.revision)) { setSource(emptySource); setSourceRevision(undefined); } }}>
             <h4 className="font-medium">{t("research.sourceForm")}</h4>
             <label className="block text-sm">{t("research.sourceTitle")}<input className="field w-full" required maxLength={300} value={source.title} disabled={locked} onChange={(e) => setSource({ ...source, title: e.target.value })} /></label>
             <label className="block text-sm">{t("research.url")}<input type="url" className="field w-full" required maxLength={2048} value={source.url} disabled={locked} onChange={(e) => setSource({ ...source, url: e.target.value })} /></label>
@@ -59,7 +58,7 @@ export function ResearchPanel({ id, scenes, busy, onRewrite }: { id: string; sce
             <button className="btn-primary" disabled={locked}>{t("research.saveSource")}</button>
             {source.id && <button type="button" className="btn-ghost" onClick={() => { setSource(emptySource); setSourceRevision(undefined); }}>{t("research.cancel")}</button>}
           </form>
-          <form className="min-w-0 space-y-2 rounded-lg border border-line p-3" onSubmit={async (e) => { e.preventDefault(); if (await save({ type: "put-claim", claim }, claimRevision)) { setClaim(emptyClaim); setClaimRevision(undefined); } }}>
+          <form className="min-w-0 space-y-2 rounded-lg border border-line p-3" onSubmit={async (e) => { e.preventDefault(); if (await save({ type: "put-claim", claim }, claimRevision ?? view.revision)) { setClaim(emptyClaim); setClaimRevision(undefined); } }}>
             <h4 className="font-medium">{t("research.claimForm")}</h4>
             <label className="block text-sm">{t("research.scene")}<select className="field w-full" required value={claim.sceneId} disabled={locked || !scenes?.length} onChange={(e) => setClaim({ ...claim, sceneId: e.target.value })}><option value="">{t("research.pickScene")}</option>{scenes?.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}</select></label>
             {scenes?.find((s) => s.id === claim.sceneId) && <p className="max-h-32 overflow-auto whitespace-pre-wrap text-xs text-muted">{scenes.find((s) => s.id === claim.sceneId)!.narration}</p>}
@@ -80,7 +79,7 @@ export function ResearchPanel({ id, scenes, busy, onRewrite }: { id: string; sce
           <p className="break-words">{c.statement}</p><blockquote className="border-l-2 border-line pl-3 text-muted">{c.quote}</blockquote>
           <ul className="text-xs">{c.links.map((link) => <li key={link.sourceId}>{t(`research.relation.${link.relation}`)}: {view.sources.find((s) => s.id === link.sourceId)?.title ?? link.sourceId}</li>)}</ul>
           <p className="break-words text-xs text-muted">{t("research.dependents", { shots: c.dependentShots.join(", ") || "—" })}</p>
-          <div className="flex flex-wrap gap-2"><button type="button" className="btn-ghost" disabled={locked} onClick={() => { setClaim({ id: c.id, sceneId: c.sceneId, quote: c.quote, statement: c.statement, kind: c.kind, links: c.links }); setClaimRevision(view.revision); }}>{t("research.edit")}</button>{(["supported", "disputed", "needs-source", "excluded"] as const).map((status) => <button key={status} type="button" className="btn-ghost" disabled={locked || !c.anchorCurrent || status === "excluded" && !["interpretation", "reconstruction"].includes(c.kind)} onClick={() => void save({ type: "review-claim", claimId: c.id, fingerprint: c.fingerprint, status })}>{t(`research.status.${status}`)}</button>)}</div>
+          <div className="flex flex-wrap gap-2"><button type="button" className="btn-ghost" disabled={locked} onClick={() => { setClaim({ id: c.id, sceneId: c.sceneId, quote: c.quote, statement: c.statement, kind: c.kind, links: c.links }); setClaimRevision(view.revision); }}>{t("research.edit")}</button>{(["supported", "disputed", "needs-source", "excluded"] as const).map((status) => <button key={status} type="button" className="btn-ghost" disabled={locked || !c.anchorCurrent || status === "excluded" && !["interpretation", "reconstruction"].includes(c.kind)} onClick={() => void save({ type: "review-claim", claimId: c.id, fingerprint: c.fingerprint, status }, view.revision)}>{t(`research.status.${status}`)}</button>)}</div>
         </li>)}</ul>
       </>}
     </>}

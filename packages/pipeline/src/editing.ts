@@ -54,7 +54,9 @@ export async function previewNarrationUndo(store: AssetStore, state: EpisodeStat
   if (!/^[a-f0-9-]{36}$/.test(editId) || state.narrationEdit?.id !== editId) throw new LocalizedError(msg("err.edit.undo"));
   const record = await getJson<Revision>(store, editKey(state.id, editId));
   if (!record || record.version !== 1 || record.id !== editId || record.episodeId !== state.id || record.before?.id !== state.id || episodeFingerprint(record.before) !== record.beforeFingerprint || episodeFingerprint(state) !== record.afterFingerprint) throw new LocalizedError(msg("err.edit.undo"));
-  return { fingerprint: record.afterFingerprint, editId, sceneId: record.sceneId, narration: record.before.script?.scenes.find((s) => s.id === record.sceneId)?.narration ?? "", before: record.before };
+  const scene = record.before.script?.scenes.find((s) => s.id === record.sceneId);
+  if (!scene) throw new LocalizedError(msg("err.edit.undo"));
+  return { fingerprint: record.afterFingerprint, editId, sceneId: record.sceneId, narration: scene.narration, before: record.before };
 }
 
 export async function undoNarrationEdit(opts: { id: string; store: AssetStore; repo: Repo; editId: string; fingerprint: string }) {

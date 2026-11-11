@@ -44,4 +44,13 @@ describe("rendered frame motion", () => {
     expect(() => measureFrameMotion(new Uint8Array(20), new Uint8Array(20), 5, 4)).toThrow("equally sized");
     expect(() => measureFrameMotion(texture(), new Uint8Array(1), width, height)).toThrow("equally sized");
   });
+  it("handles a wide zoom at the image edge without reading pixels outside the frame", () => {
+    const w = 144, h = 54, dx = -4, scale = .96, cx = (w - 1) / 2, cy = (h - 1) / 2;
+    const previous = Uint8Array.from({ length: w * h }, (_, i) => ((i % w) * 37 + Math.floor(i / w) * 51) % 180 + 30);
+    const current = Uint8Array.from({ length: previous.length }, (_, i) => {
+      const x = Math.round((i % w - cx - dx) / scale + cx), y = Math.round((Math.floor(i / w) - cy) / scale + cy);
+      return x >= 0 && x < w && y >= 0 && y < h ? previous[y * w + x]! : 0;
+    });
+    expect(measureFrameMotion(previous, current, w, h)).toMatchObject({ shiftX: dx, scale, reliable: true, localChange: 0 });
+  });
 });

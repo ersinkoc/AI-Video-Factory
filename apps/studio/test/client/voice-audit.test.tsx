@@ -9,6 +9,11 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const view = () => ({ summary: { status: "complete", scenes: 1, findingsCount: 1 }, evidence: { current: true, reasons: [] as string[], report: { scenes: [{ sceneId: "s1", forms: { script: "C++ 2026.", recorded: "C++ 2026.", spoken: "si pılas pılas iki bin yirmi altı", captions: "C++ 2026." }, checks: [{ name: "word_activity", status: "skipped", reason: "Estimated timing" }], findings: [{ sceneId: "s1", kind: "voice_silent", startMs: 0, endMs: 4000 }], metrics: { durationMs: 4000, coveredMs: 4000, rmsDbfs: null } }] } } });
 const state = () => makeState({ script: { scenes: [{ id: "s1", beatId: "b", narration: "C++ 2026.", visualIntent: "", emotion: "", location: "" }] } });
 describe("working voice audit card", () => {
+  it("keeps an absent report explicit instead of inventing measurements", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ summary: null, evidence: null })));
+    renderIn(<VoiceAuditCard state={state()} busy={false} act={okAct()} />, "en"); fireEvent.click(screen.getByRole("button", { name: en("voiceAudit.title") }));
+    expect(await screen.findByText(en("voiceAudit.absent"))).toBeTruthy();
+  });
   it("loads only on demand and explicitly starts a free audit job", async () => {
     const fetch = vi.fn(async () => Response.json(view())); vi.stubGlobal("fetch", fetch); const act = okAct();
     renderIn(<VoiceAuditCard state={state()} busy={false} act={act} />); expect(fetch).not.toHaveBeenCalled();
@@ -39,5 +44,15 @@ describe("working voice audit card", () => {
     rerender(<LocaleProvider locale="tr"><VoiceAuditCard state={s} busy={false} act={act} /></LocaleProvider>); await reactAct(async () => finish(Response.json(data)));
     await screen.findByText("scene-0"); expect(screen.queryByText("scene-20")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: tr("quality.next") })); expect(screen.getByText("scene-20")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: tr("quality.previous") })); expect(screen.getByText("scene-0")).toBeTruthy();
+  });
+  it("shows a playable measured source, unknown legacy text and a failed-summary reason", async () => {
+    const data = view(), first = data.evidence.report.scenes[0]!;
+    const response = { ...data, summary: { ...data.summary, status: "failed", error: "Some voices could not be decoded" }, evidence: { ...data.evidence, report: { scenes: [{ ...first, source: { key: "voice.wav", sha256: "hash", bytes: 1 }, metrics: { ...first.metrics, rmsDbfs: -18.25 }, forms: { script: "Expected", captions: "Expected" }, findings: [{ sceneId: "s1", kind: "voice_missing" }], checks: [{ name: "source", status: "failed" }] }, { ...first, sceneId: "s2", metrics: undefined }] } } };
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(response)));
+    renderIn(<VoiceAuditCard state={state()} busy={false} act={okAct()} />, "en"); fireEvent.click(screen.getByRole("button", { name: en("voiceAudit.title") }));
+    await screen.findByText("Some voices could not be decoded");
+    expect(screen.getByLabelText(en("voiceAudit.listen", { scene: "s1" })).getAttribute("src")).toContain("voice.wav");
+    expect(screen.getAllByText(en("voiceAudit.unknown"))).toHaveLength(2);
   });
 });

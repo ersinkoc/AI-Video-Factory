@@ -116,7 +116,7 @@ export function CustomStyleEditor({ active, selected, onSelect, onDirty }: {
       <p className="text-sm">{t("custom.measured")}</p>
       <div className="flex flex-wrap gap-2">{profile.palette.map((swatch) => <span key={swatch.color} className="flex items-center gap-1 text-xs"><span className="inline-block h-5 w-5 rounded border border-line" style={{ background: swatch.color }} />{swatch.color} · {Math.round(swatch.share * 1000) / 10}%</span>)}</div>
       <p className="text-xs text-muted">{t("custom.measureStats", { dark: Math.round(profile.tone.darkShare * 100), light: Math.round(profile.tone.lightShare * 100), contrast: Math.round(profile.contrastSpan * 100) })}</p>
-      <button type="button" className="btn-secondary justify-self-start" disabled={Boolean(phase) || !draft || profile.palette.length < 3} onClick={() => { if (draft) { setDraft({ ...draft, palette: profile.palette.map((s) => s.color) }); dirty(); } }}>{t("custom.applyPalette")}</button>
+      <button type="button" className="btn-secondary justify-self-start" disabled={Boolean(phase) || !draft || profile.palette.length < 3} onClick={() => { setDraft({ ...draft!, palette: profile.palette.map((s) => s.color) }); dirty(); }}>{t("custom.applyPalette")}</button>
       <p className="text-xs text-muted">{t(profile.palette.length < 3 ? "custom.fewColors" : "custom.measureHint")}</p>
     </div>}
     {draft && <>

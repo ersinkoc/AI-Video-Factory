@@ -34,7 +34,7 @@ export function CharacterBankPicker({ bank, presenter, setPresenter, cast, setCa
   const packName = (id?: string) => (id && stylePackOf(id)?.name[locale]) || t("bank.custom");
   const filtered = bank.filter((c) => (!pack || c.pack === pack) && (!line || c.lineStyle === line) && (!compatibleOnly || compatible(c)) && (!query.trim() || searchable([c.name, c.role, c.description, c.id, ...c.mascotOf].join(" ")).includes(searchable(query.trim()))));
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)), page = Math.min(requestedPage, pageCount - 1), shown = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const remove = (id: string) => { if (disabled) return; if (presenter === id) setPresenter(""); setCast(cast.filter((value) => value !== id)); };
+  const remove = (id: string) => { if (presenter === id) setPresenter(""); setCast(cast.filter((value) => value !== id)); };
   const resetFilters = () => { setQuery(""); setPack(""); setLine(""); setCompatibleOnly(false); setPage(0); };
   return <fieldset disabled={disabled} className="min-w-0 space-y-4 rounded-xl border border-line p-3 sm:p-4">
     <legend className="px-1 text-sm font-semibold">{t("form.bank.title")}</legend>
@@ -63,8 +63,8 @@ export function CharacterBankPicker({ bank, presenter, setPresenter, cast, setCa
             <p className="line-clamp-2 break-words text-xs text-muted" title={c.description}>{c.description}</p>
             <p className="text-[11px] text-muted">{t("bank.episodes", { n: c.episodes.length })}{c.bank ? ` · ${t("bank.badge.bank")}` : ""}</p>
             {conflict && !selected(c) && <p className="text-xs text-muted">{t("form.bank.incompatible")}</p>}
-            <div className="mt-auto grid gap-2 pt-1"><button type="button" className={isPresenter ? "btn-primary justify-center px-2 py-1.5 text-xs" : "btn-ghost justify-center px-2 py-1.5 text-xs"} aria-label={t(isPresenter ? "form.bank.removePresenter" : "form.bank.asPresenter", { name: c.name })} aria-pressed={isPresenter} disabled={blocked} onClick={() => { if (blocked) return; setPresenter(isPresenter ? "" : c.id); if (!isPresenter) setCast(cast.filter((id) => id !== c.id)); }}>{t(isPresenter ? "form.bank.presenterBadge" : "form.bank.presenterAction")}</button>
-              <label className={`flex items-center justify-center gap-2 text-xs ${blocked || isPresenter || !isCast && cast.length >= CAST_LIMIT ? "text-muted" : ""}`}><input type="checkbox" aria-label={t("form.bank.asCast", { name: c.name })} checked={isCast && !isPresenter} disabled={blocked || isPresenter || !isCast && cast.length >= CAST_LIMIT} onChange={() => { if (blocked || isPresenter) return; if (isCast) setCast(cast.filter((id) => id !== c.id)); else if (cast.length < CAST_LIMIT) setCast([...cast, c.id]); }} />{t("form.bank.cast")}</label>
+            <div className="mt-auto grid gap-2 pt-1"><button type="button" className={isPresenter ? "btn-primary justify-center px-2 py-1.5 text-xs" : "btn-ghost justify-center px-2 py-1.5 text-xs"} aria-label={t(isPresenter ? "form.bank.removePresenter" : "form.bank.asPresenter", { name: c.name })} aria-pressed={isPresenter} disabled={blocked} onClick={() => { setPresenter(isPresenter ? "" : c.id); if (!isPresenter) setCast(cast.filter((id) => id !== c.id)); }}>{t(isPresenter ? "form.bank.presenterBadge" : "form.bank.presenterAction")}</button>
+              <label className={`flex items-center justify-center gap-2 text-xs ${blocked || isPresenter || !isCast && cast.length >= CAST_LIMIT ? "text-muted" : ""}`}><input type="checkbox" aria-label={t("form.bank.asCast", { name: c.name })} checked={isCast && !isPresenter} disabled={blocked || isPresenter || !isCast && cast.length >= CAST_LIMIT} onChange={() => setCast(isCast ? cast.filter((id) => id !== c.id) : [...cast, c.id])} />{t("form.bank.cast")}</label>
             </div>
           </div>
         </article>;

@@ -22,7 +22,7 @@ The preview contains a fingerprint of the full persisted episode. The Studio sen
 
 The latest edit pointer is a small optional field in episode state. **Review undo of last narration edit** loads the old narration on demand. **Restore saved previous revision** restores the exact episode state captured before that edit, including prior voice records and completion markers. The pointer survives a Studio restart and can step back through consecutive unchanged edit revisions.
 
-Undo requires the current episode fingerprint to match the saved edit's resulting state. Any intervening production or metadata change prevents undo; it cannot roll back paid production that has since occurred. It does not remove media files, edit history, the ledger or the separate research register. A corrupt or cross-episode revision is rejected. These hashes detect inconsistent records; they are not independent signatures.
+Undo requires the current episode fingerprint to match the saved edit's resulting state. Any intervening production or metadata change prevents undo; it cannot roll back paid production that has since occurred. It does not remove media files, edit history, the ledger or the separate research register. A corrupt or cross-episode revision is rejected. The previous snapshot must also contain the edited scene, even if its recorded hashes agree. These hashes detect inconsistent records; they are not independent signatures.
 
 ```text
 episodes/<id>/edits/<uuid>.json

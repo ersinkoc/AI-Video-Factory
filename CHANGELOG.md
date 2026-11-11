@@ -4,7 +4,13 @@ Releases are cut with `pnpm release`. The Studio shows an update banner when a n
 
 ## v0.5.0 (2026-11-11)
 
-- Add character gallery, style authoring and evidence-led episode editing
+- Add a searchable, filtered and paginated character gallery for new vector episodes, with persistent presenter/cast selections.
+- Add reusable custom styles, reference measurements, original local style previews, bundled typography and archive-image provenance.
+- Share structured shot intent across planning and playback, and freeze benchmark inputs and bounded comparison clips.
+- Measure main/Short exports and isolated voices, with quality decisions tied to the exact reviewed export.
+- Track narration-anchored claims and editor-provided sources, freeze export credits, and keep script rewriting explicit.
+- Preview narration changes, restore saved revisions and manage shared pronunciation rules with episode overrides.
+- Reject undo snapshots missing the original scene and expand regression coverage for media failures, stale requests and editorial workflows.
 
 ## v0.4.10 (2026-11-08)
 

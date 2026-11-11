@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Timeline } from "@ys/core";
-import { benchmarkClip, comparableBenchmarks, freezeBenchmark, verifyBenchmark, inside } from "../src/benchmark.ts";
+import { benchmarkClip, benchmarkCode, comparableBenchmarks, freezeBenchmark, verifyBenchmark, inside } from "../src/benchmark.ts";
 import { makeState } from "./pipeline-harness.ts";
 
 const dirs: string[] = [];
@@ -47,5 +47,49 @@ describe("frozen benchmark inputs", () => {
     const t = timeline(); t.visuals[0]!.fromFrame = 0; t.visuals[0]!.durationInFrames = 4;
     expect(benchmarkClip(t, "s1")).toEqual([0, 8]);
     expect(() => benchmarkClip(t, "unknown")).toThrow("Shot missing");
+  });
+  it("refuses an empty corpus, incomplete plans, remote assets and malformed manifests", async () => {
+    const { opts, state, root } = await fixture();
+    await expect(freezeBenchmark({ ...opts, shots: [] })).rejects.toThrow("empty");
+    delete state.timeline;
+    await expect(freezeBenchmark(opts)).rejects.toThrow("Timeline missing");
+    state.timeline = timeline(); delete state.shots;
+    await expect(freezeBenchmark(opts)).rejects.toThrow("Shot missing");
+    state.shots = [];
+    await expect(freezeBenchmark(opts)).rejects.toThrow("Shot missing");
+    state.timeline.visuals = [];
+    await expect(freezeBenchmark(opts)).rejects.toThrow("Shot missing");
+    state.timeline = timeline(); state.shots = (await fixture()).state.shots;
+    state.timeline.visuals[0]!.assetUrl = "https://example.com/media.png";
+    await expect(freezeBenchmark(opts)).rejects.toThrow("Stage remote media locally");
+    for (const manifest of [{ version: 2, shots: [] }, { version: 1, shots: [] }, { version: 1, shots: opts.shots, files: [], inputHash: "bad" }]) {
+      await writeFile(join(root, "manifest.json"), JSON.stringify(manifest));
+      await expect(verifyBenchmark(root)).rejects.toThrow("Invalid benchmark manifest");
+    }
+    for (const path of ["", "a//b", "./a", "a/../b", "..sibling"]) expect(() => inside(root, path)).toThrow();
+  });
+  it("freezes overlays, depth and audio while honoring disabled captions", async () => {
+    const { opts, state } = await fixture();
+    state.input.captions = false;
+    state.timeline!.captions = [{ text: "Hidden", startMs: 0, endMs: 100 }];
+    state.timeline!.visuals[0]!.overlay = "assets/overlay.png";
+    state.timeline!.visuals[0]!.motion = { type: "parallax", depthAssetUrl: "assets/depth.png" } as never;
+    state.timeline!.audio = [{ role: "voice", assetUrl: "voice.wav", fromFrame: 0, durationInFrames: 120, volume: 1 }];
+    const manifest = await freezeBenchmark(opts);
+    expect(manifest.files.map((f) => f.path)).toEqual(expect.arrayContaining(["public/e/assets/overlay.png", "public/e/assets/depth.png", "public/e/voice.wav"]));
+    expect(JSON.parse(await readFile(join(opts.directory, "states/e.json"), "utf8")).timeline.captions).toEqual([]);
+  });
+  it("fingerprints dirty code and lockfile bytes without including generated or media files", async () => {
+    const { root } = await fixture();
+    for (const dir of ["packages/nested", "apps", "scripts", "packages/node_modules", "packages/.next", "packages/public"]) await mkdir(join(root, dir), { recursive: true });
+    for (const path of ["package.json", "pnpm-lock.yaml", "packages/nested/source.ts", "packages/nested/component.tsx", "apps/config.json", "scripts/note.txt", "packages/tsbuildinfo.ts", "packages/public/media.ts", "packages/.next/build.ts", "packages/node_modules/vendor.ts"]) await writeFile(join(root, path), "original");
+    const original = await benchmarkCode(root);
+    await writeFile(join(root, "packages/public/media.ts"), "ignored media");
+    await writeFile(join(root, "scripts/note.txt"), "ignored prose");
+    expect(await benchmarkCode(root)).toBe(original);
+    await writeFile(join(root, "packages/nested/source.ts"), "changed source");
+    const changed = await benchmarkCode(root); expect(changed).not.toBe(original);
+    await writeFile(join(root, "pnpm-lock.yaml"), "changed dependency lock");
+    expect(await benchmarkCode(root)).not.toBe(changed);
   });
 });

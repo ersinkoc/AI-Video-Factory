@@ -75,4 +75,30 @@ describe("render audit card", () => {
     expect(screen.getByText(en("audit.interrupted"))).toBeTruthy();
     expect(screen.queryByText(en("audit.status.complete"))).toBeNull();
   });
+  it("keeps seek controls safe for a retained Short without a main-video player", () => {
+    const s = state(); s.short = { path: "short.mp4", at: "t", title: "Short", sec: 4, scenes: ["s1"], audit: s.render!.audit }; delete s.render;
+    const view = renderIn(<OverviewTab data={makeData(s)} />); expect(view.container.querySelector("video")).toBeNull();
+    expect(() => fireEvent.click(screen.getByRole("button", { name: /0:03–0:05/ }))).not.toThrow();
+  });
+  it("shows frozen research/source/type metadata and seeks a style finding in the main player", () => {
+    const s = state(), source = { id: `nasa-${"a".repeat(24)}`, provider: "nasa" as const, sourceId: "fixture", title: "Original archive", creator: "NASA", date: "", sourceUrl: "https://images.nasa.gov/details/fixture", imageUrl: "https://images-assets.nasa.gov/image/fixture.jpg" };
+    s.render!.typography = { pair: "warm" }; s.render!.research = { reportKey: "report", fingerprint: "f", revision: 1, sources: 1, claims: 2, unresolved: 1 };
+    s.render!.archiveSources = ["s1", "s2"].map((shotId) => ({ shotId, key: "photo.jpg", source }));
+    s.render!.styleReference = { key: "reference.jpg", profile: { version: 1, sha256: "a".repeat(64), width: 1, height: 1, sampledPixels: 1, palette: [{ color: "#ffffff", share: 1 }], tone: { p10: 1, median: 1, p90: 1, darkShare: 0, lightShare: 1 }, contrastSpan: 0, edgeDensity: 0 } };
+    s.render!.styleSampling = { eligible: 1, excludedArchive: 0, samples: [{ shotId: "s1", seconds: 2 }] };
+    s.render!.styleComparison = { at: "t", status: "complete", eligible: 1, excludedArchive: 0, compared: 1, findings: [{ shotId: "s1", seconds: 2, flags: ["palette"] }] };
+    const view = renderIn(<OverviewTab data={makeData(s)} />);
+    fireEvent.click(screen.getByRole("button", { name: "s1 · 2.0s" })); expect(view.container.querySelector("video")!.currentTime).toBe(2);
+    expect(screen.getByRole("link", { name: tr("research.download") }).getAttribute("href")).toContain("research?render");
+    expect(screen.getAllByRole("link", { name: "Original archive" })).toHaveLength(1);
+    expect(screen.getByText("Bitter / Nunito Sans")).toBeTruthy();
+  });
+  it("shows bounded extra findings, decoder errors and signed measured audio changes", () => {
+    const s = state(); s.render!.audit!.error = "Decoder only partially completed"; s.render!.audit!.findingsCount = 4;
+    s.render!.audit!.checks.push({ name: "future_decoder_check", status: "failed" });
+    s.render!.audit!.shotAudio = { sampleRate: 48000, channels: 1, referenceDbfs: -20, windowsCount: 2, windows: [1, -1].map((delta, i) => ({ id: `w${i}`, startSec: i, endSec: i + 1, rmsDbfs: -20, sampledPeakDbfs: -10, relativeDb: delta, previousDeltaDb: -delta, coverage: 1, quietShare: .1, envelope: [0, .5] })) };
+    renderIn(<RenderAuditCard state={s} busy={false} onSeek={() => {}} />);
+    expect(screen.getByText("Decoder only partially completed")).toBeTruthy(); expect(screen.getByText("future_decoder_check")).toBeTruthy();
+    expect(screen.getByText(tr("audit.more", { n: 3 }))).toBeTruthy(); expect(screen.getAllByText("-20.0 dBFS RMS")).toHaveLength(2);
+  });
 });

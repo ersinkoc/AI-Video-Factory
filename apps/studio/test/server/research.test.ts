@@ -37,4 +37,14 @@ describe("research HTTP workflow", () => {
     expect((await route.GET(new Request("http://localhost/?render"), ctx)).status).toBe(404);
     expect((await route.POST(post(1, mutation), { params: Promise.resolve({ id: ".." }) })).status).toBe(400);
   });
+  it("bounds body size/revisions and reports unreadable research without modifying the episode", async () => {
+    const { state, store } = await fixture();
+    for (const body of [null, {}, { expectedRevision: -1 }]) expect((await route.POST(new Request("http://localhost/", { method: "POST", body: JSON.stringify(body) }), ctx)).status).toBe(400);
+    expect((await route.POST(new Request("http://localhost/", { method: "POST", body: "x".repeat(32769) }), ctx)).status).toBe(400);
+    expect((await route.GET(new Request("http://localhost/"), { params: Promise.resolve({ id: ".." }) })).status).toBe(400);
+    expect((await route.GET(new Request("http://localhost/?render"), ctx)).status).toBe(404);
+    state.render = { path: "video", at: "t", research: { reportKey: "episodes/e/research/exports/../bad.json", claims: 0, sources: 0, unresolved: 0, revision: 0, fingerprint: "f" } };
+    expect((await route.GET(new Request("http://localhost/?render"), ctx)).status).toBe(404);
+    store.putText("episodes/e/research/book.json", "invalid JSON"); expect((await route.GET(new Request("http://localhost/"), ctx)).status).toBe(400);
+  });
 });

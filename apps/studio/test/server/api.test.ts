@@ -81,6 +81,15 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("narration impact and revision API", () => {
+  it("bounds preview requests and estimates a reviewed vector edit with an available voice provider", async () => {
+    registry.providers = [fakeProvider({ id: "fake:tts" }), fakeProvider({ id: "fake:image", capabilities: ["t2i", "i2i_multiref"], price: { unit: "per_output", usd: .03 } })];
+    const id = "bounded-edit"; await saveEpisode(id, { script: { scenes: [{ id: "s1", beatId: "b", narration: "Old text", visualIntent: "", emotion: "", location: "" }] } }, { motionMode: "vector", music: false, sfx: false });
+    for (const body of [null, {}, { type: "undo-preview", editId: 1 }]) expect((await edits.POST(post(body), params({ id }))).status).toBe(400);
+    expect((await edits.POST(new Request("http://localhost/", { method: "POST", body: "x".repeat(96001) }), params({ id }))).status).toBe(400);
+    expect((await edits.POST(post({ type: "preview", sceneId: "missing", narration: "New" }), params({ id }))).status).toBe(400);
+    const response = await edits.POST(post({ type: "preview", sceneId: "s1", narration: "New text" }), params({ id }));
+    expect((await response.json()).estimatedUsd).toBeTypeOf("number"); expect(spawn).not.toHaveBeenCalled();
+  });
   it("previews without mutation, binds application to reviewed state and restores a saved revision", async () => {
     const id = "reviewed-edit", original = await saveEpisode(id, { script: { scenes: [{ id: "s1", beatId: "b", narration: "Old narration", visualIntent: "", emotion: "", location: "" }] }, done: { voice: "t", render: "t" }, voice: { s1: { key: "old.mp3", mimeType: "audio/mpeg", durationMs: 4000, words: [], estimatedTiming: false } }, render: { path: "old.mp4", at: "old", exportId: "old-export" } });
     const res = await edits.POST(post({ type: "preview", sceneId: "s1", narration: "New narration" }), params({ id }));
@@ -106,6 +115,34 @@ describe("narration impact and revision API", () => {
 
 describe("archive image actions and source register", () => {
   const candidate = { id: `nasa-${"b".repeat(24)}`, provider: "nasa" as const, title: "Apollo 11", creator: "NASA", date: "1969", sourceId: "apollo", sourceUrl: "https://images.nasa.gov/details/apollo", imageUrl: "https://images-assets.nasa.gov/image/apollo.jpg" };
+  it("rejects unknown shots even if releasing producer ownership encounters an I/O error", async () => {
+    const id = "archive-missing-shot"; await saveEpisode(id);
+    const storage = server.store(), compare = storage.compareAndSwap!.bind(storage);
+    vi.spyOn(storage, "compareAndSwap").mockImplementation(async (key, expected, bytes, mime) => { if (new TextDecoder().decode(bytes) === "null") throw new Error("Release unavailable"); return compare(key, expected, bytes, mime); });
+    expect((await act(id, { type: "use-archive", shotId: "missing", candidateId: candidate.id })).status).toBe(400); expect(spawn).not.toHaveBeenCalled();
+  });
+  it("keeps missing source/audit artifacts distinct from load failures", async () => {
+    const id = "missing-artifact"; await saveEpisode(id);
+    expect((await sources.GET(new Request("http://localhost/"), params({ id }))).status).toBe(404);
+    expect((await sources.GET(new Request("http://localhost/"), params({ id: "missing-episode" }))).status).toBe(400);
+    await saveEpisode(id, { render: { path: "video", at: "t", audit: { status: "complete", at: "t", findingsCount: 0, findings: [], checks: [], reportKey: `episodes/${id}/render-audits/missing.json` } } });
+    expect((await renderAudit.GET(new Request("http://localhost/"), params({ id }))).status).toBe(404);
+    expect((await renderAudit.GET(new Request("http://localhost/"), params({ id: "missing-episode" }))).status).toBe(400);
+  });
+  it("validates export targets and starts an explicit style comparison only with a frozen reference", async () => {
+    const id = "export-actions"; await saveEpisode(id);
+    expect((await act(id, { type: "audit-render", target: "other" })).status).toBe(400);
+    expect((await act(id, { type: "audit-render", target: "short" })).status).toBe(400);
+    expect((await act(id, { type: "compare-style" })).status).toBe(400);
+    const profile = { version: 1 as const, sha256: "a".repeat(64), width: 1, height: 1, sampledPixels: 1, palette: [{ color: "#ffffff", share: 1 }], tone: { p10: 1, median: 1, p90: 1, darkShare: 0, lightShare: 1 }, contrastSpan: 0, edgeDensity: 0 };
+    await saveEpisode(id, { render: { path: "video", at: "t", styleReference: { key: "reference.jpg", profile } } });
+    expect((await act(id, { type: "compare-style" })).status).toBe(400);
+    await saveEpisode(id, { render: { path: "video", at: "t", styleReference: { key: "reference.jpg", profile }, styleSampling: { eligible: 0, excludedArchive: 0, samples: [] } } });
+    expect((await act(id, { type: "compare-style" })).status).toBe(200); expect(lastChild().args).toContain("compare-style");
+    lastChild().emit("exit", 0);
+    await saveEpisode(id, { render: { path: "video", at: "t", auditRanges: [{ id: "shot", startSec: 0, endSec: 1 }] } });
+    expect((await act(id, { type: "audit-render" })).status).toBe(200);
+  });
   it("attaches a cached archive image under the episode lock and restores its generated frame", async () => {
     const key = "assets/archive/photo.jpg";
     const image = { key, mimeType: "image/jpeg" as const, source: candidate, width: 2, height: 2, originalSha256: "hash", downloadedAt: "t" };

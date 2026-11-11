@@ -73,13 +73,14 @@ describe("yardımcılar", () => {
 
 describe("run düzeni", () => {
   it("feeds sources into writing and persists final exact-quote annotations as unreviewed candidates", async () => {
-    const h = harness(), id = await h.seed(makeState({}, { story, done: { style: "t", story: "t" } }));
+    const h = harness(), id = await h.seed(makeState({}, { style: STYLE, done: { style: "t" } }));
     await mutateResearch({ id, store: h.store, load: () => h.load(id), expectedRevision: 0, mutation: { type: "put-source", source: { title: "Fixture note", url: "https://example.org/note", excerpt: "Synthetic evidence." } } });
     const source = (await loadResearch(h.store, id)).sources[0]!;
     const sourced = { ...SCRIPT, scenes: SCRIPT.scenes.map((s) => ({ ...s, claims: [{ quote: s.narration, kind: "fact", sourceIds: [source.id] }] })) };
-    onAgent("screenwriter", () => sourced); onAgent("scriptDoctor", () => ({ script: sourced, notes: [] }));
+    onAgent("storyArchitect", () => story); onAgent("screenwriter", () => sourced); onAgent("scriptDoctor", () => ({ script: sourced, notes: [] }));
     const result = await h.pipeline.run(id, { until: "script" });
     expect((callsOf("screenwriter")[0]!.args[0] as { research: { sources: { id: string }[] } }).research.sources[0]!.id).toBe(source.id);
+    expect((callsOf("storyArchitect")[0]!.args[0] as { research: { sources: { id: string }[] } }).research.sources[0]!.id).toBe(source.id);
     const reviewed = researchView(await loadResearch(h.store, id), result);
     expect(reviewed.claims).toHaveLength(SCRIPT.scenes.length);
     expect(reviewed.claims.every((c) => c.status === "unreviewed" && c.origin === "writer")).toBe(true);

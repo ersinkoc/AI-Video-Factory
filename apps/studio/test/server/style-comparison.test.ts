@@ -20,3 +20,8 @@ it("downloads only the current episode's immutable comparison report", async () 
   }
   expect((await get("../e1")).status).toBe(400);
 });
+it("reports storage read failure instead of returning a fabricated report", async () => {
+  deps.state.render.styleComparison = { reportKey: "episodes/e1/style-comparisons/report.json" };
+  (deps.store as MemStore).get = async () => { throw new Error("Storage unavailable"); };
+  expect((await get()).status).toBe(400);
+});

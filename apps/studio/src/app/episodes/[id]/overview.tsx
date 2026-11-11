@@ -19,6 +19,10 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
   const { state } = data;
   const video = useRef<HTMLVideoElement>(null);
   const shortVideo = useRef<HTMLVideoElement>(null);
+  const seekOutput = (target: "main" | "short", seconds: number) => {
+    const player = target === "short" ? shortVideo.current : video.current;
+    if (player) player.currentTime = seconds;
+  };
   const videoSec = Object.values(state.voice ?? {}).reduce((n, v) => n + v.durationMs, 0) / 1000;
   const totalUsd = data.actual.byStage.reduce((n, g) => n + g.micros, 0) / 1_000_000;
   const prodSec = Object.values(state.stats ?? {}).reduce((n, s) => n + (s?.durationMs ?? 0), 0) / 1000;
@@ -129,10 +133,10 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
             </div>
           </section>
         )}
-        <RenderAuditCard state={state} busy={busy} act={act} onSeek={(seconds) => { if (video.current) video.current.currentTime = seconds; }} />
-        <RenderAuditCard state={state} busy={busy} act={act} target="short" onSeek={(seconds) => { if (shortVideo.current) shortVideo.current.currentTime = seconds; }} />
-        <StyleComparisonCard state={state} busy={busy} act={act} onSeek={(seconds) => { if (video.current) video.current.currentTime = seconds; }} />
-        <QualityIssueBoard id={state.id} busy={busy} version={[state.render?.exportId ?? state.render?.at, state.short?.exportId ?? state.short?.at, state.render?.audit?.at, state.short?.audit?.at, state.render?.styleComparison?.at, state.review?.at, state.draftReview?.at, state.voiceAudit?.at].join('|')} onSeek={(target, seconds) => { const player = target === "short" ? shortVideo.current : video.current; if (player) player.currentTime = seconds; }} />
+        <RenderAuditCard state={state} busy={busy} act={act} onSeek={(seconds) => seekOutput("main", seconds)} />
+        <RenderAuditCard state={state} busy={busy} act={act} target="short" onSeek={(seconds) => seekOutput("short", seconds)} />
+        <StyleComparisonCard state={state} busy={busy} act={act} onSeek={(seconds) => seekOutput("main", seconds)} />
+        <QualityIssueBoard id={state.id} busy={busy} version={[state.render?.exportId ?? state.render?.at, state.short?.exportId ?? state.short?.at, state.render?.audit?.at, state.short?.audit?.at, state.render?.styleComparison?.at, state.review?.at, state.draftReview?.at, state.voiceAudit?.at].join('|')} onSeek={seekOutput} />
         {state.render?.research && <section className="card space-y-2 p-4"><h3 className="font-semibold">{t("research.frozen")}</h3><p className="text-sm text-muted">{t("research.count", { sources: state.render.research.sources, claims: state.render.research.claims, unresolved: state.render.research.unresolved })}</p><p className="text-xs text-muted">{t("research.frozenHint")}</p><a className="btn-ghost" href={`/api/episodes/${state.id}/research?render`} download>{t("research.download")}</a></section>}
         {Boolean(state.render?.archiveSources?.length) && <section className="card min-w-0 space-y-2 p-4" aria-label={t("archive.used")}>
           <h3 className="font-semibold">{t("archive.used")}</h3>

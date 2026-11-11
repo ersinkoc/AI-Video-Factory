@@ -36,6 +36,13 @@ describe("motion gallery", () => {
  });
 });
 describe("reference style editor", () => {
+ it("starts a free editable recipe when measuring an image without a saved draft", async () => {
+  const profile = { version: 1, sha256: "a".repeat(64), width: 1, height: 1, sampledPixels: 1, palette: [{ color: "#ffffff", share: 1 }], tone: { p10: 1, median: 1, p90: 1, darkShare: 0, lightShare: 1 }, contrastSpan: 0, edgeDensity: 0 };
+  vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => init ? json({ referenceKey, profile }) : json([])));
+  renderIn(<Host />); upload(file()); fireEvent.click(screen.getByText(tr("custom.measure")));
+  await screen.findByTestId("reference-profile"); expect(screen.getByLabelText(tr("custom.field.name"))).toHaveProperty("value", "Paper Poster");
+  expect(screen.getByRole("button", { name: tr("custom.applyPalette") })).toHaveProperty("disabled", true); expect(screen.getByText(tr("custom.fewColors"))).toBeTruthy();
+ });
  it("measures without a model, applies colors only on request, and clears stale measurements on replacement", async () => {
   const profile = { version: 1, sha256: "a".repeat(64), width: 100, height: 50, sampledPixels: 5000,
     palette: [{ color: "#ffffff", share: .6 }, { color: "#111111", share: .3 }, { color: "#ff0000", share: .1 }],

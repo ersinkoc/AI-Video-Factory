@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +13,7 @@ import { RECIPE } from "../../core/test/style-recipe-fixture.ts";
 
 const solid = (color: string) => sharp({ create: { width: 100, height: 50, channels: 3, background: color } }).png().toBuffer();
 const roots: string[] = [];
-afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
+afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 
 describe("local reference measurements", () => {
   it("measures known areas deterministically and does not invent colors for a solid image", async () => {
@@ -33,6 +33,23 @@ describe("local reference measurements", () => {
     const profile = await measureImage(bytes);
     expect(profile).toMatchObject({ width: 1000, height: 500, sampledPixels: 192 * 96, palette: [{ color: "#ffffff", share: 1 }] });
     await expect(measureImage(new Uint8Array([1]))).rejects.toThrow();
+  });
+  it("bounds diverse palettes, merges near colors and supports a single pixel without invented edges", async () => {
+    const colors = [[0, 0, 0], [255, 255, 255], [255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0], [255, 0, 255], [0, 255, 255], [15, 15, 15]];
+    const data = Buffer.from(colors.flatMap((rgb) => Array.from({ length: 10 }, () => rgb).flat()));
+    const profile = await measureImage(await sharp(data, { raw: { width: 90, height: 1, channels: 3 } }).png().toBuffer());
+    expect(profile.palette).toHaveLength(6); expect(profile.palette.reduce((sum, p) => sum + p.share, 0)).toBeCloseTo(1);
+    const nearby = await sharp(Buffer.from([170, 170, 170, 176, 176, 176]), { raw: { width: 2, height: 1, channels: 3 } }).png().toBuffer();
+    expect((await measureImage(nearby)).palette).toHaveLength(1);
+    const pixel = await sharp({ create: { width: 1, height: 1, channels: 3, background: "white" } }).png().toBuffer();
+    const metadata = await sharp(pixel).metadata(); Reflect.deleteProperty(metadata, "autoOrient");
+    vi.spyOn(sharp.prototype, "metadata").mockResolvedValueOnce(metadata);
+    expect(await measureImage(pixel)).toMatchObject({ width: 1, height: 1, edgeDensity: 0, sampledPixels: 1 });
+  });
+  it("distinguishes near-color matching, detail and contrast changes", async () => {
+    const p = await measureImage(await solid("#aaaaaa"));
+    const actual = { ...p, palette: [{ color: "#a9a9a9", share: .5 }, { color: "#ababab", share: .5 }], contrastSpan: .5, edgeDensity: .8 };
+    expect(compareImageProfiles(p, actual)).toMatchObject({ flags: ["palette", "contrast", "detail"], paletteShareDelta: .5 });
   });
   it("uses content-addressed measurements and repairs a missing reference without a model or ledger", async () => {
     const store = new MemStore(), bytes = await solid("#abcdef");

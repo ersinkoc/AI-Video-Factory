@@ -27,7 +27,8 @@ const SAMPLE_FPS = 2;
 const WIDTH = 96;
 const median = (values: number[]) => {
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)] ?? 0;
+  // Çağıran yalnız en az iki iç kare çifti olan aralıkların örneklerini verir.
+  return sorted[Math.floor(sorted.length / 2)]!;
 };
 
 /** Read-only advisory analysis. A complete check is not an editorial approval. */

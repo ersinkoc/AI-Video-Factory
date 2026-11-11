@@ -39,6 +39,14 @@ describe("structured narrative action", () => {
     expect(result.layers[0]!.anims[0]!.target).toBe(2);
     expect(withNarratedActions(result, "Babbage types.", CAST, 6, { ...intent(), subject: "c1", action: "point" })).toBeUndefined();
   });
+  it("retains unrelated animation while retargeting a pointing gesture and leaves existing non-point actions alone", () => {
+    const s = spec(layer("c1", [{ type: "talk" }, { type: "point", target: 1 }]), layer("c2"), layer("keyboard"));
+    const result = withNarratedActions(s, "", CAST, 6, { ...intent(), subject: "c1", action: "point" })!;
+    expect(result.layers[0]!.anims.map((a) => [a.type, a.target])).toEqual([["talk", undefined], ["point", 2]]);
+    const typing = spec(layer("c2", [{ type: "typing" }]), layer("keyboard"));
+    expect(withNarratedActions(typing, "", CAST, 6, intent())).toBeUndefined();
+    expect(withNarratedActions(s, "", CAST, 6, { ...intent(), subject: "c1", action: "point", target: undefined })).toBeUndefined();
+  });
 });
 
 describe("anlatılan eylemin öznesi", () => {

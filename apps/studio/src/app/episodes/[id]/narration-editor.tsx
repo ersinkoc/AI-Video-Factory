@@ -37,11 +37,10 @@ export function NarrationEditor({ id, sceneId, narration, disabled, act, onDirty
     } catch (e) { if (request === generation.current) setError(e instanceof Error ? e.message : t("edit.error")); }
     finally { clearTimeout(timer); if (request === generation.current) setPending(false); }
   };
-  const apply = async () => {
-    if (!preview) return;
+  const apply = async (review: Preview) => {
     setPending(true); setError("");
     try {
-      if (await act({ type: "edit-narration", sceneId, narration: preview.after, fingerprint: preview.fingerprint })) setPreview(undefined);
+      if (await act({ type: "edit-narration", sceneId, narration: review.after, fingerprint: review.fingerprint })) setPreview(undefined);
       else setError(t("edit.recheck"));
     } catch { setError(t("edit.error"));
     } finally { setPending(false); }
@@ -60,7 +59,7 @@ export function NarrationEditor({ id, sceneId, narration, disabled, act, onDirty
       {Boolean(preview.archiveChoices.length) && <p>{t("edit.archives", { shots: preview.archiveChoices.join(", ") })}</p>}
       <p>{t("edit.estimate", { amount: preview.estimatedUsd === null ? t("edit.unknown") : fmt.usd(preview.estimatedUsd) })}</p>
       <p className="text-xs text-muted">{t("edit.limit")}</p>
-      <button type="button" className="btn-primary" disabled={pending || !preview.changed} onClick={() => void apply()}>{t("edit.apply")}</button>
+      <button type="button" className="btn-primary" disabled={pending || !preview.changed} onClick={() => void apply(preview)}>{t("edit.apply")}</button>
     </div>}
   </div>;
 }

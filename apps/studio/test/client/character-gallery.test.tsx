@@ -8,8 +8,8 @@ import { en, renderIn, tr } from "./fixtures.tsx";
 
 afterEach(cleanup);
 const character = (i: number, extra: Partial<LibraryCharacter> = {}): LibraryCharacter => ({ id: i.toString(16).padStart(32, "0"), key: `library/vector/character/${i.toString(16).padStart(32, "0")}.svg`, name: `Character ${i}`, description: `Appearance ${i}`, role: "presenter", pack: "flat-explainer", artStyle: "flat", lineStyle: "outline", episodes: [], mascotOf: [], ...extra });
-function Gallery({ bank, disabled = false }: { bank: LibraryCharacter[]; disabled?: boolean }) {
-  const [presenter, setPresenter] = useState(""), [cast, setCast] = useState<string[]>([]);
+function Gallery({ bank, disabled = false, initialPresenter = "", initialCast = [] }: { bank: LibraryCharacter[]; disabled?: boolean; initialPresenter?: string; initialCast?: string[] }) {
+  const [presenter, setPresenter] = useState(initialPresenter), [cast, setCast] = useState<string[]>(initialCast);
   return <><CharacterBankPicker bank={bank} presenter={presenter} setPresenter={setPresenter} cast={cast} setCast={setCast} disabled={disabled} /><output data-testid="selection">{JSON.stringify({ presenter, cast })}</output></>;
 }
 const current = () => JSON.parse(screen.getByTestId("selection").textContent!);
@@ -65,5 +65,22 @@ describe("new episode character gallery", () => {
     fireEvent.click(screen.getByRole("button", { name: tr("form.bank.asPresenter", { name: "Character 1" }) })); expect(current().presenter).toBe("");
     unmount(); renderIn(<Gallery bank={[]} />); expect(screen.getByText(tr("bank.empty"))).toBeTruthy();
     expect(within(screen.getByRole("group")).getByRole("link", { name: tr("form.bank.manage") }).getAttribute("href")).toBe("/characters");
+  });
+  it("removes either role, pages backward and keeps imported mixed/unsupported choices visible", () => {
+    const bank = Array.from({ length: 13 }, (_, i) => character(i + 1));
+    const view = renderIn(<Gallery bank={bank} />);
+    fireEvent.click(screen.getByRole("button", { name: tr("quality.next") })); fireEvent.click(screen.getByRole("button", { name: tr("quality.previous") }));
+    expect(screen.getByRole("article", { name: "Character 1" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: tr("form.bank.asPresenter", { name: "Character 1" }) }));
+    fireEvent.click(screen.getByRole("button", { name: tr("form.bank.removePresenter", { name: "Character 1" }) })); expect(current().presenter).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: tr("form.bank.asPresenter", { name: "Character 1" }) }));
+    fireEvent.click(screen.getByRole("button", { name: tr("form.bank.removeSelected", { name: "Character 1" }) })); expect(current().presenter).toBe("");
+    for (let i = 0; i < 2; i++) fireEvent.click(screen.getByRole("checkbox", { name: tr("form.bank.asCast", { name: "Character 2" }) }));
+    expect(current().cast).toEqual([]); view.unmount();
+    const mixed = [character(1), character(2, { pack: "noir", bank: true }), character(3, { pack: undefined, role: "" }), character(4, { pack: "removed-pack" })];
+    renderIn(<Gallery bank={mixed} initialPresenter={mixed[0]!.id} initialCast={[mixed[1]!.id]} />);
+    expect(screen.getByRole("alert").textContent).toBe(tr("form.bank.mixed")); expect(screen.getAllByText(tr("bank.custom"), { exact: false }).length).toBeGreaterThan(0);
+    expect((screen.getByRole("button", { name: tr("form.bank.asPresenter", { name: "Character 3" }) }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.error(screen.getByRole("img", { name: "Character 3" })); expect(screen.getByRole("img", { name: tr("form.bank.imageMissing", { name: "Character 3" }) })).toBeTruthy();
   });
 });
