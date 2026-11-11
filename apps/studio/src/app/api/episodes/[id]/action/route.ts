@@ -1,4 +1,8 @@
 import {
+  acquireLock,
+  saveNarrationEdit,
+  undoNarrationEdit,
+  setArchiveShot,
   runStatusOf,
   setSeries,
   reuseCharacter,
@@ -11,7 +15,6 @@ import {
   setShort,
   setRealism,
   changeVoice,
-  editNarration,
   redrawShots,
   replanShots,
   revokeApproval,
@@ -19,6 +22,7 @@ import {
   setMotion,
   type MotionMode,
 } from "@ys/pipeline/light";
+import { importArchiveImage } from "@ys/pipeline/archive";
 import { LocalizedError, msg } from "@ys/core/messages";
 import { apiError, errorResponse } from "../../../../../lib/api";
 import { cancelJob, episodeBusy, getJob, repo, startJob, store } from "../../../../../lib/server";
@@ -28,7 +32,9 @@ const MOTION_MODES: MotionMode[] = ["animated", "mixed", "still", "vector"];
 
 export type StudioAction =
   | { type: "generate-script" }
-  | { type: "edit-narration"; sceneId: string; narration: string }
+  | { type: "rewrite-script" }
+  | { type: "edit-narration"; sceneId: string; narration: string; fingerprint?: string }
+  | { type: "undo-narration-edit"; editId: string; fingerprint: string }
   | { type: "approve-script" }
   | { type: "revoke-script" }
   | { type: "select"; entityId: string; index: number }
@@ -41,6 +47,11 @@ export type StudioAction =
   | { type: "redraw"; shotIds: string[] }
   | { type: "replan"; shotIds: string[]; note: string }
   | { type: "resume" }
+  | { type: "audit-render"; target?: "main" | "short" }
+  | { type: "audit-voice" }
+  | { type: "compare-style" }
+  | { type: "use-archive"; shotId: string; candidateId: string }
+  | { type: "remove-archive"; shotId: string }
   | { type: "accept-asset"; key: string }
   | { type: "reject-asset"; key: string; note?: string }
   | { type: "set-realism"; enabled: boolean }
@@ -70,8 +81,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       case "generate-script":
         startJob(id, "job.script", ["episode", "run", id, "--until", "script"]);
         break;
+      case "rewrite-script":
+        startJob(id, "job.rewriteScript", ["episode", "rewrite-script", id]);
+        break;
       case "edit-narration":
-        await episodes.update(id, (s) => editNarration(s, action.sceneId, action.narration));
+        await saveNarrationEdit({ id, store: store(), repo: episodes, sceneId: action.sceneId, narration: action.narration, fingerprint: action.fingerprint });
+        break;
+      case "undo-narration-edit":
+        await undoNarrationEdit({ id, store: store(), repo: episodes, editId: action.editId, fingerprint: action.fingerprint });
         break;
       case "approve-script":
         await episodes.update(id, (s) => approve(s, "script"));
@@ -114,16 +131,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         break;
       case "accept-asset":
       case "reject-asset": {
-        const s = await episodes.load(id);
-        if (action.type === "accept-asset") await acceptAsset(store(), s, action.key);
-        else await rejectAsset(store(), s, action.key, action.note);
-        await episodes.save(s);
+        const release = await acquireLock(store(), id);
+        try {
+          const s = await episodes.load(id);
+          if (action.type === "accept-asset") await acceptAsset(store(), s, action.key);
+          else await rejectAsset(store(), s, action.key, action.note);
+          await episodes.save(s);
+        } finally { await release(); }
         break;
       }
       case "reuse-character": {
-        const s = await episodes.load(id);
-        await reuseCharacter(store(), s, action.castId, action.key);
-        await episodes.save(s);
+        const release = await acquireLock(store(), id);
+        try {
+          const s = await episodes.load(id);
+          await reuseCharacter(store(), s, action.castId, action.key);
+          await episodes.save(s);
+        } finally { await release(); }
         break;
       }
       case "set-series":
@@ -147,6 +170,34 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       case "resume":
         startJob(id, "job.resume", ["episode", "run", id]);
         break;
+      case "use-archive":
+      case "remove-archive": {
+        const release = await acquireLock(store(), id);
+        try {
+          const state = await episodes.load(id);
+          if (!state.shots?.some((s) => s.id === action.shotId)) throw new LocalizedError(msg("err.action.noShots"));
+          const image = action.type === "use-archive" ? await importArchiveImage(action.candidateId, { store: store() }) : undefined;
+          setArchiveShot(state, action.shotId, image);
+          await episodes.save(state);
+        } finally { await release().catch(() => {}); }
+        break;
+      }
+      case "audit-render": {
+        const state = await episodes.load(id);
+        if (action.target !== undefined && action.target !== "main" && action.target !== "short") throw new LocalizedError(msg("api.badAction", { type: "audit target" }));
+        if (action.target === "short" ? !state.short : !state.render || (!state.render.auditRanges?.length && !state.timeline)) throw new LocalizedError(msg("err.missing", { what: action.target === "short" ? "short" : "timeline/render" }));
+        startJob(id, "job.audit", ["episode", "audit", id, ...(action.target === "short" ? ["--short"] : [])]);
+        break;
+      }
+      case "audit-voice":
+        startJob(id, "job.voiceAudit", ["episode", "audit-voice", id]);
+        break;
+      case "compare-style": {
+        const state = await episodes.load(id);
+        if (!state.render?.styleReference || !state.render.styleSampling) throw new LocalizedError(msg("err.missing", { what: "render/style reference" }));
+        startJob(id, "job.compareStyle", ["episode", "compare-style", id]);
+        break;
+      }
       case "cancel":
         cancelJob(id);
         break;

@@ -8,6 +8,28 @@ Tek bir konudan çok dilli, animasyon ağırlıklı YouTube videoları üreten b
 
 Mimari, sağlayıcı seçimi ve yol haritası: [docs/PROJE_PLANI.md](docs/PROJE_PLANI.md). Sürüm geçmişi: [CHANGELOG.md](CHANGELOG.md).
 
+Mevcut videoda zaman kodlu siyah/donuk görüntü, hareket, toplam ses yüksekliği ve çekim bazında ses enerjisi/sessiz aralık ölçümleri için: [Render sonrası video denetimi](docs/RENDER_AUDIT.md).
+
+Çıktı sürümüne bağlı editör kararları, otomatik Short denetimi ve sabit kare/klip karşılaştırmaları için: [Kalite akışı ve karşılaştırma seti](docs/QUALITY_WORKFLOW.md).
+
+Çekimin öznesi/eylemi, ilgili anlatım aralığı ve okunabilir bekleme süresi denetimi için: [Yapılandırılmış çekim amacı](docs/SHOT_INTENT.md).
+
+Anlatımdaki iddialar, editörün eklediği kaynak alıntıları, güncelliğini kaybeden inceleme kararları ve ana çıktıya bağlı kaynak raporu için: [İddia kaynakları](docs/CLAIM_SOURCES.md).
+
+Anlatım değişikliğinin etki önizlemesi, korunan sesler ve kayıtlı sürüme geri alma için: [İncelenen anlatım düzenlemeleri](docs/NARRATION_EDITS.md).
+
+Müzikten bağımsız konuşma sessizliği, zamanlama ve senaryo/okunuş/altyazı karşılaştırması için: [Konuşma kaydı denetimi](docs/VOICE_AUDIT.md).
+
+Ortak okunuş kuralları, bölüme özel tercihler ve incelenmiş ses değişiklikleri için: [Telaffuz sözlükleri](docs/PRONUNCIATIONS.md).
+
+Yeni vektör bölümünde görsel sunucu/kadro seçimi, filtreler ve sayfalama için: [Karakter galerisi](docs/CHARACTER_GALLERY.md).
+
+Yerel başlık/gövde eşleştirmeleri, doğrulanmış Türkçe karakter desteği ve düzenlenebilir örnekler için: [Bölüm tipografisi](docs/TYPOGRAPHY.md).
+
+Gerçek arşiv görselleri, geri alınabilir çekim seçimleri ve kaynak kaydı için: [Arşiv görselleri](docs/ARCHIVE_IMAGES.md).
+
+Ücretsiz referans renk ölçümü, paleti taslağa uygulama ve gerçek MP4 kareleriyle karşılaştırma için: [Ölçülen referans yönü](docs/REFERENCE_STYLE.md).
+
 ## Sponsor
 
 <table>

@@ -19,6 +19,7 @@ export const DEFAULT_TIER_MODEL: Record<ModelTier, ModelChoice> = {
 /** Ajan anahtarı → varsayılan sınıf. Anahtar ajan çağrısının adıdır (günlükte ve maliyet dökümünde görünen). */
 export const AGENT_ROLES = {
   "style-picker": "cheap",
+  "style-analyst": "fast",
   "art-director": "fast",
   "story-architect": "creative",
   screenwriter: "creative",

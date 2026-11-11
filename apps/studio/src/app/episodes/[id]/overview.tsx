@@ -1,8 +1,12 @@
 "use client";
 
 import { Captions, Download, Film, GraduationCap, Image as ImageIcon, RefreshCw, Stethoscope } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { RenderAuditCard } from "./render-audit-card";
+import { StyleComparisonCard } from "./style-comparison-card";
+import { QualityIssueBoard } from "./quality-issue-board";
 import { stylePackOf } from "@ys/core/styles";
+import { TYPOGRAPHY_PAIRS } from "@ys/core/typography";
 import type { MessageKey } from "../../../lib/i18n";
 import type { EpisodeResponse } from "../../../lib/types";
 import { VOICES } from "../../../lib/voices";
@@ -13,6 +17,8 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
   const { t, fmt } = useI18n();
   const { usd, duration } = fmt;
   const { state } = data;
+  const video = useRef<HTMLVideoElement>(null);
+  const shortVideo = useRef<HTMLVideoElement>(null);
   const videoSec = Object.values(state.voice ?? {}).reduce((n, v) => n + v.durationMs, 0) / 1000;
   const totalUsd = data.actual.byStage.reduce((n, g) => n + g.micros, 0) / 1_000_000;
   const prodSec = Object.values(state.stats ?? {}).reduce((n, s) => n + (s?.durationMs ?? 0), 0) / 1000;
@@ -21,10 +27,11 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
   const src = state.render ? `/api/episodes/${state.id}/video?v=${encodeURIComponent(state.render.at)}` : undefined;
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-      <div className="grid content-start gap-4">
+    <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid min-w-0 content-start gap-4">
         {src ? (
           <video
+            ref={video}
             src={src}
             // Küçük resim varsa oynatıcının kapağı o (YouTube'daki gibi); yoksa ilk çekimin karesi.
             poster={state.render?.thumbnail ? `${src}&thumb` : poster ? asset(poster) : undefined}
@@ -112,7 +119,7 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
         )}
         {src && state.short && (
           <section className="card flex flex-wrap items-start gap-4 p-4">
-            <video src={`${src}&short`} controls className="aspect-[9/16] w-48 rounded-lg border border-line bg-black" />
+            <video ref={shortVideo} src={`${src}&vshort=${encodeURIComponent(state.short.at)}&short`} controls className="aspect-[9/16] w-48 rounded-lg border border-line bg-black" />
             <div className="grid gap-2 text-sm">
               <h3 className="font-semibold">{t("video.short")}</h3>
               <p className="text-muted">{t("video.short.info", { sec: state.short.sec, scenes: state.short.scenes.join(", ") })}</p>
@@ -122,6 +129,16 @@ export function OverviewTab({ data, busy = false, act }: { data: EpisodeResponse
             </div>
           </section>
         )}
+        <RenderAuditCard state={state} busy={busy} act={act} onSeek={(seconds) => { if (video.current) video.current.currentTime = seconds; }} />
+        <RenderAuditCard state={state} busy={busy} act={act} target="short" onSeek={(seconds) => { if (shortVideo.current) shortVideo.current.currentTime = seconds; }} />
+        <StyleComparisonCard state={state} busy={busy} act={act} onSeek={(seconds) => { if (video.current) video.current.currentTime = seconds; }} />
+        <QualityIssueBoard id={state.id} busy={busy} version={[state.render?.exportId ?? state.render?.at, state.short?.exportId ?? state.short?.at, state.render?.audit?.at, state.short?.audit?.at, state.render?.styleComparison?.at, state.review?.at, state.draftReview?.at, state.voiceAudit?.at].join('|')} onSeek={(target, seconds) => { const player = target === "short" ? shortVideo.current : video.current; if (player) player.currentTime = seconds; }} />
+        {state.render?.research && <section className="card space-y-2 p-4"><h3 className="font-semibold">{t("research.frozen")}</h3><p className="text-sm text-muted">{t("research.count", { sources: state.render.research.sources, claims: state.render.research.claims, unresolved: state.render.research.unresolved })}</p><p className="text-xs text-muted">{t("research.frozenHint")}</p><a className="btn-ghost" href={`/api/episodes/${state.id}/research?render`} download>{t("research.download")}</a></section>}
+        {Boolean(state.render?.archiveSources?.length) && <section className="card min-w-0 space-y-2 p-4" aria-label={t("archive.used")}>
+          <h3 className="font-semibold">{t("archive.used")}</h3>
+          <ul className="space-y-2 text-sm">{[...new Map(state.render!.archiveSources!.map((u) => [u.source.id, u.source])).values()].slice(0, 12).map((source) => <li key={source.id} className="break-words"><a href={source.sourceUrl} target="_blank" rel="noreferrer" className="text-accent underline">{source.title}</a><span className="text-muted"> · {source.creator}</span></li>)}</ul>
+          <a className="btn-ghost" href={`/api/episodes/${state.id}/sources`} download>{t("archive.download")}</a>
+        </section>}
         {state.package && <PackageCard pkg={state.package} shortTitle={state.short?.title} />}
         <Review data={data} />
       </div>
@@ -262,6 +279,7 @@ function Facts({ data }: { data: EpisodeResponse }) {
   const mode = modeOf(input);
   const pack = stylePackOf(state.style?.pack);
   const voice = VOICES.find((v) => v.id === (input.voiceId ?? ""));
+  const typography = state.render?.typography && TYPOGRAPHY_PAIRS[state.render.typography.pair];
   const rows: [string, ReactNode][] = [
     [t("fact.topic"), input.topic],
     [t("fact.lang"), input.lang.toUpperCase()],
@@ -271,6 +289,7 @@ function Facts({ data }: { data: EpisodeResponse }) {
     ...(mode === "vector" ? [[t("fact.line"), t(`line.${input.lineStyle ?? pack?.lineStyle ?? "outline"}` as MessageKey)] as [string, ReactNode]] : []),
     [t("fact.tier"), t(`form.tier.${input.tier}` as MessageKey)],
     [t("fact.voice"), voice ? t(voice.label) : (state.voiceProviderId ?? "—")],
+    ...(typography ? [[t("fact.typography"), `${typography.heading.family} / ${typography.body.family}`] as [string, ReactNode]] : []),
     [t("fact.created"), fmt.date(state.createdAt)],
     [
       t("fact.id"),

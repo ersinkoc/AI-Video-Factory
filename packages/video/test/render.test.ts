@@ -103,6 +103,15 @@ afterEach(() => {
 const out = (name: string) => join(mkdtempSync(join(DIR, "out-")), name);
 
 describe("renderEpisode", () => {
+  it("renders benchmark ranges on the original timeline clock without the full episode cache", async () => {
+    const output = out("clip.mp4");
+    await renderEpisode({ timeline: two, publicDir: DIR, outputPath: output, frameRange: [20, 39] });
+    expect(remotion.renderMedia).toHaveBeenCalledTimes(1);
+    expect(remotion.renderMedia.mock.calls[0]![0]).toMatchObject({ frameRange: [20, 39], inputProps: { timeline: two }, codec: "h264" });
+    expect(existsSync(output)).toBe(true);
+    await expect(renderEpisode({ timeline: two, publicDir: DIR, outputPath: output, frameRange: [-1, 4] })).rejects.toThrow("Invalid render frame range");
+    await expect(renderEpisode({ timeline: two, publicDir: DIR, outputPath: output, frameRange: [0, two.durationInFrames] })).rejects.toThrow("Invalid render frame range");
+  });
   it.each([1, 2])("%i sahneli render'da tarayıcı ve x264 paralelliği sınırlıdır", async (scenes) => {
     await renderEpisode({ timeline: make(scenes, 60), publicDir: DIR, outputPath: out("bounded.mp4") });
     const video = remotion.renderMedia.mock.calls.find((c) => c[0].codec === "h264")![0];

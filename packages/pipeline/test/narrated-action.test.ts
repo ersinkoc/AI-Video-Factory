@@ -1,4 +1,4 @@
-import { VectorShot } from "@ys/core";
+import { ShotIntent, VectorShot } from "@ys/core";
 import { describe, expect, it } from "vitest";
 import { addsNoDefect, NARRATED, narratedActions, narratedMoods, withNarratedActions, withNarratedMoods } from "../src/narrated-action.ts";
 
@@ -19,6 +19,27 @@ const who = (description: string, ...assets: string[]) => {
   const s = spec(...assets.map((a) => layer(a)));
   return Object.fromEntries([...narratedActions(description, s, CAST)].map(([i, g]) => [assets[i], g]));
 };
+
+describe("structured narrative action", () => {
+  const intent = () => ShotIntent.parse({ subject: "c2", action: "typing", target: "keyboard", payoff: "Code appears", narration: { startWord: 0, endWord: 3 }, reveal: .5, holdSec: 1 });
+  it("selects the stable actor id even when the English description names someone else", () => {
+    const s = spec(layer("c1", [{ type: "explain" }]), layer("c2", [{ type: "explain" }]), layer("keyboard"));
+    const result = withNarratedActions(s, "Babbage types.", CAST, 6, intent())!;
+    expect(result.layers[0]!.anims[0]!.type).toBe("explain");
+    expect(result.layers[1]!.anims[0]!.type).toBe("typing");
+    expect(withNarratedActions(s, "Babbage types.", CAST, 6)!.layers[0]!.anims[0]!.type).toBe("typing");
+  });
+  it("does not infer gestures for quiet holds, missing actors/targets, objects or movement without a destination", () => {
+    const s = spec(layer("c1"), layer("keyboard"), layer("c6"));
+    for (const change of [{ action: "hold" }, { action: "walk" }, { action: "move" }, { subject: "missing" }, { subject: "c6" }, { subject: "c1", target: "missing" }, { subject: "c1", target: "c1" }]) expect(withNarratedActions(s, "Babbage types.", CAST, 6, { ...intent(), ...change } as ShotIntent)).toBeUndefined();
+  });
+  it("binds an explicit point to its exact target instead of the nearest layer", () => {
+    const s = spec(layer("c1", [{ type: "point", target: 1 }]), layer("c2"), layer("keyboard"));
+    const result = withNarratedActions(s, "Babbage points at Clement.", CAST, 6, { ...intent(), subject: "c1", action: "point" })!;
+    expect(result.layers[0]!.anims[0]!.target).toBe(2);
+    expect(withNarratedActions(result, "Babbage types.", CAST, 6, { ...intent(), subject: "c1", action: "point" })).toBeUndefined();
+  });
+});
 
 describe("anlatılan eylemin öznesi", () => {
   it("fiilden hemen önce adı geçen kişi; unvan, sıra numarası ve iki kişide ortak ad kimseyi tanıtmaz", () => {

@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./light": "./src/light.ts"
+    "./light": "./src/light.ts",
+    "./archive": "./src/archive.ts",
+    "./style-authoring": "./src/style-authoring.ts"
   },
   "dependencies": {
     "@ys/agents": "workspace:*",

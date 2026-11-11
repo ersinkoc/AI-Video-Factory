@@ -56,6 +56,7 @@ function init(): Studio {
 }
 
 export const store = () => init().store;
+export const ledger = () => init().ledger;
 export const repo = () => init().repo;
 export const catalog = () => ({ providers: init().providers, skipped: init().skipped });
 

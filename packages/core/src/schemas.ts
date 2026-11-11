@@ -1,6 +1,9 @@
 import { Texture } from "./texture.ts";
 import { LineStyle, VectorAsset, VectorShot } from "./vector.ts";
 import { z } from "zod";
+import { ShotIntent } from "./intent.ts";
+import { Typography } from "./typography.ts";
+import { ArchiveCandidate } from "./archive.ts";
 
 // ---------- Temel sözlük ----------
 
@@ -130,8 +133,16 @@ export const Ambience = z.enum(["none", "rain", "snow", "fog", "dust", "embers",
 export type Ambience = z.infer<typeof Ambience>;
 
 export const TimelineVisual = z.object({
+  intent: ShotIntent.optional(),
+  /** İsteğe bağlı: eski timeline aynı görünür; pilot malzeme kuralları paket kimliğinden çözülür. */
+  stylePack: z.string().optional(),
+  /** Aynı sahne düzenindeki sabit ortak nesneler tekrar giriş yapmaz. */
+  carried: z.array(z.string()).optional(),
   shotId: z.string(),
   assetUrl: z.string(),
+  /** A deliberate archive insert retains the full image and its provenance. */
+  archiveSource: ArchiveCandidate.optional(),
+  fit: z.enum(["cover", "contain"]).optional(),
   kind: ShotKind,
   fromFrame: z.number().int().nonnegative(),
   durationInFrames: z.number().int().positive(),
@@ -169,6 +180,8 @@ export const TimelineAudio = z.object({
 });
 
 export const Timeline = z.object({
+  /** Absent on older timelines: retain their original system-font rendering. */
+  typography: Typography.optional(),
   episodeId: z.string(),
   lang: LanguageCode,
   fps: z.number().int().positive().default(30),

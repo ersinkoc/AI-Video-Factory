@@ -2,6 +2,8 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Bound concurrent media setup: unbounded workers can time out real FFmpeg fixture hooks.
+    maxWorkers: 4,
     // Tam takım paralel çalışırken (özellikle --coverage ile) ağır testler 5 sn'lik varsayılanı aşabiliyordu.
     testTimeout: 30_000,
     coverage: {

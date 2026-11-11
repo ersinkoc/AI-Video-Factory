@@ -1,7 +1,8 @@
-import { FlagSpec, likenessBlock, likenessCues, MapSpec, RIG, RIG_SIDE, SCENE_MOTION_RULES, VectorShot, type AssetPlan, type Likeness, type LineStyle } from "@ys/core";
+import { FlagSpec, likenessBlock, likenessCues, MapSpec, RIG, RIG_SIDE, SCENE_MOTION_RULES, VectorShot, styleCraftBlock, customStyleBlock, type AssetPlan, type Likeness, type LineStyle } from "@ys/core";
 import { z } from "zod";
+import { ShotIntent } from "@ys/core";
 import { indexWords } from "./agents.ts";
-import { MOTION_DESIGN_POLICY } from "./motion-design.ts";
+import { MOTION_DESIGN_POLICY, SHOT_INTENT_POLICY } from "./motion-design.ts";
 import { lessonsBlock, models, runStructured, type AgentDeps, type AgentImage, type AgentResult } from "./runner.ts";
 import { REFERENCE_QUERY_HINT, type CastOut, type ScriptOut, type StyleBibleOut } from "./schemas.ts";
 
@@ -269,6 +270,7 @@ ${brief.description}${brief.plan ? `\n\n${planBlock(brief.plan)}` : ""}${brief.l
 }
 
 const VectorPlannedShot = z.object({
+  intent: ShotIntent.optional().describe("Provide structured narrative intent for each new shot; optional only for saved/legacy plans"),
   startWord: z.number().int().nonnegative().describe("Index of the narration word where this shot starts"),
   description: z.string().describe("One short English sentence: what the viewer sees"),
   ambience: z.enum(["none", "rain", "snow", "fog", "dust", "embers", "flicker", "rays", "confetti"]),
@@ -305,6 +307,8 @@ export type VectorSceneOut = z.infer<typeof VectorSceneOut>;
 export interface VectorSceneInput {
   scene: ScriptOut["scenes"][number];
   durationSec: number;
+  /** Önceki sahnenin son planı: ortak nesneyi ve mekânı koruyabilsin. */
+  previousShot?: { description: string; vector: VectorShot };
   cast: CastOut;
   /** Var olan nesne varlıkları (kimlik → tarif). */
   props: Record<string, string>;
@@ -369,10 +373,12 @@ Rules:
 ${STAGING_RULES}
 ${SCENE_MOTION_RULES}
 ${MOTION_DESIGN_POLICY}
+${SHOT_INTENT_POLICY}
+${styleCraftBlock(style.craftPreset ?? style.pack)}${customStyleBlock(style)}
 - Animations (start/end are fractions 0–1 of the shot): fade_in, fade_out, slide_in (from), pop, float, sway, pulse, spin, shake, move (toX/toY), draw_on (the object is sketched stroke by stroke, then filled: for an invention, plan, diagram or idea taking shape; objects only, not people); characters also walk (toX), wave, point (target: the index of the layer pointed at; code aims the arm and eyes at it), explain, think, cheer, surprised, shrug, nod (yes, agreeing), shake_head (no, refusing), talk, give (hands the object they hold, or an open hand, to another person; target: the receiver's layer index, else the nearest person; for a handover the giver holds the object with heldBy), and act out what the narration says they do: typing (both hands on a keyboard at a desk), writing (pen on paper or a board), reading (a book or page held at the chest, head down), show (holds the object in the right hand up for everyone to see), clap, hands_on_hips (confident, defiant), arms_crossed (sceptical, waiting). Stage the narrated action literally: a person who writes code at a desk sits on a chair behind it with typing or writing, not standing idle; texts also typewriter, count_up, kinetic (the plate wipes open and the words rise in one by one: for a title, a key number or a quote that should land).
 - Physics: things on the floor or on furniture (people, furniture, animals, vehicles) obey gravity: they move only sideways (toX) and never float; toY and float are only for wall/air items (a poster, a bird, a balloon, an arrow). A walk covers about 250 px per second in the front of the room: give it a window long enough for the distance (crossing 750 px takes ~3 s). Gestures and walking legs exist only on rigged characters: a prop never gestures, and a person who must act is a listed character, not a prop (a crowd or army prop only moves as a group).
 - Faces: set "expression" on every character layer to the emotion of the narration at that moment (happy, sad, angry, worried, surprised, thinking; neutral only when flat). Disappointment or failure is sad/worried, never a smile.
-- Characters must act: give every visible character at least one gesture that fits the narration (explain while a fact is told, think on a question, surprised on a twist, cheer on success, point at a prop or text, walk to enter). Idle breathing, blinking and small hand moves are added automatically.
+- Characters must act when the narration calls for action: give visible characters a matching gesture (explain while a fact is told, think on a question, surprised on a twist, cheer on success, point at a prop or text, walk to enter). An intentional intent.action=hold may stay quiet; do not add a gesture just to satisfy a motion quota. Idle breathing, blinking and small hand moves are added automatically.
 ${
         input.presenter
           ? `- ${input.presenter} is the on-screen presenter and the narration is their voice: put them in most shots (cut away to the subject now and then, never two shots in a row without them), with "talk" for the whole shot while on screen plus explain/point at what is shown. Other characters use "talk" only when they speak.`
@@ -395,7 +401,7 @@ ${assets}
 
 ## ${input.scene.id} (${input.durationSec.toFixed(1)} s, location: ${input.scene.location}, emotion: ${input.scene.emotion})
 Visual intent: ${input.scene.visualIntent}
-Narration: ${annotated}${
+Narration: ${annotated}${input.previousShot ? `\nPrevious scene final shot (context only, do not copy its narration): ${JSON.stringify(input.previousShot)}\nWhen the narrative continues in the same setting, reuse its main asset id, background and compatible placement. Across your own shots, carry a recognizable object into the next idea. Do not force continuity across unrelated places or invent unsupported morphs.` : ""}${
         // Düzeltme isteği kullanıcı isteminde: sistem talimatı sahneler arasında aynı kalsın (önek önbelleği bozulmasın).
         input.feedback
           ? `\n\nA reviewer looked at the rendered draft of this scene.${input.images?.length ? " The attached images are that draft, one frame per shot in order (shot 1 first): look at what is wrong in them." : ""} Fix these problems in your new plan:\n${input.feedback}`

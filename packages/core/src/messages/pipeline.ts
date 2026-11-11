@@ -8,6 +8,19 @@ const STYLE_PACK_NAMES = Object.fromEntries(STYLE_PACKS.map((p) => [`style.pack.
 >;
 
 export const PIPELINE_MESSAGES = {
+  "err.pronunciation.invalid": { tr: "Telaffuz kaydı geçersiz veya sözlük sınırı aşıldı.", en: "Invalid pronunciation data or dictionary limit exceeded." },
+  "err.pronunciation.changed": { tr: "Bölüm veya telaffuz sözlüğü değişti; güncel etkiyi yeniden inceleyin.", en: "The episode or pronunciation dictionary changed; review the current impact again." },
+  "err.pronunciation.cas": { tr: "Bu depoda ortak sözlük için atomik yazma desteklenmiyor.", en: "This store does not support atomic writes for the shared dictionary." },
+  "err.edit.invalid": { tr: "Anlatım boş olamaz ve 20.000 karakteri aşamaz.", en: "Narration must be nonempty and at most 20,000 characters." },
+  "err.edit.changed": { tr: "Bölüm önizlemeden sonra değişti; etkiyi yeniden inceleyin.", en: "The episode changed after preview; review the impact again." },
+  "err.edit.undo": { tr: "Bu düzenleme artık geri alınamaz; araya başka bir değişiklik veya üretim girmiş olabilir.", en: "This edit can no longer be undone; another edit or production run may have intervened." },
+  "err.research.invalid": { tr: "Kaynak veya iddia alanları geçersiz.", en: "Invalid source or claim fields." },
+  "err.research.changed": { tr: "Senaryo veya kaynak kaydı değişti; yeniden yükleyip inceleyin.", en: "The script or research record changed; reload and review it." },
+  "err.research.missing": { tr: "İlgili kaynak veya iddia bulunamadı.", en: "The referenced source or claim was not found." },
+  "err.research.anchor": { tr: "Alıntı seçilen sahnenin mevcut anlatımında birebir bulunmalı.", en: "The quote must occur verbatim in the selected scene's current narration." },
+  "err.research.support": { tr: "Destekleniyor kararı için destekleyici kaynak alıntısı gerekli; çelişen bağlantıları önce inceleyin.", en: "Supporting source excerpts are required; review contradictory links before marking supported." },
+  "err.research.exemption": { tr: "Olgusal iddia muafiyeti yalnız yorum veya canlandırma için kullanılabilir.", en: "Only interpretations or reconstructions can be exempted as non-factual." },
+  "log.research.claims": { tr: "  kaynak incelemesi için {n} aday iddia kaydedildi (doğrulanmadı)", en: "  saved {n} candidate claims for source review (not verified)" },
   ...STYLE_PACK_NAMES,
 
   // ---- ortak parçalar ----
@@ -306,6 +319,8 @@ export const PIPELINE_MESSAGES = {
   },
   "log.render.done": { tr: "  ✓ {path}", en: "  ✓ {path}" },
   "log.render.srt": { tr: "  altyazı dosyası: {path}", en: "  subtitle file: {path}" },
+  "log.audit.start": { tr: "  video ölçümleri inceleniyor (ücretli çağrı yok)", en: "  analyzing video measurements (no paid calls)" },
+  "log.audit.done": { tr: "  video denetimi: {findings} inceleme bulgusu ({status})", en: "  video audit: {findings} advisory findings ({status})" },
   "log.review.summary": {
     tr: "  {frames} kare, ortalama {avg}/10; sorunlar: {issues}",
     en: "  {frames} frames, average {avg}/10; issues: {issues}",

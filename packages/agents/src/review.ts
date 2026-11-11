@@ -1,3 +1,4 @@
+import { styleCraftBlock, customStyleBlock } from "@ys/core";
 import { z } from "zod";
 import { MOTION_REVIEW_POLICY } from "./motion-design.ts";
 import { models, runStructured, type AgentDeps, type AgentImage, type AgentResult } from "./runner.ts";
@@ -59,7 +60,7 @@ export function sceneCritic(
   known: string[],
   deps?: AgentDeps,
   subtitles = true,
-  style?: { artStyle: string; palette: string[] },
+  style?: { artStyle: string; palette: string[]; pack?: string; craftPreset?: string; reviewRules?: string[] },
 ): Promise<AgentResult<SceneCriticOut>> {
   return runStructured(
     {
@@ -71,6 +72,7 @@ export function sceneCritic(
       system: `You review frames of an animated explainer video (${style ? `art style: ${style.artStyle}; palette: ${style.palette.join(", ")}` : "flat vector style"}, ${subtitles ? "subtitles at the bottom" : "no burned-in subtitles: the bottom of the frame belongs to the picture"}). Image N belongs to the N-th shot listed in the prompt.
 The channel chose the art style and the palette: a monochrome, sepia, grey, pencil or otherwise limited palette and the style's own texture (grain, screentone, paper, hatching) are intended, not problems. Do not report them and do not give lessons about the palette or the style; report colour only when a subject or a text cannot be told apart from what is behind it.
 ${MOTION_REVIEW_POLICY}
+${styleCraftBlock(style?.craftPreset ?? style?.pack, true)}${customStyleBlock(style, true)}
 Report only problems a viewer would notice:
 - text_overlap: on-screen texts overlap each other or a face; ${subtitles ? "text_on_subtitles: text sits in the bottom quarter where subtitles go; " : ""}unreadable_text: low contrast or tiny.
 - cluttered: too many elements or a busy background competing with the subject; empty: nothing meaningful on screen.

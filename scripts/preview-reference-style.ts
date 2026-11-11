@@ -1,0 +1,48 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { EpisodePipeline, newEpisodeState, STAGES } from "../packages/pipeline/src/index.ts";
+import { normalizeStyleReference } from "../packages/pipeline/src/style-authoring.ts";
+import { measureStyleReference } from "../packages/pipeline/src/image-profile.ts";
+import { saveCustomStyle } from "../packages/pipeline/src/custom-styles.ts";
+import { paperPosterRecipe } from "../packages/core/src/index.ts";
+import { rasterizeSvg } from "../packages/pipeline/src/reference.ts";
+import { FsAssetStore } from "../packages/storage/src/index.ts";
+import { InMemoryLedger, MediaGateway } from "../packages/media-gateway/src/index.ts";
+import { runMediaTool } from "../packages/video/src/tools.ts";
+
+// Original, synthetic reference and a real pipeline MP4. No model or media provider calls.
+const root = resolve(process.argv[2] ?? "out/reference-style-workflow");
+await mkdir(root, { recursive: true });
+const store = new FsAssetStore(join(root, ".data/assets")), ledger = new InMemoryLedger();
+const pipeline = new EpisodePipeline({ store, ledger, gateway: new MediaGateway({ providers: [], store, ledger }), workDir: join(root, ".data/episodes"), log: console.log });
+const picture = await rasterizeSvg('<svg width="1280" height="720" xmlns="http://www.w3.org/2000/svg"><rect width="1280" height="720" fill="#f3f0e6"/><rect x="180" y="180" width="720" height="380" rx="18" fill="#111410"/><circle cx="920" cy="360" r="115" fill="#68725f"/><circle cx="920" cy="360" r="40" fill="#d5fa73"/></svg>');
+const bytes = await normalizeStyleReference("image/png", Buffer.from(picture.data).toString("base64"));
+await writeFile(join(root, "reference.jpg"), bytes);
+const measured = await measureStyleReference(store, bytes);
+const saved = await saveCustomStyle(store, { ...paperPosterRecipe(), name: "Measured reference fixture" }, measured.referenceKey);
+await store.put("assets/reference-fixture.jpg", bytes);
+const state = newEpisodeState({ topic: "Reference color verification", customStyleId: saved.id, stylePack: "custom", lang: "en", targetSec: 4, tier: "economy", aiClipRatio: 0, budgetUsd: 1, width: 1280, height: 720, fps: 12, autoApprove: true, motionMode: "still", music: false, short: false, captions: false });
+state.id = "reference-style-verification";
+state.script = { scenes: [{ id: "s1", beatId: "b1", narration: "Measured reference", visualIntent: "Original flat geometric illustration", emotion: "neutral", location: "Studio" }] };
+state.voice = {};
+state.shots = [{ id: "shot", sceneId: "s1", kind: "still_motion", startMs: 0, endMs: 4000, description: "Original reference geometry", imagePrompt: "", motionPrompt: "", camera: "static" }];
+state.keyframes = { shot: { key: "assets/reference-fixture.jpg", mimeType: "image/jpeg" } };
+state.done = Object.fromEntries(STAGES.slice(0, STAGES.indexOf("timeline")).map((s) => [s, new Date().toISOString()]));
+await pipeline.save(state);
+await pipeline.run(state.id, { only: "style" });
+await pipeline.run(state.id, { only: "timeline" });
+const finished = await pipeline.run(state.id, { only: "render" });
+if (finished.render?.styleComparison?.status !== "complete" || finished.render.styleComparison.compared !== 1 || (await ledger.list()).length) throw new Error("Real MP4 comparison or zero-call verification failed");
+// Pending authoring edits must not change the reference or sample locations for an existing MP4.
+const authoringTimeline = finished.timeline, authoringReference = finished.styleReference;
+delete finished.timeline; delete finished.styleReference;
+await pipeline.save(finished);
+const repeated = await pipeline.compareStyle(state.id);
+if (repeated.render?.styleComparison?.status !== "complete" || repeated.render.styleReference?.profile.sha256 !== measured.profile.sha256) throw new Error("Frozen reference comparison failed after authoring edits");
+repeated.timeline = authoringTimeline; repeated.styleReference = authoringReference;
+await pipeline.save(repeated);
+finished.render = repeated.render;
+const frame = await runMediaTool("ffmpeg", ["-v", "error", "-ss", "1.9", "-i", finished.render.path, "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-"], true, { timeout: 20_000, maxBuffer: 4 * 1024 * 1024, encoding: "latin1" });
+await writeFile(join(root, "decoded-frame.png"), Buffer.from(frame.stdout, "latin1"));
+await writeFile(join(root, "verification.json"), JSON.stringify({ episodeId: state.id, video: finished.render.path, measurement: measured.profile, comparison: finished.render.styleComparison, frozenReferenceAfterAuthoringEdits: true, ledgerEntries: (await ledger.list()).length }, null, 2));
+console.log(`Verified reference comparison: ${finished.render.path}`);

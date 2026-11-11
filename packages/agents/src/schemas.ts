@@ -1,4 +1,4 @@
-import { Ambience } from "@ys/core";
+import { Ambience, ShotIntent, ScriptClaim } from "@ys/core";
 import { z } from "zod";
 
 export const StyleBibleOut = z.object({
@@ -12,7 +12,7 @@ export const StyleBibleOut = z.object({
   lensLanguage: z.string(),
 });
 /** Hazır paketten gelen stilde paket kimliği ve tasarımcı notları da bulunur (ajan çıktısında yok). */
-export type StyleBibleOut = z.infer<typeof StyleBibleOut> & { pack?: string; designNotes?: string };
+export type StyleBibleOut = z.infer<typeof StyleBibleOut> & { pack?: string; designNotes?: string; lineStyle?: import("@ys/core").LineStyle; texture?: import("@ys/core").Texture; motionRules?: string; typographyRules?: string; reviewRules?: string[]; craftPreset?: string };
 
 export const Beat = z.object({
   id: z.string().describe("b1, b2, ..."),
@@ -32,6 +32,7 @@ export const StoryOut = z.object({
 export type StoryOut = z.infer<typeof StoryOut>;
 
 export const Scene = z.object({
+  claims: z.array(ScriptClaim).max(20).optional().describe("Candidate factual claims with exact narration quotes and supplied source ids; never editorial approvals"),
   id: z.string().describe("s1, s2, ..."),
   beatId: z.string(),
   narration: z.string().describe("Exact voice-over text in the episode language. No stage directions."),
@@ -82,6 +83,7 @@ export const CastOut = z.object({
 export type CastOut = z.infer<typeof CastOut>;
 
 export const PlannedShot = z.object({
+  intent: ShotIntent.optional().describe("Provide structured narrative intent for each new shot; optional only for saved/legacy plans"),
   startWord: z.number().int().nonnegative().describe("Index of the narration word where this shot starts"),
   characterIds: z.array(z.string()).describe("Cast character ids visible in this shot (max 3)"),
   locationId: z.string().describe("Cast location id of this shot, or empty string"),

@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 // Gerçek ffmpeg çalıştırılmaz: execFile sahte; Remotion'un kopyasının yolu sahte.
-const proc = vi.hoisted(() => ({ calls: [] as string[], fail: {} as Record<string, string> }));
+const proc = vi.hoisted(() => ({ calls: [] as string[], fail: {} as Record<string, string>, options: [] as unknown[] }));
 vi.mock("node:child_process", () => ({
-  execFile: (cmd: string, _args: string[], cb: (err: Error | null, out?: { stdout: string; stderr: string }) => void) => {
+  execFile: (cmd: string, _args: string[], optionsOrCallback: unknown, callback?: (err: Error | null, out?: { stdout: string; stderr: string }) => void) => {
+    const cb = (callback ?? optionsOrCallback) as (err: Error | null, out?: { stdout: string; stderr: string }) => void;
+    if (callback) proc.options.push(optionsOrCallback);
     proc.calls.push(cmd);
     const code = proc.fail[cmd];
     if (code) cb(Object.assign(new Error(`spawn ${cmd} ${code}`), { code }));
@@ -31,5 +33,13 @@ describe("runMediaTool", () => {
     await expect(runMediaTool("ffmpeg", [], false)).rejects.toThrow("ffmpeg bulunamadı: FFmpeg'i kur ve PATH'e ekle");
     proc.fail = { ffmpeg: "EACCES" };
     await expect(runMediaTool("ffmpeg", [])).rejects.toThrow("spawn ffmpeg EACCES");
+  });
+
+  it("preserves timeout, output bounds and byte encoding when falling back to the bundled tool", async () => {
+    proc.fail = { ffmpeg: "ENOENT" };
+    proc.options = [];
+    const options = { timeout: 100, maxBuffer: 512, encoding: "latin1" as const };
+    expect((await runMediaTool("ffmpeg", [], true, options)).stdout).toBe("remotion/ffmpeg.exe tamam");
+    expect(proc.options).toEqual([options, options]);
   });
 });

@@ -16,3 +16,5 @@ apps/studio/next-env.d.ts
 .dfmt/
 .claude/
 coverage/
+
+.temp_files/

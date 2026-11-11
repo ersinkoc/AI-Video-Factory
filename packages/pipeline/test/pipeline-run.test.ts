@@ -1,6 +1,10 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentError } from "@ys/agents";
+import { loadResearch, mutateResearch, researchView } from "../src/research.ts";
+import { episodeFingerprint, saveNarrationEdit } from "../src/editing.ts";
+import { EpisodeRepo } from "../src/actions.ts";
+import { applyPronunciationImpact, loadPronunciationBook, mutateSharedPronunciations, previewPronunciationImpact } from "../src/pronunciation-settings.ts";
 import { formatText, STYLE_PACKS } from "@ys/core";
 import { FRAME_RULES, levelOf, QuotaError, type EpisodeState } from "../src/index.ts";
 import { callsOf, onAgent, render, media, resetFakes } from "./pipeline-fakes.ts";
@@ -68,6 +72,36 @@ describe("yardımcılar", () => {
 });
 
 describe("run düzeni", () => {
+  it("feeds sources into writing and persists final exact-quote annotations as unreviewed candidates", async () => {
+    const h = harness(), id = await h.seed(makeState({}, { story, done: { style: "t", story: "t" } }));
+    await mutateResearch({ id, store: h.store, load: () => h.load(id), expectedRevision: 0, mutation: { type: "put-source", source: { title: "Fixture note", url: "https://example.org/note", excerpt: "Synthetic evidence." } } });
+    const source = (await loadResearch(h.store, id)).sources[0]!;
+    const sourced = { ...SCRIPT, scenes: SCRIPT.scenes.map((s) => ({ ...s, claims: [{ quote: s.narration, kind: "fact", sourceIds: [source.id] }] })) };
+    onAgent("screenwriter", () => sourced); onAgent("scriptDoctor", () => ({ script: sourced, notes: [] }));
+    const result = await h.pipeline.run(id, { until: "script" });
+    expect((callsOf("screenwriter")[0]!.args[0] as { research: { sources: { id: string }[] } }).research.sources[0]!.id).toBe(source.id);
+    const reviewed = researchView(await loadResearch(h.store, id), result);
+    expect(reviewed.claims).toHaveLength(SCRIPT.scenes.length);
+    expect(reviewed.claims.every((c) => c.status === "unreviewed" && c.origin === "writer")).toBe(true);
+  });
+  it("explicit grounded rewrite reopens approvals and stops after script without generating media", async () => {
+    const h = harness(), id = await h.seed(makeState({}, { story, script: SCRIPT, approvals: { script: "approved", concept: "approved", preview: "approved" }, done: { style: "t", story: "t", script: "t", cast: "t", render: "t" } }));
+    onAgent("screenwriter", () => SCRIPT); onAgent("scriptDoctor", () => ({ script: SCRIPT, notes: [] }));
+    const result = await h.pipeline.rewriteScript(id);
+    expect(result.approvals).toEqual({}); expect(result.done.script).toBeDefined();
+    expect(result.done.cast).toBeUndefined(); expect(result.done.render).toBeUndefined();
+    expect(h.gateway.requests).toHaveLength(0);
+    expect(callsOf("storyArchitect")).toHaveLength(0);
+  });
+  it("a reviewed narration edit resynthesizes only its scene and retains unrelated audio and concept drawings", async () => {
+    const h = harness(), original = makeState({}, { script: structuredClone(SCRIPT), style: STYLE, approvals: { concept: "approved" }, voice: { s1: voiceOf("s1"), s2: voiceOf("s2") }, done: { style: "t", story: "t", script: "t", cast: "t", concept: "t", voice: "t", render: "t" }, render: { path: "old.mp4", at: "old", exportId: "old-export" } });
+    const id = await h.seed(original);
+    await saveNarrationEdit({ id, store: h.store, repo: new EpisodeRepo(h.store), sceneId: "s1", narration: "Yeni anlatım.", fingerprint: episodeFingerprint(original) });
+    const result = await h.pipeline.run(id, { until: "voice" });
+    expect(h.gateway.requests).toHaveLength(1); expect(h.gateway.requests[0]!.run.refId).toBe("s1");
+    expect(result.voice!.s2).toEqual(original.voice!.s2); expect(result.voice!.s1!.text).toBe("Yeni anlatım.");
+    expect(result.render).toEqual(original.render); expect(callsOf("castingDirector")).toHaveLength(0); expect(render.episode).not.toHaveBeenCalled();
+  });
   it("render'dan önce önizleme onayı beklenir (Stüdyo bölümü); onaydan sonra devam eder", async () => {
     const h = harness();
     const before = ["style", "story", "script", "cast", "concept", "voice", "shots", "keyframes", "clips", "timeline"];
@@ -576,6 +610,38 @@ describe("seslendirme aşaması", () => {
     expect(callsOf("pronouncer")).toHaveLength(1);
   });
 
+  it("applies a reviewed dictionary only to the changed scene, preserves written captions and prevents agent overrides", async () => {
+    const h = harness(); pinned(h);
+    const script = { scenes: [scene("s1", "C++ projesi."), scene("s2", "Merhaba.")] };
+    const original = voiced({ script, voice: { s1: { ...voiceOf("s1"), text: script.scenes[0]!.narration, spoken: "si pılas pılas projesi." }, s2: { ...voiceOf("s2"), text: script.scenes[1]!.narration } }, done: { voice: "done" }, pronunciationOverrides: { "c++": "bölüm okunuşu" } });
+    const id = await h.seed(original); await mutateSharedPronunciations(h.store, 0, { type: "put", entry: { lang: "tr", written: "C++", spoken: "shared" } });
+    const preview = previewPronunciationImpact(original, await loadPronunciationBook(h.store));
+    await applyPronunciationImpact({ id, store: h.store, repo: new EpisodeRepo(h.store), ...preview });
+    onAgent("pronouncer", () => ({ terms: [{ written: "C++", spoken: "wrong" }, { written: "c++", spoken: "also wrong" }] }));
+    const result = await h.pipeline.run(id, { only: "voice" });
+    expect(h.gateway.generate).toHaveBeenCalledTimes(1); expect(h.gateway.generate.mock.calls[0]![0].text).toBe("bölüm okunuşu projesi.");
+    expect(result.voice!.s2).toEqual(original.voice!.s2); expect(result.voice!.s1!.words.map((w) => w.text).join(" ")).toBe(script.scenes[0]!.narration);
+    expect(result.voice!.s1!.pronunciation?.revision).toBe(1); expect(result.pronunciationPlan).toBeUndefined();
+  });
+  it("rejects changed dictionary rules before a reviewed voice batch makes any paid call", async () => {
+    const h = harness(), original = voiced({ script: { scenes: [scene("s1", "C++")] }, voice: {} }); const id = await h.seed(original);
+    const preview = previewPronunciationImpact(original, await loadPronunciationBook(h.store)); await applyPronunciationImpact({ id, store: h.store, repo: new EpisodeRepo(h.store), ...preview });
+    await mutateSharedPronunciations(h.store, 0, { type: "put", entry: { lang: "tr", written: "C++", spoken: "new rules" } });
+    await expect(h.pipeline.run(id, { only: "voice" })).rejects.toThrow("sözlüğü değişti");
+    expect(h.gateway.generate).not.toHaveBeenCalled(); expect(callsOf("pronouncer")).toHaveLength(0);
+  });
+  it("resumes partial voice generation after learned terms were saved without repeating the completed scene", async () => {
+    const h = harness(); pinned(h); const original = voiced({ script: { scenes: [scene("s1", "Zeta ilk."), scene("s2", "Zeta son.")] }, voice: {} }), id = await h.seed(original);
+    const preview = previewPronunciationImpact(original, await loadPronunciationBook(h.store)); await applyPronunciationImpact({ id, store: h.store, repo: new EpisodeRepo(h.store), ...preview });
+    onAgent("pronouncer", () => ({ terms: [{ written: "Zeta", spoken: "zeyta" }] }));
+    h.gateway.generate.mockImplementationOnce(async () => { const key = "assets/voice/first.mp3"; await h.store.put(key, new Uint8Array([1])); return { files: [{ key, mimeType: "audio/mpeg" }], providerId: "tts:pinned", cacheHit: false }; }).mockRejectedValueOnce(new Error("Temporary provider failure"));
+    await expect(h.pipeline.run(id, { only: "voice" })).rejects.toThrow("Temporary provider failure");
+    const partial = await h.load(id); expect(partial.pronunciations?.Zeta).toBe("zeyta"); expect(partial.pronunciationPlan).toBeDefined();
+    const resumed = await h.pipeline.run(id, { only: "voice" });
+    expect(resumed.voice!.s1).toEqual(partial.voice!.s1); expect(resumed.pronunciationPlan).toBeUndefined();
+    expect(h.gateway.generate.mock.calls.map((c) => c[1].refId)).toEqual(["s1", "s2", "s2"]);
+  });
+
   it("okunuş ajanı çalışamazsa yalnız yerleşik sözlükle seslendirilir; değişmeyen metinde okunuş alanı yok", async () => {
     const h = harness();
     pinned(h);
@@ -1082,7 +1148,7 @@ describe("timeline, render ve inceleme", () => {
     expect(callsOf("sceneCritic")[0]!.args[3]).toBe(true);
     // Bölümün stili ve paleti denetçiye gider: paketin bilerek seçtiği palet kusur sayılmasın.
     const styled = await h.pipeline.load(id);
-    expect(callsOf("sceneCritic")[0]!.args[4]).toEqual({ artStyle: styled.style!.artStyle, palette: styled.style!.palette });
+    expect(callsOf("sceneCritic")[0]!.args[4]).toEqual({ artStyle: styled.style!.artStyle, palette: styled.style!.palette, pack: styled.style!.pack });
     expect(on.review!.shots["s1-sh1"]!.issues.map((i) => i.type)).toEqual(["text_on_subtitles", "empty"]);
 
     const s = await h.pipeline.load(id);
@@ -1221,4 +1287,26 @@ describe("previewConcept", () => {
     await h.pipeline.previewConcept(id, 1);
     expect(h.gateway.requests[0]!.req.aspectRatio).toBe("1:1");
   });
+});
+
+it.each(["still", "animated", "mixed"] as const)("keeps a saved custom style through %s planning, generation and keyframe review", async (motionMode) => {
+ const { RECIPE } = await import("../../core/test/style-recipe-fixture.ts");
+ const { saveCustomStyle } = await import("../src/custom-styles.ts");
+ const h = harness(); const saved = await saveCustomStyle(h.store, RECIPE);
+ const id = await h.seed(makeState({ customStyleId: saved.id, motionMode }, { script: SCRIPT, voice: { s1: voiceOf("s1"), s2: voiceOf("s2") } }));
+ onAgent("director", () => ({ scenes: SCRIPT.scenes.map((s) => ({ sceneId: s.id, shots: [{ startWord: 0, characterIds: [], locationId: "", kind: motionMode === "still" ? "still_motion" : "ai_clip", description: "one parcel", imagePrompt: "one parcel", motionPrompt: "gentle push", camera: "static", ambience: "none" }] })) }));
+ onAgent("frameInspector", () => ({ score: 9, issues: [], fix: "" }));
+ await h.pipeline.run(id, { only: "style" });
+ await h.pipeline.run(id, { only: "shots" });
+ const state = await h.pipeline.run(id, { only: "keyframes" });
+ expect(callsOf("director")[0]!.args[1]).toMatchObject({ motionRules: RECIPE.motionRules, typographyRules: RECIPE.typographyRules });
+ expect(h.gateway.requests[0]!.req.prompt).toContain(RECIPE.promptPrefix);
+ expect(callsOf("frameInspector")[0]!.args[0]).toMatchObject({ style: { artStyle: RECIPE.artStyle, palette: RECIPE.palette, reviewRules: RECIPE.reviewRules } });
+ expect(Object.values(state.qa!).every((q) => q.passed)).toBe(true);
+ expect(callsOf("artDirector")).toHaveLength(0);
+ if (motionMode !== "still") {
+  await h.pipeline.run(id, { only: "clips" });
+  expect(h.gateway.requests.filter((r) => r.req.capability === "i2v")).toHaveLength(2);
+  expect(h.gateway.requests.at(-1)!.req.prompt).toContain("gentle push");
+ }
 });

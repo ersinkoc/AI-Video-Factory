@@ -206,6 +206,32 @@ describe("vektör çekim planı", () => {
   const voiced = (input: object = {}, extra: Partial<EpisodeState> = {}) =>
     afterCast(input, { cast: CAST, voice: { s1: voiceOf("s1"), s2: voiceOf("s2") }, ...extra });
 
+  it("preserves structured director intent through saved plans and resolved shot times", async () => {
+    const intent = { subject: "c1", action: "hold", payoff: "The rider considers the message", narration: { startWord: 0, endWord: 1 }, reveal: .4, holdSec: .8 };
+    onAgent("vectorDirector", () => ({ shots: [{ startWord: 0, description: "A quiet reaction", ambience: "none", intent, spec: vshot({ layers: [{ asset: "c1", x: 500 }] }) }], newProps: [], newBackgrounds: [] }));
+    const h = harness(), id = await h.seed(voiced());
+    const result = await h.pipeline.run(id, { only: "shots" });
+    expect(result.shotPlan!.scenes[0]!.shots[0]!.intent).toEqual(intent);
+    expect(result.shots![0]!.intent).toEqual(intent);
+    expect((await h.load(id)).shots![0]!.intent).toEqual(intent);
+  });
+
+  it("pilot plans run in order and supply saved prior-scene context on first run and resume", async () => {
+    const h = harness({ concurrency: 3 });
+    let fail = true;
+    const seen: { id: string; previous?: string }[] = [];
+    onAgent("vectorDirector", (input: { scene: { id: string }; previousShot?: { description: string } }) => {
+      seen.push({ id: input.scene.id, previous: input.previousShot?.description });
+      if (input.scene.id === "s2" && fail) throw new Error("retry scene");
+      return { shots: [{ startWord: 0, description: input.scene.id, ambience: "none", spec: vshot({ layers: [{ asset: "c1", x: 500, depth: 0.5 }] }) }], newProps: [], newBackgrounds: [] };
+    });
+    const id = await h.seed(voiced({}, { style: { ...STYLE, pack: "paper-cutout" } }));
+    await expect(h.pipeline.run(id, { only: "shots" })).rejects.toThrow("retry scene");
+    fail = false;
+    await h.pipeline.run(id, { only: "shots" });
+    expect(seen).toEqual([{ id: "s1", previous: undefined }, { id: "s2", previous: "s1" }, { id: "s2", previous: "s1" }]);
+  });
+
   it("kadro yoksa hata", async () => {
     const h = harness();
     const id = await h.seed(voiced({}, { cast: undefined }));
@@ -1053,6 +1079,19 @@ describe("anlatılan eylem", () => {
   const shots = [shot("s1-sh1", 0, "Rider types at his desk.", [{ type: "explain", start: 0.2, end: 0.9 }]), shot("s1-sh2", 1000, "Rider nods.", [{ type: "talk" }]), shot("s1-sh3", 2000, "Rider waits.", [])];
   const animsOf = (state: EpisodeState) => state.shots!.map((s) => s.vector!.layers[0]!.anims.map((a) => [a.type, a.start, a.end]));
 
+  it("uses the saved intent instead of description parsing and retains the geometry safety check", async () => {
+    const h = harness(); agents();
+    const directed = shot("s1-sh1", 0, "Rider waves.", [{ type: "explain", start: .2, end: .9 }]);
+    directed.intent = { subject: "c1", action: "typing", payoff: "A message appears", narration: { startWord: 0, endWord: 1 }, reveal: .5, holdSec: .3 };
+    const id = await keyframeReady(h, { qa: false }, { shots: [directed] });
+    const result = await h.pipeline.run(id, { only: "keyframes" });
+    expect(result.shots![0]!.vector!.layers[0]!.anims[0]!.type).toBe("typing");
+    expect(result.shots![0]!.intent).toEqual(directed.intent);
+    lint.shot.mockImplementation((v) => JSON.stringify(v.vector).includes('"typing"') ? [{ code: "action_without_prop", shotId: v.shotId, detail: "No desk", replan: true }] : []);
+    const blocked = await keyframeReady(h, { qa: false }, { shots: [structuredClone(directed)] });
+    expect((await h.pipeline.run(blocked, { only: "keyframes" })).shots![0]!.vector!.layers[0]!.anims[0]!.type).toBe("explain");
+  });
+
   it("açıklamadaki eylem kişiye jest olarak verilir; render'da yeni kusur doğuran eylem eklenmez", async () => {
     const h = harness();
     agents();
@@ -1140,4 +1179,13 @@ describe("vektör timeline", () => {
     const state = await h.pipeline.run(id, { only: "timeline" });
     expect(state.timeline!.vectorAssets).toEqual({});
   });
+});
+
+it("passes custom material and visible checks into the production critic", async () => {
+ const h = harness(); agents();
+ const style = { ...STYLE, craftPreset: "paper-cutout", reviewRules: ["Readable short headings"] };
+ const id = await keyframeReady(h, {}, { vectorProps: {}, style });
+ onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => ({ shotId: i.shotId, score: 9, issues: [] })), lessons: [] }));
+ await h.pipeline.run(id, { only: "keyframes" });
+ expect(callsOf("sceneCritic")[0]!.args[4]).toMatchObject({ craftPreset: "paper-cutout", reviewRules: style.reviewRules });
 });

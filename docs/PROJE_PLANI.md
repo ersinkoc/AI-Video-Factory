@@ -174,7 +174,45 @@ compare-and-swap. Local files use a short Node SQLite transaction as a cross-pro
 mutex; episode state and media remain files. S3 uses conditional object writes.
 See [Episode locking](LOCKING.md) for ownership, recovery and compatibility boundaries.
 
+Implementation note (11 Nov 2026): main and Short exports have independent audit
+evidence and export identities. Editorial issue decisions are stored separately
+under the producer lock and never approve a newer export. The existing benchmark
+now freezes local media and plans before still/clip runs. See
+[Quality evidence and benchmarks](QUALITY_WORKFLOW.md). These additions retain
+the current Remotion pipeline and isolated, tool-free structured agents.
+
 ## 4. Veri Modeli (çekirdek)
+
+Implementation note (11 Nov 2026): pronunciation rules now have a revisioned, language-scoped
+shared editor book and explicit episode overrides above legacy learned terms and built-ins.
+Shared writes use storage CAS; episode edits use the producer lock. Voice impact is reviewed
+separately and guarded against changed rules before generation. Existing caption spelling
+and rendered evidence remain intact. See [Pronunciation dictionaries](PRONUNCIATIONS.md).
+
+Implementation note (11 Nov 2026): an explicit voice-only audit stores bounded episode
+summaries and on-demand full reports. It compares script/recorded/spoken/caption forms,
+checks timing bounds and decodes existing voice stems independently of music. Reports
+bind source hashes and become stale after input changes. This is advisory working-file
+evidence; no speech recognition, automatic regeneration or frozen-export certification
+is implied. See [Voice stem audit](VOICE_AUDIT.md).
+
+Implementation note (11 Nov 2026): manual narration edits have an explicit dependency
+preview, full-state optimistic fingerprint and saved-revision undo. Human state updates
+share the episode producer lock; edits reopen voice and later completion markers while
+preserving unrelated scene audio and the prior export evidence. Shot planning still runs
+at episode scope. See [Reviewed narration edits](NARRATION_EDITS.md).
+
+Implementation note (11 Nov 2026): an optional, separately revisioned research register
+binds narration quotes to editor-supplied source excerpts and review fingerprints.
+Story/script agents receive bounded unverified context and emit unreviewed claim candidates;
+an explicit script-only rewrite reopens approvals. Main renders freeze source evidence
+and packaging credits against their export identity. No source URL fetching or automatic
+fact checking is implemented. See [Narration claim sources](CLAIM_SOURCES.md).
+
+Implementation note (11 Nov 2026): optional structured shot intent is shared by
+director outputs, saved plans and timeline visuals. It guides safe actor/target
+selection and advisory plan checks while preserving legacy description inference.
+See [Structured shot intent](SHOT_INTENT.md). It adds no runtime tools or external engine.
 
 ```ts
 Channel      { id, name, niche, language, audience, tone, styleBibleId, voiceProfile, defaultCharacterIds[], formatRules }

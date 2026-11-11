@@ -2,6 +2,7 @@
 
 import { STYLE_PACKS, stylePackOf, type StylePack } from "@ys/core/styles";
 import { textureLayer } from "@ys/core/texture";
+import { STYLE_PREVIEWS } from "../lib/style-previews";
 import { useI18n } from "./locale-provider";
 
 /** Stil paketi → örnek karakter ve mekânın kütüphane anahtarı (yalnız örneği olan paketler). */
@@ -16,9 +17,11 @@ const sample = (pack: string, kind: "character" | "background", key: string) => 
  */
 function Preview({ pack, keys }: { pack: StylePack; keys: SampleKeys[string] }) {
   const { locale } = useI18n();
-  const grain = textureLayer(pack.texture, `g-${pack.id}`);
+  const motion = STYLE_PREVIEWS[pack.id];
+  const grain = motion && !keys.background ? undefined : textureLayer(pack.texture, `g-${pack.id}`);
   return (
     <div className="relative aspect-video overflow-hidden rounded-lg border border-line bg-panel-2">
+      {motion && !keys.background && <img src={`/style-previews/${pack.id}.jpg?v=${motion.version}`} alt={pack.name[locale]} loading="lazy" className="absolute inset-0 h-full w-full object-cover" />}
       {keys.background && (
         <img
           src={sample(pack.id, "background", keys.background)}
@@ -45,7 +48,7 @@ function Preview({ pack, keys }: { pack: StylePack; keys: SampleKeys[string] }) 
           style={{ opacity: grain.opacity }}
         />
       )}
-      <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.32) 100%)" }} />
+      {(!motion || keys.background) && <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.32) 100%)" }} />}
     </div>
   );
 }
@@ -56,7 +59,7 @@ function Preview({ pack, keys }: { pack: StylePack; keys: SampleKeys[string] }) 
  */
 export function StyleGallery({ samples, pack, onPick }: { samples: SampleKeys; pack: string; onPick: (pack: string) => void }) {
   const { t, locale } = useI18n();
-  const packs = STYLE_PACKS.filter((p) => samples[p.id]);
+  const packs = STYLE_PACKS.filter((p) => samples[p.id] || STYLE_PREVIEWS[p.id]);
   const current = stylePackOf(pack);
   return (
     <div className="grid gap-3">
@@ -64,9 +67,12 @@ export function StyleGallery({ samples, pack, onPick }: { samples: SampleKeys; p
         <span className="label">{t("form.gallery")}</span>
         <span className="text-xs text-muted">{t("form.gallery.hint", { n: packs.length, total: STYLE_PACKS.length })}</span>
       </div>
-      {current && samples[pack] && (
+      {current && (samples[pack] || STYLE_PREVIEWS[pack]) && (
         <div className="md:max-w-xl">
-          <Preview pack={current} keys={samples[pack]} />
+          {STYLE_PREVIEWS[pack] ? <>
+            <video key={pack} aria-label={t("form.gallery.motion", { style: current.name[locale] })} controls muted playsInline loop preload="metadata" poster={`/style-previews/${pack}.jpg?v=${STYLE_PREVIEWS[pack].version}`} src={`/style-previews/${pack}.mp4?v=${STYLE_PREVIEWS[pack].version}`} className="aspect-video w-full rounded-lg border border-line" />
+            <p className="mt-1 text-xs text-muted">{t("form.gallery.motionHint")}</p>
+          </> : <Preview pack={current} keys={samples[pack]!} />}
         </div>
       )}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-6">
@@ -78,7 +84,7 @@ export function StyleGallery({ samples, pack, onPick }: { samples: SampleKeys; p
             onClick={() => onPick(p.id)}
             className={`grid gap-1 rounded-lg border p-1 text-left text-xs transition ${pack === p.id ? "border-accent bg-accent/10" : "border-line hover:border-muted"}`}
           >
-            <Preview pack={p} keys={samples[p.id]!} />
+            <Preview pack={p} keys={samples[p.id] ?? {}} />
             <span className={`truncate px-1 ${pack === p.id ? "text-accent" : ""}`}>{p.name[locale]}</span>
           </button>
         ))}

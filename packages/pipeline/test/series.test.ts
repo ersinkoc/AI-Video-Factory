@@ -37,3 +37,9 @@ describe("seriler", () => {
     expect(s.input.series).toBeUndefined();
   });
 });
+
+it("keeps the immutable custom style ID in series defaults", () => {
+ const state = ep("Custom series", "2026-11-07");
+ state.input.customStyleId = "a".repeat(32);
+ expect(summarizeSeries([state])[0]!.defaults.customStyleId).toBe(state.input.customStyleId);
+});

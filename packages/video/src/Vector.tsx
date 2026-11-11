@@ -1,5 +1,10 @@
 import {
+  fontFamily,
+  TYPOGRAPHY_PAIRS,
+  type Typography,
   applyLineStyle,
+  styleCraftOf,
+  type StyleCraft,
   ARM_GESTURES,
   CONVERSE,
   floorYOf,
@@ -39,12 +44,13 @@ import {
 } from "@ys/core";
 import { useMemo, type CSSProperties, type ReactElement } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVideoConfig } from "remotion";
+import { inkPlates, plateOpacity, printProgress } from "./style-material.ts";
 import { drawCss, drawPlan } from "./drawOn.ts";
 import { PAPER, paperOf, translucentShare, withPaper } from "./paperBase.ts";
 import { coverIn, drawnBottom, gridFor, hollowBacked, luminance as lightness, screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
 import { cameraDrift, depthOfField, lensScale, motionBlur, screenGlow } from "./lens.ts";
 import { keyLight, lightOf } from "./light.ts";
-import { visualVector } from "./entrance.ts";
+import { isMaterialEntrance, visualVector } from "./entrance.ts";
 import { Ambience, weatherIn } from "./Ambience.tsx";
 import { Crowd, crowdFigures, crowdZ, type CrowdFigure } from "./crowd.tsx";
 import { armBeats, BEAT, pulseAt, speechBeats, strokeAt } from "./beats.ts";
@@ -2306,7 +2312,11 @@ function Layer({
   blur = 0,
   streak,
   paper,
+  craft,
+  progress = 1,
 }: {
+  craft?: StyleCraft;
+  progress?: number;
   layer: VectorLayer;
   asset: VectorAsset;
   placed: PlacedLayer;
@@ -2407,9 +2417,12 @@ function Layer({
     filter: [sketch ? "url(#ys-sketch)" : "", trail ? `url(#${prefix}mb)` : "", soft ? `blur(${soft.toFixed(2)}px)` : ""].filter(Boolean).join(" ") || undefined,
   };
   const glow = face && screenGlow(asset, layer.screen?.kind, face.box.w, face.box.h);
-  const drawn = <div style={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: svg }} />;
+  const plates = useMemo(() => craft?.material === "ink" && asset.kind === "prop" && !asset.meta.exact && !layer.screen && !drawing ? inkPlates(svg, prefix + "ink-") : undefined, [craft, asset.kind, asset.meta.exact, layer.screen, drawing, svg, prefix]);
+  const drawn = plates ? <div data-material="ink" style={{ width: "100%", height: "100%", isolation: "isolate" }}>
+    {plates.map((plate, i) => <div key={i} data-ink-plate={i} style={{ position: "absolute", inset: 0, transform: `translate(${plate.x}px, ${plate.y}px)`, opacity: plateOpacity(progress, i, plates.length), mixBlendMode: "multiply" }} dangerouslySetInnerHTML={{ __html: plate.svg }} />)}
+  </div> : <div style={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: svg }} />;
   return (
-    <div style={style}>
+    <div data-material={craft?.material === "paper" ? "paper" : undefined} style={craft?.material === "paper" && !asset.meta.exact ? { ...style, filter: [style.filter, "drop-shadow(2px 4px 2px rgba(0,0,0,0.18))"].filter(Boolean).join(" ") } : style}>
       {trail && (
         <svg width={0} height={0} style={{ position: "absolute" }}>
           <filter id={`${prefix}mb`} x="-50%" y="-50%" width="200%" height="200%">
@@ -2696,7 +2709,7 @@ function countUp(text: string, k: number): string {
   return text.replace(raw, frac ? `${grouped}${decimal}${frac}` : grouped);
 }
 
-function Text({ placed, p, t, seed, accent, dur }: { placed: PlacedText; p: number; t: number; seed: string; accent: string; /** Çekim süresi (sn). */ dur: number }) {
+function Text({ placed, p, t, seed, accent, dur, craft, paperColor, inkColor, typography }: { typography?: Typography; paperColor: string; inkColor: string; craft?: StyleCraft; placed: PlacedText; p: number; t: number; seed: string; accent: string; /** Çekim süresi (sn). */ dur: number }) {
   const { text, y, size, card, right } = placed;
   // Sağdaki kart: x kutunun sağ kenarı, yazı sağa yaslı.
   const x = right ? placed.x - CARD.width : placed.x;
@@ -2711,8 +2724,10 @@ function Text({ placed, p, t, seed, accent, dur }: { placed: PlacedText; p: numb
   const kinetic = text.anims.find((a) => a.type === "kinetic");
   const q = kinetic && reveal(kinetic);
   const plate = useKinetic(q, wordCount(shown));
-  const bar = readable(accent) ?? "#ffd84d";
+  const flat = craft?.material === "poster";
+  const bar = flat ? paperColor : (readable(accent) ?? "#ffd84d");
   const primary = text.style === "title" || text.style === "number";
+  const face = typography ? TYPOGRAPHY_PAIRS[typography.pair][primary ? "heading" : "body"] : undefined;
   return (
     <div
       data-text={card ? "card" : "tag"}
@@ -2725,14 +2740,14 @@ function Text({ placed, p, t, seed, accent, dur }: { placed: PlacedText; p: numb
         transform: `translate(${tr.x}px, ${card ? "" : "calc(-50% + "}${tr.y}px${card ? "" : ")"}) rotate(${tr.rotate}deg) scale(${tr.scale})`,
         transformOrigin: card ? "0 0" : "50% 50%",
         opacity: tr.opacity,
-        color: readable(text.color) ?? (text.style === "number" ? bar : "white"),
-        fontFamily: FONT,
+        color: readable(text.color) ?? (flat ? paperColor : (text.style === "number" ? bar : "white")),
+        fontFamily: face ? fontFamily(face) : (craft?.typography.family ?? FONT),
         fontSize: size,
-        fontWeight: primary ? 800 : 600,
+        fontWeight: face?.weight ?? (primary ? (craft?.typography.weight ?? 800) : 600),
         fontVariantNumeric: "tabular-nums",
         lineHeight: 1.15,
-        letterSpacing: primary ? -0.5 : 0,
-        textShadow: "0 2px 10px rgba(0,0,0,0.45)",
+        letterSpacing: primary ? (craft?.typography.tracking ?? -0.5) : 0,
+        textShadow: flat ? "none" : "0 2px 10px rgba(0,0,0,0.45)",
       }}
     >
       {shown && (
@@ -2742,9 +2757,9 @@ function Text({ placed, p, t, seed, accent, dur }: { placed: PlacedText; p: numb
           style={{
             display: "inline-block",
             padding: "0.14em 0.5em 0.16em",
-            borderRadius: 10,
-            background: "rgba(14,16,22,0.66)",
-            boxShadow: "0 6px 24px rgba(0,0,0,0.22)",
+            borderRadius: flat ? 0 : 10,
+            background: flat ? inkColor : "rgba(14,16,22,0.66)",
+            boxShadow: flat ? "none" : "0 6px 24px rgba(0,0,0,0.22)",
             ...(card && right ? { borderRight: `6px solid ${bar}`, borderTopRightRadius: 2, borderBottomRightRadius: 2 } : {}),
             ...(card && !right ? { borderLeft: `6px solid ${bar}`, borderTopLeftRadius: 2, borderBottomLeftRadius: 2 } : {}),
           }}
@@ -2982,7 +2997,9 @@ export function VectorScene({
   speech = [],
   ambience = "none",
   insets = true,
+  typography,
 }: {
+  typography?: Typography;
   visual: Visual;
   assets: Assets;
   palette: string[];
@@ -3023,7 +3040,7 @@ export function VectorScene({
   const light = [...palette].sort((a, b) => lightness(b) - lightness(a))[0] ?? "#ffffff";
   // Yağmur ve kar odanın içine yağmaz (Ambience weatherIn).
   const weather = weatherIn(ambience, model.bg);
-  return <ShotStage {...model} {...shot} {...{ visual, lineStyle, grain, texture, paper, light, c0, c1, accent, width, height }} ambience={weather} />;
+  return <ShotStage {...model} {...shot} typography={typography} craft={styleCraftOf(visual.stylePack)} {...{ visual, lineStyle, grain, texture, paper, light, c0, c1, accent, width, height }} ambience={weather} />;
 }
 
 /** Çekimin kareden bağımsız kurgusu: temizlenmiş varlıklar, yerleşim ve son kamera (render ve denetim aynı sonucu görür). */
@@ -3119,7 +3136,7 @@ export function macroOf(
 }
 
 /** Katman sahneye giriyor ya da yer değiştiriyor (yürüme, kayma, taşınma). */
-const movingLayer = (spec: VectorShot, i: number) => spec.layers[i]!.anims.some((a) => a.type === "walk" || a.type === "slide_in" || a.type === "move");
+const movingLayer = (spec: VectorShot, i: number) => spec.layers[i]!.anims.some((a) => a.type === "walk" || (a.type === "slide_in" && !isMaterialEntrance(a)) || a.type === "move");
 
 /**
  * Çekimin kurgusu (kareden bağımsız): temizlenmiş varlıklar, sahnelenmiş plan, yerleşim ve kamera. Render (VectorScene)
@@ -3742,9 +3759,13 @@ function ShotStage({
   crowd,
   subject,
   macro,
+  craft,
+  typography,
 }: ShotModel &
   ShotFrame & {
     visual: Visual;
+    craft?: StyleCraft;
+    typography?: Typography;
     lineStyle: LineStyle;
     ambience: Visual["ambience"];
     grain: ReturnType<typeof textureLayer>;
@@ -3761,7 +3782,8 @@ function ShotStage({
   }) {
   // Sinematografi (lens.ts): kamera yaklaştıkça netlik özneye çekilir, önü ve arkası derinliğine göre bulanıklaşır;
   // kamera hafifçe nefes alır. Bulanıklık ekran px'i, kameranın içindeki öğeye ölçeğe bölünerek yazılır.
-  const dof = depthOfField({ spec, safe, placed, cam, bg, subject, macro, crowd }, k, p);
+  const flat = craft?.material === "poster";
+  const dof = flat ? undefined : depthOfField({ spec, safe, placed, cam, bg, subject, macro, crowd }, k, p);
   const local = (px: number) => px / lensScale(cam, k);
   const bgBlur = dof ? local(dof.bg) : 0;
   const crowdBlur = dof?.crowd ? local(dof.crowd) : 0;
@@ -3775,7 +3797,7 @@ function ShotStage({
     );
   // Suluboyada odanın saydam boyası kâğıdın üstünde (koyu palet degradesi zemini çamur rengine çeviriyordu).
   const stage = (
-    <AbsoluteFill style={{ overflow: "hidden", background: paper ?? `linear-gradient(160deg, ${c0}, ${c1})` }}>
+    <AbsoluteFill style={{ overflow: "hidden", background: flat ? c0 : (paper ?? `linear-gradient(160deg, ${c0}, ${c1})`) }}>
       {lineStyle === "sketch" && (
         // El çizimi titreşimi: sabit gürültüyle konturlar hafifçe dalgalanır.
         <svg width={0} height={0} style={{ position: "absolute" }}>
@@ -3789,7 +3811,7 @@ function ShotStage({
         style={{
           // Yakın çekim: odak noktasına doğru yaklaşır ve onu ortalar. Kameranın nefesi ekran düzleminde, en sonda
           // (haritada yok: veri sabit durur).
-          transform: `${bg?.meta.exact ? "" : `${cameraDrift(visual.shotId, t)} `}${cameraTransform(cam, k, centre)}`,
+          transform: `${craft || bg?.meta.exact ? "" : `${cameraDrift(visual.shotId, t)} `}${cameraTransform(cam, k, centre)}`,
           transformOrigin: "0 0",
           // Makro ek çekimde netlik nesneye çekilir: sahne bulanıklaşır ve kararır. Filtre ölçeklenen kamera div'inde
           // kameranın ölçeğiyle büyür (5 Kas: 10 px, 2,5 kat yakın çekimde ekranda 25 px'ti, kişiler "bulanık hayalet"):
@@ -3810,7 +3832,7 @@ function ShotStage({
             // Harita bilgi taşır: renkleri olduğu gibi kalır.
             // Alan derinliğinde duvar da bulanıklaşır; kenarı saydamla karışıp açılmasın diye bulanıklık kadar büyütülür.
             style={{
-              filter: bg.meta.exact ? undefined : `saturate(0.78) contrast(0.86) brightness(0.94)${bgBlur ? ` blur(${bgBlur.toFixed(2)}px)` : ""}`,
+              filter: flat || bg.meta.exact ? undefined : `saturate(0.78) contrast(0.86) brightness(0.94)${bgBlur ? ` blur(${bgBlur.toFixed(2)}px)` : ""}`,
               opacity: bg.meta.globe ? clamp01((p - GLOBE_SETTLE) / 0.06) : undefined,
               ...(bgBlur ? { transform: `scale(${(1 + (2 * bgBlur) / H).toFixed(4)})` } : {}),
             }}
@@ -3852,6 +3874,8 @@ function ShotStage({
                 // Kişiler hareket bulanıklığı almaz: bacakları kendi adımıyla oynar, bütün gövdenin izi yüzü siliyordu.
                 streak={asset.kind === "character" ? undefined : motionBlur(motions.get(pl.index)!.shift, pl.height, lensScale(cam, k))}
                 paper={paper}
+                craft={craft}
+                progress={printProgress(layer.anims, p)}
               />,
             ];
           })}
@@ -3860,19 +3884,19 @@ function ShotStage({
             crowdOf(<Crowd crowd={spec.crowd!} figures={crowd.figures} p={p} t={t} prefix={`${visual.shotId}-cr-`} lineStyle={lineStyle} floorY={crowd.floorY} />)}
         </div>
         {/* Işık odanın bir yanından düşer (light.ts: pencerenin yanı, yoksa odaya bağlı); haritada yok. */}
-        {bg && !bg.meta.exact && <AbsoluteFill data-light style={keyLight(lightOf(bg))} />}
+        {bg && !bg.meta.exact && !flat && <AbsoluteFill data-light style={keyLight(lightOf(bg))} />}
       </AbsoluteFill>
-      <AbsoluteFill style={MOOD_GRADE[spec.mood]} />
+      {!flat && <AbsoluteFill style={MOOD_GRADE[spec.mood]} />}
       {grain && (
         // Durağan doku katmanı resim olarak: tarayıcı bir kez rasterlar (satır içi SVG filtresi her karede yeniden
         // hesaplanıyordu: render %40–60 yavaşladı). Kameradan bağımsız, kağıt gibi sabit.
         <Img
           data-texture={texture}
           src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(grain.svg)}`}
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: grain.opacity }}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: grain.opacity * (flat ? 0.25 : 1) }}
         />
       )}
-      <AbsoluteFill style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.32) 100%)" }} />
+      {!flat && <AbsoluteFill style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.32) 100%)" }} />}
       {!BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} {...(DEPTH.has(ambience) ? { part: "near" as const } : {})} />}
       <SceneEffects spec={spec} p={p} durationSec={dur} seed={visual.shotId} />
       {inset && <Callout {...inset} p={p} prefix={`${visual.shotId}-co-`} accent={readable(accent) ?? "#ffd84d"} paper={paper} />}
@@ -3884,7 +3908,7 @@ function ShotStage({
       {/* Yazılar kamera hareketinin dışında: zoom onları altyazı bölgesine itmesin. */}
       <div style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>
         {texts.map((placed, i) => (
-          <Text key={i} placed={placed} p={p} t={t} seed={`${visual.shotId}-t${i}`} accent={accent} dur={dur} />
+          <Text key={i} placed={placed} p={p} t={t} seed={`${visual.shotId}-t${i}`} accent={accent} dur={dur} craft={craft} paperColor={c0} inkColor={c1} typography={typography} />
         ))}
       </div>
     </AbsoluteFill>
@@ -3896,8 +3920,8 @@ function ShotStage({
   // Dikeyde tam sığdırma sahneyi çok küçültür: 1,3 kat yakın çekim (kenarlardan ~%12 kırpılır). İçerik zaten orta
   // bantta (x 420–1500, arka plan kuralı) yerleşir; yatay/kareye yakın oranlarda büyütme yapılmaz.
   return (
-    <AbsoluteFill style={{ overflow: "hidden", background: `linear-gradient(160deg, ${c0}, ${c1})` }}>
-      {bg && (
+    <AbsoluteFill style={{ overflow: "hidden", background: flat ? c0 : `linear-gradient(160deg, ${c0}, ${c1})` }}>
+      {bg && !flat && (
         <AbsoluteFill
           style={{ filter: "blur(28px) brightness(0.7) saturate(0.9)", transform: "scale(1.15)" }}
           dangerouslySetInnerHTML={{ __html: prefixSvgIds(fitSvg(bg.svg, "slice"), `${visual.shotId}-bd-`) }}

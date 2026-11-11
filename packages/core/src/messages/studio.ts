@@ -3,6 +3,10 @@
  * Accept-Language) döner. Türkçeleri önceki yanıtlarla aynıdır (istemcinin eski hata eşlemesi bunlara bakar).
  */
 export const STUDIO_MESSAGES = {
+  "api.style.reference": { tr: "Geçerli bir PNG, JPEG veya WebP görseli seç (en çok 4 MB).", en: "Choose a valid PNG, JPEG or WebP image (up to 4 MB)." },
+  "api.style.recipe": { tr: "Stil alanlarını ve en az üç #RRGGBB rengini kontrol et.", en: "Check the style fields and at least three #RRGGBB colours." },
+  "api.style.missing": { tr: "Kaydedilmiş stil bulunamadı.", en: "Saved style not found." },
+  "api.style.bank": { tr: "Özel stil ile hazır stilin karakter bankası birlikte seçilemez.", en: "A custom style cannot be combined with characters from a ready-made style." },
   "api.badEpisode": { tr: "Geçersiz bölüm", en: "Invalid episode" },
   "api.busy": { tr: "Önce çalışan iş bitmeli", en: "Wait for the running job to finish first" },
   "api.badMotion": { tr: "Geçersiz hareket modu", en: "Invalid motion mode" },

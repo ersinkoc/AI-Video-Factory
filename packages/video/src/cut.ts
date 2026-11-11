@@ -40,12 +40,12 @@ function seedOf(text: string): number {
  * tür bölüm kimliğinden başlayıp sahne sırasıyla döner (art arda aynısı gelmez), yön her sahnede değişir. Episode ve render
  * önbelleği (chunks.ts) aynı hesabı kullanır.
  */
-export function cutsOf(visuals: readonly { shotId: string }[], seed: string): (Cut | undefined)[] {
+export function cutsOf(visuals: readonly { shotId: string; carried?: string[]; stylePack?: string }[], seed: string): (Cut | undefined)[] {
   const start = seedOf(seed) % SCENE_CUT.kinds.length;
   let n = 0;
   return visuals.map((v, i) => {
-    if (i === 0) return undefined;
-    if (sceneOf(v.shotId) === sceneOf(visuals[i - 1]!.shotId)) return { kind: "dissolve", frames: CROSSFADE, dir: 1 };
+    if (i === 0 || v.stylePack === "paper-poster") return undefined;
+    if (v.carried?.length || sceneOf(v.shotId) === sceneOf(visuals[i - 1]!.shotId)) return { kind: "dissolve", frames: CROSSFADE, dir: 1 };
     const k = n++;
     return { kind: SCENE_CUT.kinds[(start + k) % SCENE_CUT.kinds.length]!, frames: SCENE_CUT.frames, dir: k % 2 ? -1 : 1 };
   });

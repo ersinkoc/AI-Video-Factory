@@ -1,4 +1,15 @@
 import { existsSync } from "node:fs";
+import { collectWriterClaims, freezeResearch, loadResearch, researchContext, researchCredits } from "./research.ts";
+import { collectVoiceAudit, type VoiceMeasure } from "./voice-audit.ts";
+import { loadPronunciationBook, pronunciationLanguage, pronunciationRulesFingerprint, pronunciationTerms, pronunciationTermsFingerprint } from "./pronunciation-settings.ts";
+import { PronunciationEntry, pronunciationTermKey, type PronunciationBook } from "@ys/core";
+import { measureVoiceAudio } from "@ys/video/voice-audit";
+import { shotIntentText } from "@ys/core";
+import type { auditRenderedVideo } from "@ys/video/audit";
+import { collectRenderAudit, pendingRenderAudit } from "./render-audit.ts";
+import { compareRenderedStyle, styleSamples } from "./style-comparison.ts";
+import { measureStyleReference } from "./image-profile.ts";
+import { archiveCredits } from "./archive-credits.ts";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -48,6 +59,7 @@ import {
   STYLE_CUSTOM,
   STYLE_PACKS,
   styleFromPack,
+  styleCraftOf,
   stylePackOf,
   gatePasses,
   keepShotLayers,
@@ -77,6 +89,7 @@ import {
   type Text,
   type Timeline,
   type VectorAsset,
+  type VectorShot,
 } from "@ys/core";
 import type {
   AspectRatio,
@@ -93,6 +106,7 @@ import { curateLessons } from "./curate.ts";
 import { loadModelSettings } from "./settings.ts";
 import { acquireLock } from "./lock.ts";
 import { CHARACTER_BANK_ID, listLibraryCharacters, noteCharacterUse, seriesMascots, withBankChoice, type LibraryCharacter } from "./library.ts";
+import { loadCustomStyle } from "./custom-styles.ts";
 import { lineStyleOf } from "./state.ts";
 import { seriesEpisodeIds, seriesOf, seriesStylePack } from "./series.ts";
 import { EpisodeRepo } from "./actions.ts";
@@ -107,7 +121,7 @@ import { boardAccent, cleanMath, renderBoard } from "./manim.ts";
 import { lintShot } from "@ys/video/lint";
 import { stillMoment } from "@ys/video/moment";
 import { withSets } from "./set-dressing.ts";
-import { LEXICON, restoreWords, sayPlan } from "./pronounce.ts";
+import { restoreWords, sayPlan } from "./pronounce.ts";
 import { MUSIC_RATE, musicTrack } from "@ys/video/music";
 import { mixSfx, sfxEvents, wavFile } from "@ys/video/sfx";
 import { findReferences, findVectorSources, rasterizeSvg, searchQuery, type References } from "./reference.ts";
@@ -300,6 +314,10 @@ export interface PipelineDeps {
   concurrency?: number;
   /** Kare denetimden geçmezse en fazla kaç kez yeniden çizilsin (varsayılan 1). */
   qaRedraws?: number;
+  /** Optional media-analysis boundary; production defaults to the local FFmpeg audit. */
+  analyzeRender?: typeof auditRenderedVideo;
+  /** Konuşma denetiminde yalnız medya çözümleme sınırı değiştirilebilir. */
+  analyzeVoice?: VoiceMeasure;
 }
 
 export interface RunEpisodeOptions {
@@ -471,6 +489,73 @@ export class EpisodePipeline {
     }
   }
 
+  /** Kullanıcının açık yeniden yazma isteği: yalnız senaryo; sonraki onaylar ve aşamalar yeniden açılır. */
+  async rewriteScript(id: string): Promise<EpisodeState> {
+    const release = await acquireLock(this.deps.store, id);
+    try {
+      const state = await this.load(id);
+      if (!state.story) throw new LocalizedError(msg("err.missing", { what: "story" }));
+      state.approvals = {};
+      delete state.waitingFor;
+      delete state.scriptDraft;
+      invalidateFrom(state, "script");
+      await this.save(state);
+      return await this.runLocked(id, { only: "script" });
+    } finally { await release(); }
+  }
+
+  /** Analyze an existing main export without rerendering, generating media or invoking an agent. */
+  async auditRender(id: string, target: "main" | "short" = "main"): Promise<EpisodeState> {
+    const release = await acquireLock(this.deps.store, id);
+    try {
+      const state = await this.load(id);
+      if (target !== "main" && target !== "short") throw new Error("Unknown export target");
+      if (target === "short" ? !state.short : !state.render || (!state.render.auditRanges?.length && !state.timeline)) throw new LocalizedError(msg("err.missing", { what: target === "short" ? "short" : "timeline/render" }));
+      await this.auditExport(state, target);
+      return state;
+    } finally {
+      await release().catch(() => {});
+    }
+  }
+
+  /** Mevcut konuşma dosyalarını inceler; üretim aşaması veya ücretli çağrı çalıştırmaz. */
+  async auditVoice(id: string): Promise<EpisodeState> {
+    const release = await acquireLock(this.deps.store, id);
+    try {
+      const state = await this.load(id);
+      state.voiceAudit = await collectVoiceAudit(state, this.deps.store, this.deps.analyzeVoice ?? measureVoiceAudio);
+      await this.save(state);
+      return state;
+    } finally { await release(); }
+  }
+
+  async compareStyle(id: string): Promise<EpisodeState> {
+    const release = await acquireLock(this.deps.store, id);
+    try {
+      const state = await this.load(id);
+      await this.compareStyleExport(state);
+      return state;
+    } finally { await release().catch(() => {}); }
+  }
+
+  private async compareStyleExport(state: EpisodeState): Promise<void> {
+    const render = state.render;
+    if (!render?.styleReference || !render.styleSampling) throw new LocalizedError(msg("err.missing", { what: "render/style reference" }));
+    render.styleComparison = await compareRenderedStyle({ episodeId: state.id, store: this.deps.store,
+      render: { ...render, styleReference: render.styleReference, styleSampling: render.styleSampling } });
+    await this.save(state);
+  }
+
+  private async auditExport(state: EpisodeState, target: "main" | "short" = "main"): Promise<void> {
+    const render = target === "short" ? state.short! : state.render!;
+    render.audit = pendingRenderAudit();
+    await this.save(state);
+    this.log(msg("log.audit.start"));
+    render.audit = await collectRenderAudit({ episodeId: state.id, render, target, timeline: target === "main" ? state.timeline : undefined, store: this.deps.store, analyze: this.deps.analyzeRender });
+    this.log(msg("log.audit.done", { findings: render.audit.findingsCount, status: render.audit.status }));
+    await this.save(state);
+  }
+
   private async runLocked(id: string, opts: RunEpisodeOptions): Promise<EpisodeState> {
     const state = await this.load(id);
     this.models = await loadModelSettings(this.deps.store);
@@ -512,12 +597,15 @@ export class EpisodePipeline {
     state.stats = { ...state.stats, [stage]: { startedAt: new Date(started).toISOString() } };
     delete state.lastError;
     delete state.renderPct;
+    if (stage === "render" && state.render) delete state.render.audit;
     await this.save(state);
     const finish = () => {
       state.stats![stage] = { ...state.stats![stage]!, endedAt: new Date().toISOString(), durationMs: Date.now() - started };
     };
     try {
       await this.stages[stage](state, opts);
+      // Newly planned shot ids can describe different content; prior explicit image choices need a new review.
+      if (stage === "shots") delete state.archives;
     } catch (e) {
       finish();
       const text = errorText(e);
@@ -667,6 +755,7 @@ export class EpisodePipeline {
             description: shot.description,
             imagePrompt: shot.imagePrompt,
             characters: cast.map((c) => c.name),
+            style: state.style,
           },
           this.agentDeps,
         ),
@@ -1302,6 +1391,10 @@ export class EpisodePipeline {
     // Kapının reddettiği nesneler sunulmaz: yönetmen onları yeniden kullanıp sahneyi boş katmanla bırakıyordu.
     // Set eşyaları da sunulmaz: yerleşimlerini kod yapar (@ys/video setDressing).
     const known = Object.fromEntries(Object.entries(props).filter(([, p]) => !p.rejected && !p.set).map(([id, p]) => [id, p.description]));
+    const sceneIndex = state.script!.scenes.findIndex((s) => s.id === scene.id);
+    const previousId = state.script!.scenes[sceneIndex - 1]?.id;
+    const previous = previousId ? (state.shotPlanDraft?.[previousId]?.shots.at(-1) ?? state.shots?.filter((s) => s.sceneId === previousId).at(-1)) : undefined;
+    const previousVector = previous && "vector" in previous ? previous.vector as VectorShot | undefined : undefined;
     const out = await this.agent(
       state,
       "shots",
@@ -1311,6 +1404,7 @@ export class EpisodePipeline {
           durationSec,
           cast: cast!,
           props: known,
+          ...(previousVector ? { previousShot: { description: previous!.description, vector: previousVector } } : {}),
           lang: state.input.lang,
           lessons,
           feedback,
@@ -1346,6 +1440,7 @@ export class EpisodePipeline {
         locationId: background ?? "",
         kind: "still_motion" as const,
         description: s.description,
+        ...(s.intent ? { intent: s.intent } : {}),
         imagePrompt: "",
         motionPrompt: "",
         camera: "static" as const,
@@ -1389,11 +1484,11 @@ export class EpisodePipeline {
     // Sahne planının girdileri: değişirse eski taslak kullanılmaz.
     const sigOf = (scene: (typeof script.scenes)[number], duration: number) =>
       createHash("sha256")
-        .update(JSON.stringify([scene, duration, style, cast.characters.map((c) => c.id), cast.locations.map((l) => l.id), state.input.width, state.input.height]))
+        .update(JSON.stringify([scene, duration, style, cast.characters.map((c) => c.id), cast.locations.map((l) => l.id), state.input.width, state.input.height, ...(styleCraftOf(style.craftPreset ?? style.pack) ? [state.shotPlanDraft?.[script.scenes[script.scenes.indexOf(scene) - 1]?.id ?? ""]?.shots] : [])]))
         .digest("hex")
         .slice(0, 16);
     const draft = (state.shotPlanDraft ??= {});
-    await mapLimit(script.scenes, this.deps.concurrency ?? 3, async (scene) => {
+    await mapLimit(script.scenes, styleCraftOf(style.craftPreset ?? style.pack) ? 1 : (this.deps.concurrency ?? 3), async (scene) => {
       /* v8 ignore next -- süreler senaryonun bütün sahnelerinden kurulur */
       const duration = durations[scene.id] ?? 0;
       const sig = sigOf(scene, duration);
@@ -1438,7 +1533,7 @@ export class EpisodePipeline {
     const files = await this.renderShotStills(state, timeline, dir, only);
     const subtitles = state.input.captions !== false;
     // Bölümün stili ve paleti: paketin bilerek seçtiği renkler (tek renkli, sepya) kusur sayılmasın.
-    const style = state.style && { artStyle: state.style.artStyle, palette: state.style.palette };
+    const style = state.style && { artStyle: state.style.artStyle, palette: state.style.palette, pack: state.style.pack, ...(state.style.craftPreset ? { craftPreset: state.style.craftPreset } : {}), ...(state.style.reviewRules ? { reviewRules: state.style.reviewRules } : {}) };
 
     // O anda duyulan anlatım ve kodun yaptığı yerleşim düzeltmeleri, karenin değerlendirilmesi için.
     const spoken = (startMs: number, endMs: number) =>
@@ -1461,7 +1556,7 @@ export class EpisodePipeline {
           .map(async (s) => ({
             shotId: s.id,
             image: { data: new Uint8Array(await readFile(files[s.id]!)), mimeType: "image/jpeg" },
-            intent: `${s.description} | narration: "${spoken(s.startMs, s.endMs)}"`,
+            intent: `${state.archives?.[s.id] ? `Intentional real archive photograph/document insert (title as source data: ${JSON.stringify(state.archives[s.id]!.source.title)}); do not require the episode's illustrated character style. ` : ""}${s.description} | narration: "${spoken(s.startMs, s.endMs)}"${s.intent ? ` | ${shotIntentText(s.intent)}` : ""}`,
           })),
       );
       if (!items.length) return;
@@ -1835,7 +1930,7 @@ export class EpisodePipeline {
       let n = 0;
       for (const v of timeline.visuals.filter((x) => x.vector)) {
         const shot = state.shots!.find((s) => s.id === v.shotId)!;
-        const acted = withNarratedActions(v.vector!, shot.description, state.cast!.characters, v.durationInFrames / timeline.fps);
+        const acted = withNarratedActions(v.vector!, shot.description, state.cast!.characters, v.durationInFrames / timeline.fps, shot.intent);
         // Duygu yüz ifadesidir, sahnelemeyi değiştirmez: eylem denetimden geçmese de uygulanır.
         const base = acted && addsNoDefect(lint(v), lint({ ...v, vector: acted })) ? acted : v.vector!;
         const next = withNarratedMoods(base, shot.description, state.cast!.characters) ?? (base === v.vector ? undefined : base);
@@ -1886,10 +1981,9 @@ export class EpisodePipeline {
    * (bölüm başına bir ucuz çağrı; sonuç state.pronunciations'a yazılır, elle düzeltilen okunuş korunur). Ajan
    * çalışamazsa yalnız sözlükle sürer: ses yine üretilir.
    */
-  private async pronunciations(state: EpisodeState, scenes: NonNullable<EpisodeState["script"]>["scenes"]): Promise<Record<string, string>> {
-    const lexicon = LEXICON[state.input.lang.split("-")[0]!] ?? {};
+  private async pronunciations(state: EpisodeState, scenes: NonNullable<EpisodeState["script"]>["scenes"], book: PronunciationBook): Promise<Record<string, string>> {
     state.pronunciations ??= {};
-    const known = { ...lexicon, ...state.pronunciations };
+    const known = pronunciationTerms(state, book), knownKeys = new Set(Object.keys(known).map(pronunciationTermKey));
     try {
       const out = await this.agent(
         state,
@@ -1897,15 +1991,17 @@ export class EpisodePipeline {
         pronouncer({ language: state.input.lang, text: scenes.map((s) => s.narration).join("\n\n"), known: Object.keys(known) }, this.agentDeps),
       );
       for (const t of out.terms) {
-        const written = t.written.trim();
-        const spoken = t.spoken.trim();
-        if (written && spoken && spoken !== written && !Object.hasOwn(known, written)) state.pronunciations[written] = spoken;
+        const parsed = PronunciationEntry.safeParse({ lang: pronunciationLanguage(state.input.lang), written: t.written, spoken: t.spoken });
+        if (parsed.success && parsed.data.spoken !== parsed.data.written && !knownKeys.has(pronunciationTermKey(parsed.data.written))) {
+          state.pronunciations[parsed.data.written] = parsed.data.spoken;
+          knownKeys.add(pronunciationTermKey(parsed.data.written));
+        }
       }
       await this.save(state);
     } catch (e) {
       this.log(msg("log.voice.pronounceFailed", { error: errorText(e) }));
     }
-    return { ...lexicon, ...state.pronunciations };
+    return pronunciationTerms(state, book);
   }
 
   /**
@@ -2521,7 +2617,18 @@ export class EpisodePipeline {
 
   private readonly stages: Record<Stage, (state: EpisodeState, opts: RunEpisodeOptions) => Promise<void>> = {
     style: async (state) => {
+      if (state.input.customStyleId) {
+        const saved = await loadCustomStyle(this.deps.store, state.input.customStyleId);
+        if (!saved) throw new LocalizedError(msg("api.style.missing"));
+        const { name: _name, ...recipe } = saved.recipe;
+        state.style = recipe;
+        const bytes = saved.referenceKey ? await this.deps.store.get(saved.referenceKey) : null;
+        state.styleReference = bytes && saved.referenceKey ? { key: saved.referenceKey, profile: (await measureStyleReference(this.deps.store, bytes)).profile } : undefined;
+        this.log(msg("log.style.custom", { style: recipe.artStyle }));
+        return;
+      }
       const choice = state.input.stylePack;
+      state.styleReference = undefined;
       if (choice === STYLE_CUSTOM) {
         state.style = await this.agent(state, "style", artDirector(this.brief(state), this.agentDeps));
         this.log(msg("log.style.custom", { style: state.style.artStyle }));
@@ -2544,14 +2651,16 @@ export class EpisodePipeline {
     },
 
     story: async (state) => {
-      state.story = await this.agent(state, "story", storyArchitect(this.brief(state), this.agentDeps));
+      const research = researchContext(await loadResearch(this.deps.store, state.id));
+      state.story = await this.agent(state, "story", storyArchitect({ ...this.brief(state), ...(research ? { research } : {}) }, this.agentDeps));
       this.log(msg("log.story.done", { title: state.story.title, beats: state.story.beats.length }));
     },
 
     script: async (state) => {
       if (!state.story) throw new LocalizedError(msg("err.missing", { what: "story" }));
       const book = await loadLessons(this.deps.store);
-      const brief = { ...this.brief(state), lessons: topLessons(book, "script") };
+      const research = researchContext(await loadResearch(this.deps.store, state.id));
+      const brief = { ...this.brief(state), lessons: topLessons(book, "script"), ...(research ? { research } : {}) };
       // Doktor düşerse (pahalı) senarist devamda yeniden çağrılmasın: taslak aynı girdilerle kaydedilir.
       const sig = createHash("sha256").update(JSON.stringify([brief, state.story])).digest("hex").slice(0, 16);
       let draft: ScriptOut;
@@ -2571,6 +2680,8 @@ export class EpisodePipeline {
       state.script = ids(doctored.script) === ids(draft) ? doctored.script : draft;
       state.scriptNotes = doctored.notes;
       delete state.scriptDraft;
+      const candidates = await collectWriterClaims(this.deps.store, state);
+      if (candidates) this.log(msg("log.research.claims", { n: candidates }));
       mergeLessons(book, doctored.notes.map((rule) => ({ target: "script" as const, rule })), state.id);
       await this.curate(state, book);
       await saveLessons(this.deps.store, book);
@@ -2731,9 +2842,14 @@ export class EpisodePipeline {
       state.voice ??= {};
       const voice = state.voice;
       const { gateway } = this.deps;
-      // Metni değişmiş sahnenin eski sesi kullanılmaz (senaryo düzenlendi ya da yeniden yazıldı).
-      const todo = state.script.scenes.filter((s) => !voice[s.id] || (voice[s.id]!.text !== undefined && voice[s.id]!.text !== s.narration));
-      if (todo.length === 0) return;
+      const book = await loadPronunciationBook(this.deps.store), initialTerms = pronunciationTerms(state, book), language = pronunciationLanguage(state.input.lang);
+      if (state.pronunciationPlan && (state.pronunciationPlan.revision !== book.revision || state.pronunciationPlan.rulesFingerprint !== pronunciationRulesFingerprint(state, book))) throw new LocalizedError(msg("err.pronunciation.changed"));
+      // Yazım sabit kalsa da incelenmiş okunuş değişmiş olabilir; bilinmeyen eski kayıt kendiliğinden silinmez.
+      const todo = state.script.scenes.filter((s) => {
+        const previous = voice[s.id], spoken = previous?.spoken ?? previous?.text;
+        return !previous || previous.text !== undefined && previous.text !== s.narration || spoken !== undefined && spoken !== sayPlan(s.narration, initialTerms, language).spoken;
+      });
+      if (todo.length === 0) { delete state.pronunciationPlan; return; }
 
       const requestFor = (text: string): GenerationRequest => {
         const base: GenerationRequest = {
@@ -2772,12 +2888,13 @@ export class EpisodePipeline {
       }
 
       // Yabancı terimler TTS'e okunuşlarıyla gider ("C++" → "si pılas pılas"); altyazı yazılışı gösterir.
-      const terms = await this.pronunciations(state, todo);
+      const terms = await this.pronunciations(state, todo, book);
+      const termsFingerprint = pronunciationTermsFingerprint(state, book);
       const said: Record<string, string> = {};
       for (const scene of todo) {
         const run = this.runOptions(state, "voice", opts.signal, scene.id);
         run.policy = { ...run.policy, allow: [provider] };
-        const plan = sayPlan(scene.narration, terms, state.input.lang.split("-")[0]);
+        const plan = sayPlan(scene.narration, terms, language);
         Object.assign(said, plan.used);
         const res = await gateway.generate(requestFor(plan.spoken), run);
         state.voiceProviderId = res.providerId;
@@ -2796,6 +2913,7 @@ export class EpisodePipeline {
           words,
           estimatedTiming: !res.words,
           text: scene.narration,
+          pronunciation: { revision: book.revision, fingerprint: termsFingerprint },
           ...(plan.spoken === scene.narration ? {} : { spoken: plan.spoken }),
         };
         voice[scene.id] = sceneVoice;
@@ -2810,6 +2928,7 @@ export class EpisodePipeline {
               .join(", "),
           }),
         );
+      delete state.pronunciationPlan;
     },
 
     shots: async (state) => {
@@ -2850,7 +2969,7 @@ export class EpisodePipeline {
       if (motionModeOf(state.input) === "vector") return this.vectorProps(state);
       state.keyframes ??= {};
       const keyframes = state.keyframes;
-      const todo = shots.filter((s) => !keyframes[s.id]);
+      const todo = shots.filter((s) => !keyframes[s.id] && !state.archives?.[s.id]);
 
       const qaOn = state.input.qa !== false;
       const redraws = this.deps.qaRedraws ?? 1;
@@ -2906,7 +3025,7 @@ export class EpisodePipeline {
       if (!shots || !keyframes) throw new LocalizedError(msg("err.missing", { what: "shots/keyframes" }));
       state.clips ??= {};
       const clips = state.clips;
-      const todo = shots.filter((s) => s.kind === "ai_clip" && !clips[s.id] && keyframes[s.id]);
+      const todo = shots.filter((s) => s.kind === "ai_clip" && !clips[s.id] && keyframes[s.id] && !state.archives?.[s.id]);
       if (todo.length === 0) return;
 
       await mapLimit(todo, this.deps.concurrency ?? 3, async (shot) => {
@@ -2952,6 +3071,7 @@ export class EpisodePipeline {
       if (!timeline) throw new LocalizedError(msg("err.missing", { what: "timeline" }));
       const dir = resolve(this.deps.workDir, state.id);
       const publicDir = join(dir, "public");
+      await mkdir(publicDir, { recursive: true });
 
       // Depodaki (yerel veya S3) varlıkları render klasörüne indir; klipleri render formatına çevir.
       const files = timeline.visuals.filter((v) => v.assetUrl);
@@ -2998,8 +3118,27 @@ export class EpisodePipeline {
       });
       // Yeniden render (altyazı/ses anahtarı) küçük resmi değiştirmez: paket aşaması yeniden açılmadıysa kaydı kalsın.
       const thumbnail = state.render?.thumbnail;
-      state.render = { path: outputPath, at: new Date().toISOString(), ...(thumbnail ? { thumbnail } : {}) };
+      state.render = { path: outputPath, at: new Date().toISOString(), exportId: randomUUID(), ...(thumbnail ? { thumbnail } : {}), ...(timeline.typography ? { typography: timeline.typography } : {}) };
+      state.render.auditRanges = timeline.visuals.map((v) => ({ id: v.shotId, startSec: v.fromFrame / timeline.fps, endSec: (v.fromFrame + v.durationInFrames) / timeline.fps }));
+      state.render.archiveSources = timeline.visuals.flatMap((v) => {
+        const selected = state.archives?.[v.shotId];
+        return v.archiveSource ? [{ shotId: v.shotId, source: v.archiveSource, key: v.assetUrl, ...(selected?.key === v.assetUrl ? { originalSha256: selected.originalSha256, downloadedAt: selected.downloadedAt } : {}) }] : [];
+      });
+      const researchSnapshot = await freezeResearch(this.deps.store, state);
+      if (researchSnapshot) {
+        state.render.research = researchSnapshot;
+        const evidence = await this.deps.store.get(researchSnapshot.reportKey);
+        if (!evidence) throw new LocalizedError(msg("err.research.missing"));
+        await writeFile(join(dir, `${state.id}.research.json`), evidence);
+      }
+      if (state.styleReference) {
+        state.render.styleReference = structuredClone(state.styleReference);
+        state.render.styleSampling = styleSamples(timeline);
+      }
+      await writeFile(join(dir, `${state.id}.sources.json`), JSON.stringify({ renderedAt: state.render.at, images: state.render.archiveSources }, null, 2) + "\n", "utf8");
       this.log(msg("log.render.done", { path: outputPath }));
+      await this.auditExport(state);
+      if (state.render.styleReference) await this.compareStyleExport(state);
     },
 
     package: async (state) => {
@@ -3016,7 +3155,7 @@ export class EpisodePipeline {
       const sceneSec = Object.fromEntries(starts.map(([id, at], i) => [id, (starts[i + 1]?.[1] ?? durationSec) - at]));
       try {
         const pkg = await this.agent(state, "package", packager({ story, script, lang: state.input.lang, durationSec, sceneSec }, this.agentDeps));
-        const description = fullDescription(pkg, chapterLines(pkg.chapters, Object.fromEntries(starts)), historyCredits(state));
+        const description = fullDescription(pkg, chapterLines(pkg.chapters, Object.fromEntries(starts)), [...historyCredits(state), ...archiveCredits(state), ...await researchCredits(this.deps.store, state)]);
         thumbnailText = pkg.thumbnailText.trim() || thumbnailText;
         state.package = { title: pkg.title.trim(), thumbnailText, description, tags: pkg.tags, short: { ...pkg.short, title: pkg.short.title.trim() }, at: new Date().toISOString() };
         // Yüklemede kopyalanacak metinler videonun yanında da dursun.
@@ -3077,8 +3216,10 @@ export class EpisodePipeline {
         });
         const sec = Math.round(short.durationInFrames / short.fps);
         const title = state.package?.short?.title || state.package?.title || state.input.topic;
-        state.short = { path: output, title, scenes: range.scenes, sec, at: new Date().toISOString() };
+        state.short = { path: output, title, scenes: range.scenes, sec, at: new Date().toISOString(), exportId: randomUUID(),
+          auditRanges: short.visuals.map((v) => ({ id: v.shotId, startSec: v.fromFrame / short.fps, endSec: (v.fromFrame + v.durationInFrames) / short.fps })) };
         this.log(msg("log.short.done", { path: output, sec, scenes: range.scenes.join(", ") }));
+        await this.auditExport(state, "short");
       } catch (e) {
         this.log(msg("log.short.failed", { error: errorText(e) }));
       }

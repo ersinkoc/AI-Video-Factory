@@ -1,0 +1,40 @@
+import assert from "node:assert/strict";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { FsAssetStore } from "../packages/storage/src/index.ts";
+import { EpisodeRepo, newEpisodeState } from "../packages/pipeline/src/actions.ts";
+import { episodeFingerprint } from "../packages/pipeline/src/editing.ts";
+import { applyPronunciationImpact, loadPronunciationBook, mutateEpisodePronunciation, mutateSharedPronunciations, previewPronunciationImpact, pronunciationTerms } from "../packages/pipeline/src/pronunciation-settings.ts";
+import { LEXICON, restoreWords, sayPlan } from "../packages/pipeline/src/pronounce.ts";
+import { STAGES } from "../packages/pipeline/src/state.ts";
+
+// Yalnız meta veri fikstürü: kayıt referansları örnektir; ses, model veya render üretimi yapılmaz.
+const root = resolve(process.argv[2] ?? "out/pronunciation-workflow"), id = "pronunciation-verification";
+await mkdir(dirname(root), { recursive: true }); await mkdir(root);
+const store = new FsAssetStore(join(root, ".data/assets")), repo = new EpisodeRepo(store);
+const state = newEpisodeState({ topic: "Synthetic pronunciation metadata", lang: "tr", targetSec: 8, tier: "economy", budgetUsd: 0, aiClipRatio: 0, width: 640, height: 360, fps: 12 }); state.id = id;
+const scene = (id: string, narration: string) => ({ id, beatId: "fixture", narration, visualIntent: "Metadata fixture", emotion: "neutral", location: "fixture" });
+state.script = { scenes: [scene("s1", "C++ projesi."), scene("s2", "Merhaba.")] };
+const timed = (text: string) => text.split(/\s+/u).map((text, i) => ({ text, startMs: i * 300, endMs: (i + 1) * 300 }));
+state.voice = Object.fromEntries(state.script.scenes.map((s) => {
+  const plan = sayPlan(s.narration, LEXICON.tr ?? {}, "tr");
+  return [s.id, { key: `metadata-only/reference-${s.id}`, mimeType: "audio/mpeg", durationMs: 4000, text: s.narration, ...(plan.spoken !== s.narration ? { spoken: plan.spoken } : {}), words: restoreWords(timed(plan.spoken), plan), estimatedTiming: false }];
+}));
+state.done = Object.fromEntries(STAGES.map((s) => [s, "fixture"])); state.approvals = { script: "fixture", concept: "fixture", preview: "fixture" };
+state.render = { path: "metadata-only/previous-export.mp4", at: "fixture", exportId: "synthetic-export-reference" };
+await repo.save(state);
+await mutateSharedPronunciations(store, 0, { type: "put", entry: { lang: "tr", written: "C++", spoken: "ortak okunuş" } });
+assert.deepEqual((await repo.load(id)).voice, state.voice);
+await mutateEpisodePronunciation({ id, store, repo, fingerprint: episodeFingerprint(state), mutation: { type: "put", entry: { lang: "tr", written: "c++", spoken: "bölüm okunuşu" } } });
+const local = await repo.load(id), book = await loadPronunciationBook(store), preview = previewPronunciationImpact(local, book);
+assert.equal(pronunciationTerms(local, book)["c++"], "bölüm okunuşu"); assert.deepEqual(preview.affected, ["s1"]); assert.deepEqual(preview.retained, ["s2"]);
+await mutateSharedPronunciations(store, 1, { type: "put", entry: { lang: "tr", written: "Unrelated", spoken: "anrileyıtıd" } });
+await assert.rejects(applyPronunciationImpact({ id, store, repo, ...preview }));
+assert.deepEqual((await repo.load(id)).voice, state.voice);
+const currentBook = await loadPronunciationBook(store), currentPreview = previewPronunciationImpact(local, currentBook);
+await applyPronunciationImpact({ id, store, repo, ...currentPreview }); const applied = await repo.load(id);
+assert.equal(applied.voice?.s1, undefined); assert.deepEqual(applied.voice?.s2, state.voice.s2); assert.deepEqual(applied.script, state.script); assert.deepEqual(applied.render, state.render);
+const newPlan = sayPlan(state.script.scenes[0]!.narration, pronunciationTerms(local, currentBook), "tr");
+assert.equal(restoreWords(timed(newPlan.spoken), newPlan).map((w) => w.text).join(" "), state.script.scenes[0]!.narration);
+await writeFile(join(root, "verification.json"), JSON.stringify({ metadataOnly: true, sharedRevision: currentBook.revision, episodeOverrideWins: true, affectedScenes: currentPreview.affected, retainedScenes: currentPreview.retained, stalePreviewRejected: true, scriptAndCaptionsPreserved: true, priorExportReferencePreserved: true, generationInvoked: false, episodeId: id }, null, 2));
+console.log(`Verified pronunciation settings: ${root}`);

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { sideAssetId, type Timeline } from "@ys/core";
+import { fontAsset, TYPOGRAPHY_PAIRS, sideAssetId, type Timeline } from "@ys/core";
 import { captionPages, cutsOf } from "./cut.ts";
 
 /**
@@ -66,6 +66,15 @@ export async function chunkKeys(timeline: Timeline, ranges: ChunkRange[], public
   const cuts = cutsOf(timeline.visuals, timeline.episodeId);
   const tail = (i: number) => cuts[i + 1]?.frames ?? 0;
   const keys: string[] = [];
+  const fontHashes: Record<string, string> = {};
+  if (timeline.typography) {
+    for (const face of Object.values(TYPOGRAPHY_PAIRS[timeline.typography.pair])) {
+      for (const subset of ["latin", "latin-ext"] as const) {
+        const file = fontAsset(face, subset);
+        fontHashes[file] = await fileKey(publicDir, file, memo);
+      }
+    }
+  }
   for (const { from, to } of ranges) {
     const shots = timeline.visuals.flatMap((v, i) => (v.fromFrame < to && v.fromFrame + v.durationInFrames + tail(i) > from ? [{ v, first: i === 0, last: i === last, cut: cuts[i] ?? null, tail: tail(i) }] : []));
     const assets: Record<string, unknown> = {};
@@ -89,7 +98,8 @@ export async function chunkKeys(timeline: Timeline, ranges: ChunkRange[], public
           shots,
           assets,
           files,
-          look: [timeline.palette, timeline.lineStyle ?? null, timeline.texture ?? null],
+          fonts: fontHashes,
+          look: [timeline.palette, timeline.lineStyle ?? null, timeline.texture ?? null, timeline.typography ?? null],
           speech,
           pages: shown,
         }),

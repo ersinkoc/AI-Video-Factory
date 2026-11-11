@@ -39,7 +39,7 @@ const base = (over: Partial<EpisodeState> = {}): EpisodeState =>
 /** Sahte pipeline: durumları bellekte tutar, çağrıları kaydeder. */
 function fakePipeline(initial: EpisodeState[] = []) {
   const states = new Map(initial.map((s) => [s.id, structuredClone(s)]));
-  const calls = { create: [] as EpisodeInput[], run: [] as [string, unknown][], saved: [] as EpisodeState[], previewed: [] as string[] };
+  const calls = { create: [] as EpisodeInput[], run: [] as [string, unknown][], saved: [] as EpisodeState[], previewed: [] as string[], audited: [] as string[] };
   const pipeline = {
     create: async (input: EpisodeInput) => {
       calls.create.push(input);
@@ -64,6 +64,10 @@ function fakePipeline(initial: EpisodeState[] = []) {
       calls.previewed.push(id);
       return states.get(id)!;
     },
+    auditRender: async (id: string) => {
+      calls.audited.push(id);
+      return states.get(id)!;
+    },
   };
   return { pipeline: pipeline as unknown as Pipeline, calls, states };
 }
@@ -75,6 +79,55 @@ beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void out.push(a.map(String).join(" ")));
 });
 afterEach(() => vi.restoreAllMocks());
+
+it("audits an existing episode separately and reports incomplete measurements as an error", async () => {
+  const state = base({ render: { path: "main.mp4", at: "t", audit: { status: "complete", at: "now", findingsCount: 1, findings: [], checks: [] } } });
+  const h = fakePipeline([state]);
+  await episodeCommand(h.pipeline, "audit", state.id, {});
+  expect(h.calls.audited).toEqual([state.id]);
+  expect(h.calls.run).toEqual([]);
+  h.states.get(state.id)!.render!.audit!.status = "incomplete";
+  await expect(episodeCommand(h.pipeline, "audit", state.id, {})).rejects.toThrow("Video denetimi tamamlanamadı");
+  await expect(episodeCommand(h.pipeline, "audit", undefined, {})).rejects.toThrow("bölüm kimliği");
+});
+
+it("starts a script-only rewrite only on the explicit subcommand", async () => {
+  const rewriteScript = vi.fn(async () => base());
+  const pipeline = { rewriteScript } as unknown as Pipeline;
+  await episodeCommand(pipeline, "rewrite-script", "e1", {});
+  expect(rewriteScript).toHaveBeenCalledWith("e1");
+  await expect(episodeCommand(pipeline, "rewrite-script", undefined, {})).rejects.toThrow("bölüm kimliği");
+});
+
+it("runs voice-only analysis and fails incomplete measurement without starting generation", async () => {
+  const state = base({ voiceAudit: { status: "complete", at: "now", fingerprint: "f", scenes: 1, findingsCount: 1, findings: [] } });
+  const auditVoice = vi.fn(async () => state), pipeline = { auditVoice } as unknown as Pipeline;
+  await episodeCommand(pipeline, "audit-voice", state.id, {}); expect(auditVoice).toHaveBeenCalledWith(state.id);
+  state.voiceAudit!.status = "incomplete";
+  await expect(episodeCommand(pipeline, "audit-voice", state.id, {})).rejects.toThrow("Konuşma denetimi tamamlanamadı");
+  await expect(episodeCommand(pipeline, "audit-voice", undefined, {})).rejects.toThrow("bölüm kimliği");
+});
+
+it("routes --short to the Short audit and checks its status instead of the main video", async () => {
+  const state = base({ short: { path: "short.mp4", at: "t", title: "Short", scenes: [], sec: 6, audit: { status: "complete", at: "now", findingsCount: 1, findings: [], checks: [] } } });
+  const auditRender = vi.fn(async (_id: string, _target?: string) => state);
+  const pipeline = { auditRender } as unknown as Pipeline;
+  await episodeCommand(pipeline, "audit", state.id, { short: true });
+  expect(auditRender).toHaveBeenCalledWith(state.id, "short");
+  state.short!.audit!.status = "incomplete";
+  await expect(episodeCommand(pipeline, "audit", state.id, { short: true })).rejects.toThrow("Video denetimi tamamlanamadı");
+});
+
+it("compares an existing render without starting generation and fails visibly for incomplete results", async () => {
+  const state = base({ render: { path: "main.mp4", at: "t", styleComparison: { status: "complete", at: "now", compared: 1, eligible: 1, excludedArchive: 0, findings: [] } } });
+  const compareStyle = vi.fn(async () => state);
+  const pipeline = { compareStyle } as unknown as Pipeline;
+  await episodeCommand(pipeline, "compare-style", state.id, {});
+  expect(compareStyle).toHaveBeenCalledWith(state.id);
+  state.render!.styleComparison!.status = "incomplete";
+  await expect(episodeCommand(pipeline, "compare-style", state.id, {})).rejects.toThrow("Stil karşılaştırması tamamlanamadı");
+  await expect(episodeCommand(pipeline, "compare-style", undefined, {})).rejects.toThrow("bölüm kimliği");
+});
 
 describe("positive", () => {
   it("virgüllü ondalığı kabul eder, sıfır/negatif/sayı olmayanı reddeder", () => {

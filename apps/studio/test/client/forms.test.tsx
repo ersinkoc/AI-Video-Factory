@@ -29,6 +29,7 @@ function mockApi({ estimate = () => json(makeEstimates()), create = () => json({
   const estimates: Record<string, unknown>[] = [];
   const creates: Record<string, unknown>[] = [];
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/styles/custom") return json([]);
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     if (url === "/api/estimate") {
       estimates.push(body);
@@ -139,8 +140,8 @@ describe("NewEpisodeForm", () => {
     fireEvent.change(pack, { target: { value: "custom" } });
     expect(screen.getByText(en("form.stylePack.customHint"))).toBeTruthy();
     expect(document.querySelectorAll('[title="#1d2b53"]')).toHaveLength(0);
-    // Örnek yoksa galeri yok.
-    expect(screen.queryByText(en("form.gallery"))).toBeNull();
+    // Yerleşik hareket örnekleri kütüphane çizimi olmadan da var.
+    expect(screen.getByText(en("form.gallery"))).toBeTruthy();
   });
 
   it("selects every registered style pack with its palette and line style", () => {
@@ -172,9 +173,9 @@ describe("NewEpisodeForm", () => {
     };
     renderIn(<NewEpisodeForm samples={samples} />);
     expect(screen.getByText(tr("form.gallery"))).toBeTruthy();
-    expect(screen.getByText(tr("form.gallery.hint", { n: 4, total: STYLE_PACKS.length }))).toBeTruthy();
+    expect(screen.getByText(tr("form.gallery.hint", { n: 7, total: STYLE_PACKS.length }))).toBeTruthy();
     const thumbs = screen.getAllByRole("button", { pressed: false }).filter((b) => b.querySelector("img"));
-    expect(thumbs).toHaveLength(4);
+    expect(thumbs).toHaveLength(7);
     expect(document.querySelector('img[src="/api/assets/library/vector/character/c.figure.png"]')).toBeTruthy();
     expect(document.querySelector('img[src^="/api/styles/clay/sample?kind=character"]')).toBeNull();
     // "Otomatik" seçiliyken büyük önizleme yok: her resim bir küçük resimde.

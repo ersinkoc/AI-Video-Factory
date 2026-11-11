@@ -1,4 +1,5 @@
-import type { Timeline } from "@ys/core";
+import { fontFamily, TYPOGRAPHY_PAIRS, type Timeline } from "@ys/core";
+import { TypographyFonts } from "./TypographyFonts.tsx";
 import { AbsoluteFill, Img, staticFile } from "remotion";
 import { THUMB, thumbnailTitleSize, type ThumbnailSide } from "./thumbnail.ts";
 import { readable, VectorScene } from "./Vector.tsx";
@@ -20,6 +21,7 @@ export function Thumbnail({ timeline, shotId, side, title }: ThumbnailProps) {
   const size = thumbnailTitleSize(text);
   return (
     <AbsoluteFill style={{ background: "#111" }}>
+      <TypographyFonts key={timeline.typography?.pair ?? "legacy"} selection={timeline.typography} />
       {visual?.vector ? (
         <VectorScene
           visual={{ ...visual, overlay: undefined, vector: { ...visual.vector, texts: [] } }}
@@ -27,10 +29,11 @@ export function Thumbnail({ timeline, shotId, side, title }: ThumbnailProps) {
           palette={timeline.palette}
           lineStyle={timeline.lineStyle}
           texture={timeline.texture}
+          typography={timeline.typography}
           insets={false}
         />
       ) : (
-        visual && <Img src={staticFile(visual.assetUrl)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        visual && <Img src={staticFile(visual.assetUrl)} style={{ width: "100%", height: "100%", objectFit: visual.fit ?? "cover" }} />
       )}
       {/* Yazının altındaki yan koyulaşır: başlık her arka planda okunur. */}
       <AbsoluteFill style={{ background: `linear-gradient(${bottom ? 0 : side === "left" ? 90 : 270}deg, rgba(0,0,0,0.78), rgba(0,0,0,0.45) 38%, rgba(0,0,0,0) 62%)` }} />
@@ -41,9 +44,9 @@ export function Thumbnail({ timeline, shotId, side, title }: ThumbnailProps) {
           ...(bottom ? { left: 56, right: 56 } : { [side]: 56, maxWidth: THUMB.width * 0.56 }),
           bottom: bottom ? 48 : 72,
           textAlign: align,
-          fontFamily: "Inter, 'Noto Sans', 'Segoe UI', sans-serif",
+          fontFamily: timeline.typography ? fontFamily(TYPOGRAPHY_PAIRS[timeline.typography.pair].heading) : "Inter, 'Noto Sans', 'Segoe UI', sans-serif",
           fontSize: size,
-          fontWeight: 900,
+          fontWeight: timeline.typography ? TYPOGRAPHY_PAIRS[timeline.typography.pair].heading.weight : 900,
           lineHeight: 1.02,
           letterSpacing: -1,
           color: "white",

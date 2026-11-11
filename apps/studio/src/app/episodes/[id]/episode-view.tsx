@@ -126,13 +126,13 @@ export function EpisodeView({ id }: { id: string }) {
   };
 
   return (
-    <div className="grid gap-5">
+    <div className="grid min-w-0 grid-cols-1 gap-5">
       <Header data={data} act={act} />
       <PipelineRail data={data} onStage={openStage} />
       <LivePanel data={data} busy={busy} act={act} onTab={setTab} />
       {error && <div className="rounded-xl border border-bad/40 bg-bad/10 px-4 py-3 text-sm text-bad">{error}</div>}
 
-      <section className="card p-0">
+      <section className="card min-w-0 p-0">
         <nav className="flex gap-1 overflow-x-auto border-b border-line px-3" role="tablist">
           {TABS.map((k) => (
             <button

@@ -65,6 +65,7 @@ describe("Stüdyo sunucusu: kök ve kurulum", () => {
       [entry({ episodeId: "e1", durationMs: 1000 }), entry({ episodeId: "e1", capability: "llm" }), entry({ episodeId: "e2" })].join("\n") + "\n",
     );
     expect(await server.episodeSpentUsd("e1")).toBe(2);
+    expect(server.ledger()).toBeInstanceOf(JsonlLedger);
     expect(process.env.YS_STUDIO_TEST_ENV).toBe("yuklendi");
     expect(await server.ledgerEntries("e1")).toHaveLength(2);
     expect(await server.ledgerEntries()).toHaveLength(3);

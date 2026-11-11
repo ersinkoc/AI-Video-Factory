@@ -94,6 +94,7 @@ describe("buildTimeline", () => {
     };
 
     const tl = buildTimeline(state, (k) => `assets/${k}`);
+    expect(tl.typography).toEqual({ pair: "clear" });
     expect(tl.durationInFrames).toBe(102);
     expect(tl.visuals).toMatchObject([
       { shotId: "a", kind: "still_motion", fromFrame: 0, durationInFrames: 45, assetUrl: "assets/kf/a.png", motion: { panX: -1 }, ambience: "rain" },

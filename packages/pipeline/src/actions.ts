@@ -1,7 +1,9 @@
 import { LocalizedError, msg, reverseAssetId, sideAssetId, VectorAssetMeta } from "@ys/core";
+import type { ArchiveImage } from "@ys/core";
 import { deletePrefix, getJson, putJson, type AssetStore } from "@ys/storage";
 import { libraryIdOf, noteCharacterUse } from "./library.ts";
 import { cleanSeries } from "./series.ts";
+import { acquireLock } from "./lock.ts";
 import { GATES, motionModeOf, STAGES, type EpisodeInput, type EpisodeState, type Gate, type MotionMode } from "./state.ts";
 
 /*
@@ -61,10 +63,13 @@ export class EpisodeRepo {
   }
 
   async update(id: string, fn: (state: EpisodeState) => void): Promise<EpisodeState> {
-    const state = await this.load(id);
-    fn(state);
-    await this.save(state);
-    return state;
+    const release = await acquireLock(this.store, id);
+    try {
+      const state = await this.load(id);
+      fn(state);
+      await this.save(state);
+      return state;
+    } finally { await release(); }
   }
 }
 
@@ -86,6 +91,17 @@ export async function deleteEpisode(store: AssetStore, id: string): Promise<numb
 /** Bu aşamadan sonraki tüm aşamaların "bitti" işaretini kaldırır (çıktılar yeniden üretilecek). */
 export function invalidateFrom(state: EpisodeState, stage: (typeof STAGES)[number]): void {
   for (const s of STAGES.slice(STAGES.indexOf(stage))) delete state.done[s];
+}
+
+/** Select or remove an archive insert without destroying the generated frame, vector plan or clip. */
+export function setArchiveShot(state: EpisodeState, shotId: string, image?: ArchiveImage): void {
+  if (!state.shots?.some((s) => s.id === shotId)) throw new LocalizedError(msg("err.action.noShots"));
+  if (image) (state.archives ??= {})[shotId] = image;
+  else delete state.archives?.[shotId];
+  delete state.timeline;
+  delete state.lastError;
+  reviewAgain(state);
+  invalidateFrom(state, "timeline");
 }
 
 export function approve(state: EpisodeState, gate: Gate): void {
@@ -137,9 +153,17 @@ export function editNarration(state: EpisodeState, sceneId: string, narration: s
   if (state.approvals?.script) throw new LocalizedError(msg("err.action.scriptApproved"));
   const scene = state.script?.scenes.find((s) => s.id === sceneId);
   if (!scene) throw new LocalizedError(msg("err.action.noScene", { id: sceneId }));
-  scene.narration = narration.trim();
+  if (typeof narration !== "string" || !narration.trim() || narration.length > 20_000) throw new LocalizedError(msg("err.edit.invalid"));
+  const text = narration.trim();
+  if (scene.narration === text) return;
+  scene.narration = text;
   // Eski ses yeni metni okumaz.
   delete state.voice?.[sceneId];
+  delete state.timeline;
+  delete state.lastError;
+  delete state.waitingFor;
+  reviewAgain(state);
+  invalidateFrom(state, "voice");
 }
 
 export function setMotion(state: EpisodeState, motionMode: MotionMode, aiClipRatio?: number): void {
@@ -168,6 +192,7 @@ export function redrawShots(state: EpisodeState, shotIds: string[]): void {
     delete state.keyframes?.[id];
     delete state.qa?.[id];
     delete state.clips?.[id];
+    delete state.archives?.[id];
   }
   delete state.lastError;
   reviewAgain(state);
@@ -201,6 +226,7 @@ export function replanShots(state: EpisodeState, shotIds: string[], note: string
   state.replans ??= {};
   const at = new Date().toISOString();
   for (const sceneId of new Set(picked.map((s) => s.sceneId))) {
+    for (const shot of state.shots ?? []) if (shot.sceneId === sceneId) delete state.archives?.[shot.id];
     const prev = state.replans[sceneId];
     const shots = picked.filter((s) => s.sceneId === sceneId);
     state.replans[sceneId] = {

@@ -48,6 +48,7 @@ export interface EpisodeArgs {
   gate?: string;
   pick?: string;
   vertical?: boolean;
+  short?: boolean;
 }
 
 const parseStage = (s: string | undefined): Stage | undefined => {
@@ -63,6 +64,33 @@ export async function episodeCommand(
   args: EpisodeArgs,
 ): Promise<void> {
   switch (sub) {
+    case "audit-voice": {
+      if (!id) throw new Error("bölüm kimliği gerekli");
+      const state = await pipeline.auditVoice(id);
+      printSummary(state);
+      console.log(`Konuşma denetimi: ${state.voiceAudit!.status}, ${state.voiceAudit!.findingsCount} bulgu`);
+      if (state.voiceAudit?.status !== "complete") throw new Error("Konuşma denetimi tamamlanamadı; rapordaki atlanan ve başarısız kontrolleri inceleyin.");
+      return;
+    }
+    case "rewrite-script": {
+      if (!id) throw new Error("bölüm kimliği gerekli");
+      printSummary(await pipeline.rewriteScript(id));
+      return;
+    }
+    case "compare-style": {
+      if (!id) throw new Error("bölüm kimliği gerekli");
+      const state = await pipeline.compareStyle(id);
+      printSummary(state);
+      if (state.render?.styleComparison?.status !== "complete") throw new Error("Stil karşılaştırması tamamlanamadı; rapor ayrıntılarına bakın.");
+      return;
+    }
+    case "audit": {
+      if (!id) throw new Error("bölüm kimliği gerekli");
+      const state = await pipeline.auditRender(id, args.short ? "short" : "main");
+      printSummary(state);
+      if ((args.short ? state.short : state.render)?.audit?.status !== "complete") throw new Error("Video denetimi tamamlanamadı; bölümdeki denetim ayrıntılarına bakın.");
+      return;
+    }
     case "new": {
       if (!args.topic) throw new Error("--topic gerekli");
       const minutes = positive("--minutes", args.minutes ?? 3);
@@ -136,7 +164,7 @@ export async function episodeCommand(
       return;
     }
     default:
-      throw new Error("Kullanım: episode new|run|show|preview|approve|select");
+      throw new Error("Kullanım: episode new|run|show|preview|approve|select|audit");
   }
 }
 

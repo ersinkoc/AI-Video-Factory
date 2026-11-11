@@ -25,6 +25,7 @@ export interface SeriesDefaults {
   motionMode?: MotionMode;
   /** Çözümlenmiş paket (son bölümün gerçekten kullandığı); yoksa girdi. */
   stylePack?: string;
+  customStyleId?: string;
   lineStyle?: LineStyle;
   voiceId?: string;
   budgetUsd: number;
@@ -69,6 +70,7 @@ function defaultsOf(s: EpisodeState): SeriesDefaults {
     tier: input.tier,
     motionMode: input.motionMode,
     stylePack: s.style?.pack ?? input.stylePack,
+    ...(input.customStyleId ? { customStyleId: input.customStyleId } : {}),
     lineStyle: input.lineStyle,
     voiceId: input.voiceId,
     budgetUsd: input.budgetUsd,

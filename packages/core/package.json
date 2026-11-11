@@ -8,6 +8,9 @@
     "./rules": "./src/rules.ts",
     "./models": "./src/models.ts",
     "./styles": "./src/styles.ts",
+    "./typography": "./src/typography.ts",
+    "./intent": "./src/intent.ts",
+    "./research": "./src/research.ts",
     "./texture": "./src/texture.ts",
     "./messages": "./src/messages/index.ts"
   },

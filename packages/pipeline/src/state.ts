@@ -1,4 +1,10 @@
 import type { LintIssue } from "@ys/video/lint";
+import type { ShotIntent } from "@ys/core";
+import type { ResearchSnapshotSummary } from "./research.ts";
+import type { VoiceAuditSummary } from "./voice-audit.ts";
+import type { RenderAuditSummary } from "./render-audit.ts";
+import type { StyleComparison, StyleReference, styleSamples } from "./style-comparison.ts";
+import type { ArchiveImage, ArchiveCandidate } from "@ys/core";
 import type { CastOut, LessonTarget, MotionMode, ScriptOut, ShotPlanOut, StoryOut, StyleBibleOut } from "@ys/agents";
 import type { Ambience, AssetCheck, BudgetTier, FlagSpec, LineStyle, MapSpec, Msg, Timeline, VectorShot, WordTiming } from "@ys/core";
 import { stylePackOf } from "@ys/core";
@@ -44,6 +50,8 @@ export interface EpisodeInput {
   targetSec: number;
   tier: BudgetTier;
   styleHint?: string;
+  /** Kaydedilmiş, değişmez özel stil kimliği. */
+  customStyleId?: string;
   /** animated: her çekim AI video · mixed: aiClipRatio kadarı · still: sadece hareketlendirilmiş resim. */
   motionMode?: MotionMode;
   /** mixed modda AI video oranı. */
@@ -125,9 +133,12 @@ export interface SceneVoice {
   text?: string;
   /** TTS'e giden okunuşlu metin, yazılıştan farklıysa (pronounce.ts). */
   spoken?: string;
+  /** Üretimde kullanılan editör sözlüğü sürümü ve birleşik kuralların parmak izi. */
+  pronunciation?: { revision: number; fingerprint: string };
 }
 
 export interface PlannedShotState {
+  intent?: ShotIntent;
   id: string;
   sceneId: string;
   kind: "still_motion" | "ai_clip";
@@ -233,16 +244,24 @@ export interface EpisodeState {
   style?: StyleBibleOut;
   story?: StoryOut;
   script?: ScriptOut;
+  /** Son elle anlatım düzenlemesi: tam durum parmak izi eşleşirse kayıtlı önceki sürüme dönülebilir. */
+  narrationEdit?: { id: string; at: string };
   /** Doktordan önce kaydedilen senarist taslağı (girdilerin parmak iziyle); senaryo aşaması bitince silinir. */
   scriptDraft?: { sig: string; script: ScriptOut };
   cast?: CastOut;
   concept?: ConceptState;
   voice?: Record<string, SceneVoice>;
+  /** Konuşma kayıtlarının ayrı denetimi; tam rapor normal yoklama yanıtına eklenmez. */
+  voiceAudit?: VoiceAuditSummary;
   /**
    * Yabancı terimlerin seslendirmedeki okunuşu (yazılış → okunuş): telaffuz ajanının bulduğu ya da elle düzeltilen;
    * yerleşik sözlüğün (pronounce.ts LEXICON) üstüne yazar.
    */
   pronunciations?: Record<string, string>;
+  /** Ajanın öğrenilmiş kayıtlarından ayrı, editörün bölüm tercihi (en yüksek öncelik). */
+  pronunciationOverrides?: Record<string, string>;
+  /** İncelenmiş değişiklik: üretimden önce editör kuralları tekrar değişirse yeni önizleme gerekir. */
+  pronunciationPlan?: { revision: number; rulesFingerprint: string; scenes: string[]; at: string };
   shotPlan?: ShotPlanOut;
   /**
    * Yarıda kalan vektör çekim planı: sahne → (girdilerin parmak izi, çekimler). Aşama düşerse ödenmiş sahne planları
@@ -251,6 +270,8 @@ export interface EpisodeState {
   shotPlanDraft?: Record<string, { sig: string; shots: ShotPlanOut["scenes"][number]["shots"] }>;
   shots?: PlannedShotState[];
   keyframes?: Record<string, AssetRef>;
+  /** Human-selected real archive inserts; original generated shots stay available for restoration. */
+  archives?: Record<string, ArchiveImage>;
   /** İnceleme aşamasının çekim kareleri (stüdyo küçük resmi de bunlar). */
   stills?: Record<string, AssetRef>;
   /** Manim tahtaları: çekim → saydam WebM'in depo anahtarı (timeline aşamasında üretilir). */
@@ -268,7 +289,7 @@ export interface EpisodeState {
     at: string;
   };
   /** Dikey Short (short aşaması): videonun yanındaki dosya, başlık, sahneler ve süre. */
-  short?: { path: string; title: string; scenes: string[]; sec: number; at: string };
+  short?: { path: string; title: string; scenes: string[]; sec: number; at: string; exportId?: string; audit?: RenderAuditSummary; auditRanges?: { id: string; startSec: number; endSec: number }[] };
   /** Render öncesi taslak kontrolü: ortalama puan ve yeniden planlanan sahneler. */
   draftReview?: EpisodeReview & { avg: number; revisedScenes: string[] };
   /**
@@ -327,7 +348,8 @@ export interface EpisodeState {
   clips?: Record<string, AssetRef & { durationSec: number }>;
   timeline?: Timeline;
   /** thumbnail: videonun yanındaki küçük resim (1280×720 JPEG), üretilebildiyse. */
-  render?: { path: string; at: string; thumbnail?: string };
+  styleReference?: StyleReference;
+  render?: { path: string; at: string; exportId?: string; thumbnail?: string; research?: ResearchSnapshotSummary; audit?: RenderAuditSummary; auditRanges?: { id: string; startSec: number; endSec: number }[]; typography?: Timeline["typography"]; styleReference?: StyleReference; styleSampling?: ReturnType<typeof styleSamples>; styleComparison?: StyleComparison; archiveSources?: { shotId: string; source: ArchiveCandidate; key: string; originalSha256?: string; downloadedAt?: string }[] };
 }
 
 /** Bu aşamaya geçmek için gereken onay (varsa). */
@@ -345,5 +367,5 @@ export function motionModeOf(input: EpisodeInput): MotionMode {
 
 /** Bölümün çizgi stili: kullanıcı seçtiyse o, yoksa stil paketininki. */
 export function lineStyleOf(state: Pick<EpisodeState, "input" | "style">): LineStyle {
-  return state.input.lineStyle ?? stylePackOf(state.style?.pack)?.lineStyle ?? "outline";
+  return state.input.lineStyle ?? state.style?.lineStyle ?? stylePackOf(state.style?.pack)?.lineStyle ?? "outline";
 }

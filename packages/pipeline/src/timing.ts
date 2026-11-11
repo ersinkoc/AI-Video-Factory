@@ -1,5 +1,6 @@
 import type { ShotPlanOut } from "@ys/agents";
-import { LocalizedError, msg, stylePackOf, type Timeline, type VectorAsset, type VectorShot, type WordTiming } from "@ys/core";
+import { typographyForStyle } from "@ys/core";
+import { carriedObjects, styleCraftOf, LocalizedError, msg, stylePackOf, type Timeline, type VectorAsset, type VectorShot, type WordTiming } from "@ys/core";
 import type { EpisodeState, PlannedShotState, SceneVoice } from "./state.ts";
 import { lineStyleOf } from "./state.ts";
 
@@ -72,6 +73,7 @@ export function resolveShotTimes(
         startMs,
         endMs: kept[i + 1]?.startMs ?? sceneEnd,
         description: shot.description,
+        ...(shot.intent ? { intent: shot.intent } : {}),
         imagePrompt: shot.imagePrompt,
         motionPrompt: shot.motionPrompt,
         camera: shot.camera,
@@ -134,17 +136,27 @@ export function buildTimeline(
   const totalMs = shots.reduce((m, s) => Math.max(m, s.endMs), 0);
 
   const visuals: Timeline["visuals"] = shots.flatMap((shot, i): Timeline["visuals"] => {
+    const archive = state.archives?.[shot.id];
+    if (archive) {
+      const fromFrame = toFrame(shot.startMs);
+      return [{ shotId: shot.id, assetUrl: assetPath(archive.key), kind: "still_motion", fromFrame,
+        ...(shot.intent ? { intent: shot.intent } : {}),
+        durationInFrames: Math.max(1, toFrame(shot.endMs) - fromFrame), ambience: "none", playbackRate: 1,
+        motion: { type: "none", zoomFrom: 1, zoomTo: 1, panX: 0 }, fit: "contain", archiveSource: archive.source }];
+    }
     if (shot.vector) {
       const fromFrame = toFrame(shot.startMs);
       return [
         {
           shotId: shot.id,
+          ...(shot.intent ? { intent: shot.intent } : {}),
           assetUrl: "",
           kind: "motion_graphic" as const,
           fromFrame,
           durationInFrames: Math.max(1, toFrame(shot.endMs) - fromFrame),
           ambience: shot.ambience ?? "none",
           vector: shot.vector,
+          ...((state.style?.craftPreset ?? state.style?.pack) ? { stylePack: state.style!.craftPreset ?? state.style!.pack } : {}),
           ...(state.mathBoards?.[shot.id] ? { overlay: assetPath(state.mathBoards[shot.id]!) } : {}),
           // Sahnenin ilk çekimi (bölümün ilki değil): katmanlar geçişten sonra sırayla belirir (@ys/video entrance.ts).
           ...(i > 0 && shots[i - 1]!.sceneId !== shot.sceneId ? { enter: true } : {}),
@@ -161,6 +173,7 @@ export function buildTimeline(
     return [
       {
         shotId: shot.id,
+        ...(shot.intent ? { intent: shot.intent } : {}),
         assetUrl: assetPath(asset.key),
         kind: clip ? ("ai_clip" as const) : ("still_motion" as const),
         fromFrame,
@@ -173,6 +186,14 @@ export function buildTimeline(
       },
     ];
   });
+
+  for (let i = 1; i < visuals.length; i++) {
+    const current = visuals[i]!;
+    const previous = visuals[i - 1]!;
+    if (previous.fromFrame + previous.durationInFrames !== current.fromFrame || !styleCraftOf(current.stylePack) || previous.stylePack !== current.stylePack || !current.vector || current.overlay || previous.overlay) continue;
+    const carried = carriedObjects(previous.vector, current.vector).filter((id) => vectorAssets[id]?.kind === "prop");
+    if (carried.length) current.carried = carried;
+  }
 
   const audio: Timeline["audio"] = sceneIds.flatMap((id) => {
     const v = voice[id];
@@ -209,8 +230,9 @@ export function buildTimeline(
     speech: captions,
     vectorAssets,
     palette: state.style?.palette ?? [],
+    typography: typographyForStyle(state.style, state.input.lang),
     lineStyle: lineStyleOf(state),
-    texture: stylePackOf(state.style?.pack ?? "")?.texture ?? "none",
+    texture: state.style?.texture ?? stylePackOf(state.style?.pack ?? "")?.texture ?? "none",
   };
 }
 

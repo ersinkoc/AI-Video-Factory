@@ -2,6 +2,8 @@
 
 ## Implemented in the episode renderer
 
+New director plans can carry [structured shot intent](SHOT_INTENT.md): subject, narrated action, visible result, relevant words, reveal and hold. Stable actor IDs guide safe gesture repair; plan checks remain separate from encoded-video evidence.
+
 The vector director now plans motion across most shots, targeting at least two thirds of shots with meaningful animation. This is a creative instruction, not a guaranteed quota. The plan should use character action, camera movement, kinetic text, procedural 3D and effects according to the narration. Quiet beats can remain restrained. Existing style packs and old timelines remain supported.
 
 `VectorShot.three` accepts at most two procedural Three.js illustrations:
@@ -43,6 +45,10 @@ pnpm.cmd motion:preview out/scene-motion-portrait --portrait
 ```
 
 These commands write a timeline and opening/midpoint/ending JPEGs for all six presets to the requested output directory. No AI generation or paid media calls are involved. Output is ignored by Git. Unit tests cover invalid plans, layer budgets, deterministic particles, backwards seeking, camera paths and disposal.
+
+## Style-specific material pilots
+
+See [STYLE_CRAFT.md](STYLE_CRAFT.md) for native paper, risograph and isometric direction, rendering, typography and conservative object continuity.
 
 ## HyperFrames: verified editable preview
 

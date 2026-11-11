@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { MOTION_DESIGN_POLICY, MOTION_REVIEW_POLICY } from "./motion-design.ts";
+import type { ResearchContext } from "@ys/core";
+import { RESEARCH_POLICY, SCRIPT_CLAIM_POLICY, researchBlock } from "./research.ts";
+import { customStyleBlock } from "@ys/core";
+import { MOTION_DESIGN_POLICY, MOTION_REVIEW_POLICY, SHOT_INTENT_POLICY } from "./motion-design.ts";
 import { lessonsBlock, models, runStructured, type AgentDeps, type AgentImage, type AgentResult } from "./runner.ts";
 import { CastOut, FrameReviewOut, ScriptDoctorOut, ScriptOut, ShotPlanOut, StoryOut, StyleBibleOut } from "./schemas.ts";
 
@@ -9,6 +12,7 @@ import { CastOut, FrameReviewOut, ScriptDoctorOut, ScriptOut, ShotPlanOut, Story
  */
 
 export interface EpisodeBrief {
+  research?: ResearchContext;
   topic: string;
   lang: string;
   targetSec: number;
@@ -104,8 +108,9 @@ Rules:
 - Avoid clichés ("in a world", "little did they know", "changed everything forever"), listicles and calls to subscribe.
 - Every beat names one visual set-piece that a simple flat illustration can show.
 - Beat durations must sum to the target duration (±10%).
-- Write title, logline, premise, hook and beat summaries in the episode language (${brief.lang}).`,
-      prompt: `Topic: ${brief.topic}\nEpisode language: ${brief.lang}\nTarget duration: ${brief.targetSec} seconds\nAudience: ${brief.audience ?? "general"}`,
+- Write title, logline, premise, hook and beat summaries in the episode language (${brief.lang}).
+${RESEARCH_POLICY}`,
+      prompt: `Topic: ${brief.topic}\nEpisode language: ${brief.lang}\nTarget duration: ${brief.targetSec} seconds\nAudience: ${brief.audience ?? "general"}${researchBlock(brief.research)}`,
     },
     deps,
   );
@@ -136,8 +141,10 @@ Rules:
 - Open with the story's hook moment, not a greeting. End every scene with a forward pull (a question, a consequence, a "but") that the next scene answers. Use callbacks to earlier details.
 - No filler ("as we all know", "interestingly"), no repetition of the same fact, rhetorical questions at most once per scene, no calls to subscribe.
 - Narration must be speakable: no brackets, emojis, stage directions or URLs. ${NUMBERS_AND_NAMES}
-- visualIntent (English) lists 2–3 concrete visual moments for a simple flat illustration (who is there, what they do, which object matters). location is in English; reuse location names exactly.${lessonsBlock(brief.lessons)}`,
-      prompt: `Story:\n${JSON.stringify(story, null, 2)}`,
+- visualIntent (English) lists 2–3 concrete visual moments for a simple flat illustration (who is there, what they do, which object matters). location is in English; reuse location names exactly.${lessonsBlock(brief.lessons)}
+${RESEARCH_POLICY}
+${SCRIPT_CLAIM_POLICY}`,
+      prompt: `Story:\n${JSON.stringify(story, null, 2)}${researchBlock(brief.research)}`,
     },
     deps,
   );
@@ -164,8 +171,10 @@ Check and fix:
 - Accuracy: remove or soften any claim that is not well established. Never add new facts you are unsure of.
 - Speakability in ${brief.lang}: short sentences, no tongue-twisters. ${NUMBERS_AND_NAMES}
 - Length: keep total narration ≈ ${targetWords} words (±10%).
-Keep scene ids, beatIds and location names unchanged; you may rewrite narration, emotion and visualIntent. notes: the most important problems you fixed, in English, one line each, phrased as general rules a writer should follow next time.${lessonsBlock(brief.lessons)}`,
-      prompt: `Story:\n${JSON.stringify(story, null, 2)}\n\nDraft script:\n${JSON.stringify(draft, null, 2)}`,
+Keep scene ids, beatIds and location names unchanged; you may rewrite narration, emotion and visualIntent. notes: the most important problems you fixed, in English, one line each, phrased as general rules a writer should follow next time.${lessonsBlock(brief.lessons)}
+${RESEARCH_POLICY}
+${SCRIPT_CLAIM_POLICY}`,
+      prompt: `Story:\n${JSON.stringify(story, null, 2)}\n\nDraft script:\n${JSON.stringify(draft, null, 2)}${researchBlock(brief.research)}`,
     },
     deps,
   );
@@ -270,6 +279,9 @@ Rules:
 - Estimate shot length from scene duration / word count. Cut on meaning, not mid-phrase.
 ${MOTION_RULES[opts.motionMode ?? "mixed"](opts.aiClipRatio)}
 ${MOTION_DESIGN_POLICY}
+${SHOT_INTENT_POLICY}
+${customStyleBlock(style)}
+- Adapt custom motion and typography to this output schema: still_motion cannot animate independent SVG layers or arbitrary folds; use its supported camera and ambience. For ai_clip, put the intended subject movement in motionPrompt. Typography guidance governs composition and readable negative space; imagePrompt must not request lettering, and this schema cannot create title layers.
 - imagePrompt: one concrete frame, describe action, composition, framing. The style prefix and the cast/location reference images are added automatically — refer to cast members by name, do not redescribe their looks. Never ask for text in the image.
 - characterIds/locationId: tag every shot with the cast ids that appear in it, so reference images can be attached.
 - ambience: a subtle animated overlay that makes still_motion shots feel alive. It must match what is in the frame: "rain"/"snow" only outdoors in that weather, "fog" for night, mist or mystery, "dust" for old rooms, workshops, attics, "embers" near fire or forges, "flicker" for candle/lamp/screen light, "rays" for sunlight through windows or trees, "confetti" only for a celebration moment (a launch, a win, a record). Use "none" when nothing fits; keep the same ambience across shots of one location and moment.
@@ -288,6 +300,8 @@ export interface FrameReviewInput {
   imagePrompt: string;
   /** Karede görünmesi beklenen karakter adları. */
   characters: string[];
+  /** Seçilen palet ve yalnız karede görülebilen özel kabul kuralları. */
+  style?: Pick<StyleBibleOut, "artStyle" | "palette" | "reviewRules">;
 }
 
 /** Üretilen kareyi ucuz bir görsel modelle denetler; yazı, kolaj, çift karakter gibi hataları yakalar. */
@@ -302,6 +316,7 @@ export function frameInspector(input: FrameReviewInput, deps?: AgentDeps): Promi
       images: [input.frame, ...input.refs.map((r) => r.image)],
       system: `You are a strict quality inspector for keyframes of an animated narrated video. Image 1 is the generated frame; any further images are cast reference sheets.
 ${MOTION_REVIEW_POLICY}
+${input.style ? `Chosen art style: ${input.style.artStyle}. Palette: ${input.style.palette.join(", ")}. Deliberate limited colours and material texture are not defects; judge contrast and recognizability within this palette.` : ""}${customStyleBlock(input.style, true)}
 Report only real, visible problems:
 - text: any readable letters, words, numbers, signs, captions or watermarks in image 1.
 - panels: image 1 is a collage, comic panels, split screen, book page or has borders/frames.

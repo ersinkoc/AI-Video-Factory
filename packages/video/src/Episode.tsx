@@ -1,4 +1,5 @@
-import { MATH_BOARD, VERTICAL_SAFE, type Timeline } from "@ys/core";
+import { MATH_BOARD, VERTICAL_SAFE, fontFamily, TYPOGRAPHY_PAIRS, type Typography, type Timeline } from "@ys/core";
+import { TypographyFonts } from "./TypographyFonts.tsx";
 import { useMemo, type ReactNode } from "react";
 import {
   AbsoluteFill,
@@ -42,7 +43,7 @@ function StillMotion({ visual }: { visual: Visual }) {
         style={{
           width: "100%",
           height: "100%",
-          objectFit: "cover",
+          objectFit: visual.fit ?? "cover",
           transform: `scale(${scale}) translateX(${panX}%)`,
         }}
       />
@@ -126,7 +127,7 @@ export function CutIn({ children, cut, id = "cut" }: { children: ReactNode; cut?
   );
 }
 
-function Captions({ captions }: { captions: Timeline["captions"] }) {
+function Captions({ captions, typography }: { captions: Timeline["captions"]; typography?: Typography }) {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
   const nowMs = (frame / fps) * 1000;
@@ -144,9 +145,9 @@ function Captions({ captions }: { captions: Timeline["captions"] }) {
         style={{
           maxWidth: tall ? width - 2 * (VERTICAL_SAFE.right + 10) : "80%",
           textAlign: "center",
-          fontFamily: "Inter, 'Noto Sans', 'Segoe UI', sans-serif",
+          fontFamily: typography ? fontFamily(TYPOGRAPHY_PAIRS[typography.pair].body) : "Inter, 'Noto Sans', 'Segoe UI', sans-serif",
           fontSize: 54,
-          fontWeight: 800,
+          fontWeight: typography ? TYPOGRAPHY_PAIRS[typography.pair].body.weight : 800,
           lineHeight: 1.25,
           color: "white",
           textShadow: "0 3px 12px rgba(0,0,0,0.85)",
@@ -186,6 +187,7 @@ export function Episode({ timeline }: EpisodeProps) {
   const cuts = useMemo(() => cutsOf(timeline.visuals, timeline.episodeId), [timeline.visuals, timeline.episodeId]);
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
+      <TypographyFonts key={timeline.typography?.pair ?? "legacy"} selection={timeline.typography} />
       {timeline.visuals.map((v, i) => {
         // Her çekim bir sonrakinin geçişi boyunca onun altında sürer (son çekim uzamaz).
         const duration = v.durationInFrames + (cuts[i + 1]?.frames ?? 0);
@@ -201,6 +203,7 @@ export function Episode({ timeline }: EpisodeProps) {
                     palette={timeline.palette}
                     lineStyle={timeline.lineStyle}
                     texture={timeline.texture}
+                    typography={timeline.typography}
                     speech={timeline.speech}
                     ambience={v.ambience}
                   />
@@ -218,7 +221,7 @@ export function Episode({ timeline }: EpisodeProps) {
 
       <EpisodeAudio timeline={timeline} />
 
-      {timeline.captions.length > 0 && <Captions captions={timeline.captions} />}
+      {timeline.captions.length > 0 && <Captions captions={timeline.captions} typography={timeline.typography} />}
     </AbsoluteFill>
   );
 }

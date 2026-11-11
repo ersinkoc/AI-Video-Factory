@@ -3,6 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { FURNITURE, RIG, RIG_SIDE, textureLayer, TimelineVisual, VectorAnimType, VectorAsset, VectorLayer, VectorShot, type LineStyle, type Texture } from "@ys/core";
 import { random } from "remotion";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { visualVector } from "../src/entrance.ts";
 import { PUPIL } from "../src/rigGeometry.ts";
 
 // Remotion bağlamı yerine kare ve video ayarı testten verilir; geri kalan (Easing, interpolate, random) gerçek.
@@ -3720,4 +3721,62 @@ describe("vektör sahne: kâğıt zemini (suluboya)", () => {
     expect(css).toMatch(/\[data-draw="s1-0-dp"\]\{opacity:0\.[45]\d\d\}/);
     expect(c.querySelector("[data-paper] [data-draw]")).toBeNull();
   });
+});
+
+
+describe("pilot craft reaches the rendered scene", () => {
+  it("renders ink plates, crisp type and seekable print progress; protected screens keep the original SVG", () => {
+    const spec = VectorShot.parse({ layers: [{ asset: "box", x: 960, y: 750, height: 400 }], texts: [{ text: "VERİ", style: "title", x: 150, y: 150 }], camera: { zoomFrom: 1, zoomTo: 1, panX: 0 } });
+    const visual = TimelineVisual.parse({ shotId: "s2-sh1", assetUrl: "", kind: "motion_graphic", fromFrame: 0, durationInFrames: 300, enter: true, stylePack: "risograph", vector: spec });
+    clock.frame = 27;
+    const view = render(<VectorScene visual={visual} assets={ASSETS} palette={["#111111", "#f3f0e6", "#d32619"]} />);
+    expect(view.container.querySelectorAll("[data-ink-plate]").length).toBeGreaterThan(1);
+    const opacity = view.container.querySelector<HTMLElement>("[data-ink-plate]")!.style.opacity;
+    expect(view.container.querySelector<HTMLElement>('[data-text="card"]')!.style.fontFamily).toContain("Arial Black");
+    clock.frame = 180; view.rerender(<VectorScene visual={visual} assets={ASSETS} palette={[]} />);
+    expect(view.container.querySelector<HTMLElement>("[data-ink-plate]")!.style.opacity).toBe("1");
+    clock.frame = 27; view.rerender(<VectorScene visual={visual} assets={ASSETS} palette={[]} />);
+    expect(view.container.querySelector<HTMLElement>("[data-ink-plate]")!.style.opacity).toBe(opacity);
+    const screen = { ...visual, vector: VectorShot.parse({ layers: [{ asset: "monitor", x: 960, screen: { kind: "text", title: "VERİ" } }] }) };
+    view.rerender(<VectorScene visual={screen} assets={ASSETS} palette={[]} />);
+    expect(view.container.querySelector("[data-ink-plate]")).toBeNull();
+  });
+  it("paper supplies a stable layer shadow while isometric labels use the technical type family", () => {
+    const visual = TimelineVisual.parse({ shotId: "s2-sh1", assetUrl: "", kind: "motion_graphic", fromFrame: 0, durationInFrames: 300, stylePack: "paper-cutout", vector: { layers: [{ asset: "box", x: 960 }], texts: [{ text: "VERİ", style: "title", x: 150, y: 150 }] } });
+    const view = render(<VectorScene visual={visual} assets={ASSETS} palette={[]} />);
+    expect(view.container.querySelector<HTMLElement>('[data-material="paper"]')!.style.filter).toContain("drop-shadow");
+    view.rerender(<VectorScene visual={{ ...visual, stylePack: "isometric" }} assets={ASSETS} palette={[]} />);
+    expect(view.container.querySelector<HTMLElement>('[data-text="card"]')!.style.fontFamily).toContain("Consolas");
+  });
+});
+
+
+it("paper establishment and the carried shot resolve to the same final camera", () => {
+  const spec = VectorShot.parse({ background: "room", layers: [{ asset: "box", x: 660, y: 760, height: 350 }, { asset: "cup", x: 1260, y: 760, height: 350 }], camera: { zoomFrom: 1, zoomTo: 1, panX: 0 } });
+  const v = TimelineVisual.parse({ shotId: "s2-sh1", assetUrl: "", kind: "motion_graphic", fromFrame: 90, durationInFrames: 90, enter: true, stylePack: "paper-cutout", vector: spec });
+  const before = shotModel(visualVector(v, ASSETS, 30)!, ASSETS, "flat", 1920, 1080, false, 3);
+  const after = shotModel(visualVector({ ...v, carried: ["box", "cup"] }, ASSETS, 30)!, ASSETS, "flat", 1920, 1080, false, 2);
+  expect(after.cam).toEqual(before.cam);
+  expect(after.centre).toBe(before.centre);
+  expect(after.fit).toBe(before.fit);
+});
+
+it("keeps Paper Poster flat, ungraded and free of dimensional title shadows", () => {
+ clock.frame = 150;
+ const visual = TimelineVisual.parse({ shotId: "s2-sh1", assetUrl: "", kind: "motion_graphic", fromFrame: 0, durationInFrames: 300, stylePack: "paper-poster", vector: { background: "room", mood: "dramatic", layers: [{ asset: "box", x: 960, y: 700, height: 300 }], texts: [{ text: "MESAJ", style: "title", x: 150, y: 150 }] } });
+ const view = render(<VectorScene visual={visual} assets={ASSETS} palette={["#F3F0E6", "#111410", "#68725F", "#D5FA73"]} texture="paper" />);
+ expect(view.container.querySelector("[data-light]")).toBeNull();
+ expect(view.container.innerHTML).not.toContain("saturate(0.78)");
+ expect(view.container.innerHTML).not.toContain("radial-gradient");
+ const title = view.container.querySelector<HTMLElement>('[data-text="card"]')!;
+ expect(title.style.textShadow).toBe("none");
+ expect(title.style.fontFamily).toContain("Arial Narrow");
+ expect(title.querySelector<HTMLElement>("span")!.style.boxShadow).toBe("none");
+ expect(title.querySelector<HTMLElement>("span")!.style.background).toBe("#111410");
+ const grain = view.container.querySelector<HTMLElement>('[data-texture="paper"]')!;
+ expect(Number(grain.style.opacity)).toBeLessThan(0.2);
+ clock.width = 1080; clock.height = 1920;
+ view.rerender(<VectorScene visual={visual} assets={ASSETS} palette={["#F3F0E6", "#111410", "#68725F", "#D5FA73"]} texture="paper" />);
+ expect(view.container.innerHTML).not.toContain("blur(28px)");
+ expect(view.container.innerHTML).not.toContain("linear-gradient");
 });

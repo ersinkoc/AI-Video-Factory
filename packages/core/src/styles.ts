@@ -1,3 +1,4 @@
+import { STYLE_CRAFTS, type StyleCraft } from "./style-craft.ts";
 import type { FigureSpec } from "./figure.ts";
 import type { Texture } from "./texture.ts";
 import type { LineStyle } from "./vector.ts";
@@ -12,6 +13,7 @@ import type { LineStyle } from "./vector.ts";
  */
 export interface StylePack {
   id: string;
+  craft?: StyleCraft;
   name: { tr: string; en: string };
   /** Konuya göre seçen ajan için: hangi içeriklere yakışır (İngilizce). */
   suits: string;
@@ -93,6 +95,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
   },
   {
     id: "paper-cutout",
+    craft: STYLE_CRAFTS["paper-cutout"],
     name: { tr: "Kâğıt kesik", en: "Paper cut-out" },
     suits: "folk tales, nature, children's education, culture, gentle stories",
     artStyle: "layered paper cut-out collage",
@@ -441,6 +444,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
   // görselde yazı yok; designNotes SVG tasarımcısına somut çizim kuralı verir.
   {
     id: "risograph",
+    craft: STYLE_CRAFTS["risograph"],
     name: { tr: "Risograf baskı", en: "Risograph print" },
     suits: "indie culture, music scenes, design, zines, startups, youth movements",
     artStyle: "two-ink risograph print with misregistration",
@@ -471,6 +475,7 @@ export const STYLE_PACKS: readonly StylePack[] = [
   },
   {
     id: "isometric",
+    craft: STYLE_CRAFTS["isometric"],
     name: { tr: "İzometrik diorama", en: "Isometric diorama" },
     suits: "cities, infrastructure, logistics, factories, data centres, how systems work",
     artStyle: "clean isometric 3D diorama illustration",

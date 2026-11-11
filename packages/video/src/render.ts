@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { stageTypography } from "./typography-assets.ts";
 import { existsSync } from "node:fs";
 import { mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { availableParallelism, tmpdir } from "node:os";
@@ -30,6 +31,8 @@ export interface RenderOptions {
   videoCacheBytes?: number;
   /** İlerlemesiz geçen bu süreden sonra render takılmış sayılır (ms; varsayılan STALL_MS). */
   stallMs?: number;
+  /** Inclusive source-frame range for benchmark clips; preserves absolute scene time. */
+  frameRange?: [number, number];
 }
 
 /**
@@ -223,8 +226,10 @@ async function releaseRenderLock(token: string): Promise<void> {
 
 /** Timeline'ı yerelde MP4'e render eder (Remotion; ≤3 kişilik ekipte lisans ücretsiz). Geçici hatada bir kez yeniden dener. */
 export async function renderEpisode(opts: RenderOptions): Promise<string> {
+  if (opts.frameRange && (opts.frameRange.some((f) => !Number.isSafeInteger(f)) || opts.frameRange[0] < 0 || opts.frameRange[1] < opts.frameRange[0] || opts.frameRange[1] >= opts.timeline.durationInFrames)) throw new Error("Invalid render frame range");
   const tempDir = join(dirname(resolve(opts.outputPath)), ".render-tmp");
   return withRenderLock(async () => {
+    await stageTypography(opts.timeline.typography, opts.publicDir);
     let gl = renderGl();
     let concurrency = opts.concurrency;
     for (let attempt = 0; ; attempt++) {
@@ -250,6 +255,21 @@ async function renderOnce(opts: RenderOptions, gl: OpenGlRenderer): Promise<stri
   const inputProps = { timeline: opts.timeline };
   const chromiumOptions = { gl };
   const composition = await selectComposition({ serveUrl, id: "Episode", inputProps, chromiumOptions, ...launch() });
+
+  if (opts.frameRange) {
+    // Render the original composition clock, not a retimed/trimmed scene recipe.
+    const temporary = `${opts.outputPath}.part.mp4`;
+    await watched(opts.stallMs, (cancelSignal, tick) => renderMedia({
+      serveUrl, composition, inputProps, chromiumOptions, ...launch(), codec: "h264",
+      frameRange: opts.frameRange, outputLocation: temporary, cancelSignal,
+      concurrency: opts.concurrency ?? defaultConcurrency(), timeoutInMilliseconds: BROWSER_TIMEOUT_MS,
+      offthreadVideoCacheSizeInBytes: opts.videoCacheBytes ?? DEFAULT_VIDEO_CACHE_BYTES,
+      ffmpegOverride: videoEncoding([]),
+      onProgress: ({ progress }) => { tick(); opts.onProgress?.(progress); },
+    }));
+    await rename(temporary, opts.outputPath);
+    return opts.outputPath;
+  }
 
   // Parçalar ve ses izi içerik anahtarıyla önbellekte: anahtarı değişmeyen yeniden render edilmez (chunks.ts).
   const cache = cacheDirOf(opts.outputPath);
@@ -484,6 +504,7 @@ export function renderStills(opts: StillsOptions): Promise<Record<string, string
 }
 
 async function stillsOnce(opts: StillsOptions): Promise<Record<string, string>> {
+  await stageTypography(opts.timeline.typography, opts.publicDir);
   const serveUrl = await bundle({ entryPoint: ENTRY, publicDir: resolve(opts.publicDir) });
   const inputProps = { timeline: opts.timeline };
   // Tek tarayıcı bütün kareler için: önceden her kare ayrı Chrome açıyordu (30+ açılış); yükte biri zaman aşımına düşünce
@@ -530,6 +551,7 @@ export interface ThumbnailOptions {
 /** Bölümün küçük resmi (1280×720 JPEG): "Thumbnail" kompozisyonundan tek kare, render kilidinin içinde. */
 export function renderThumbnail(opts: ThumbnailOptions): Promise<string> {
   return withRenderLock(async () => {
+    await stageTypography(opts.timeline.typography, opts.publicDir);
     const serveUrl = await bundle({ entryPoint: ENTRY, publicDir: resolve(opts.publicDir) });
     const inputProps = { timeline: opts.timeline, shotId: opts.shotId, side: opts.side, title: opts.title };
     const chromiumOptions = { gl: renderGl() };

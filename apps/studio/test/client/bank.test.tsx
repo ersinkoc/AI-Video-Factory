@@ -58,44 +58,48 @@ describe("yeni bölüm formu: karakter bankası", () => {
     vi.useFakeTimers();
     const creates = api();
     renderIn(<NewEpisodeForm bank={[ADA, CAN, INK]} />);
-    expect(document.getElementById("presenter")).toBeNull();
+    expect(screen.queryByRole("group", { name: tr("form.bank.title") })).toBeNull();
     await mode("vector");
     fireEvent.change(document.getElementById("topic")!, { target: { value: "Konu" } });
-    fireEvent.change(document.getElementById("presenter")!, { target: { value: ADA.id } });
-    // Sunucu kadro listesinde yok.
-    expect(screen.queryByRole("checkbox", { name: "Ada" })).toBeNull();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Can" }));
+    fireEvent.click(screen.getByRole("button", { name: tr("form.bank.asPresenter", { name: "Ada" }) }));
+    // Sunucu aynı anda ek kadro üyesi olamaz.
+    expect((screen.getByRole("checkbox", { name: tr("form.bank.asCast", { name: "Ada" }) }) as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("checkbox", { name: tr("form.bank.asCast", { name: "Can" }) }));
+    expect(screen.getByRole("img", { name: "Ada" }).getAttribute("src")).toBe(`/api/assets/${ADA.key}`);
     expect(screen.getByText(tr("form.bank.style", { pack: "Düz anlatım (explainer)", line: tr("line.outline") }))).toBeTruthy();
     await submit();
     expect(creates[0]).toMatchObject({ presenter: ADA.id, bankCast: [CAN.id] });
   });
 
-  it("farklı stiller seçilince uyarı; seçim kaldırılınca gönderilmez; vektör değilse gönderilmez", async () => {
+  it("uyumsuz stilleri baştan engeller; kaldırılan veya vektör dışındaki seçim gönderilmez", async () => {
     vi.useFakeTimers();
     const creates = api();
     renderIn(<NewEpisodeForm bank={[ADA, CAN, INK]} />);
     await mode("vector");
     fireEvent.change(document.getElementById("topic")!, { target: { value: "Konu" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Can" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Mürekkep" }));
-    expect(screen.getByText(tr("form.bank.mixed"))).toBeTruthy();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Mürekkep" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Can" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: tr("form.bank.asCast", { name: "Can" }) }));
+    const incompatible = screen.getByRole("checkbox", { name: tr("form.bank.asCast", { name: "Mürekkep" }) }) as HTMLInputElement;
+    expect(incompatible.disabled).toBe(true);
+    fireEvent.click(incompatible);
+    expect(incompatible.checked).toBe(false);
+    expect(screen.getByText(tr("form.bank.incompatible"))).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: tr("form.bank.asCast", { name: "Can" }) }));
     await submit();
     expect(creates[0]).not.toHaveProperty("presenter");
     expect(creates[0]).not.toHaveProperty("bankCast");
-    fireEvent.click(screen.getByRole("checkbox", { name: "Can" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: tr("form.bank.asCast", { name: "Can" }) }));
     await mode("animated");
     await submit();
     expect(creates[1]).not.toHaveProperty("bankCast");
   });
 
-  it("banka boşsa bölüm görünmez", async () => {
+  it("banka boşsa açıklama ve bankaya bağlantı görünür", async () => {
     vi.useFakeTimers();
     api();
     renderIn(<NewEpisodeForm />);
     await mode("vector");
-    expect(document.getElementById("presenter")).toBeNull();
+    expect(screen.getByText(tr("bank.empty"))).toBeTruthy();
+    expect(screen.getByRole("link", { name: tr("form.bank.manage") }).getAttribute("href")).toBe("/characters");
   });
 });
 

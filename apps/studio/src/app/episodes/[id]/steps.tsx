@@ -1,10 +1,16 @@
 "use client";
+import { ShotIntentDetails } from "./shot-intent";
+import { ResearchPanel } from "./research-panel";
+import { NarrationEditor, NarrationUndo } from "./narration-editor";
+import { VoiceAuditCard } from "./voice-audit-card";
+import { PronunciationPanel } from "./pronunciation-panel";
+import { ArchivePicker } from "./archive-picker";
 
 import type { EpisodeState, PlannedShotState } from "@ys/pipeline/light";
 import { DRAFT_REVIEW, QUALITY_GATE } from "@ys/core/rules";
 import { stylePackOf } from "@ys/core/styles";
 import { Check, CheckSquare, ChevronLeft, ChevronRight, Clapperboard, Mic, RefreshCw, Square, Undo2, Wand2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { MessageKey } from "../../../lib/i18n";
 import type { EpisodeResponse, QuotaView } from "../../../lib/types";
 import { VOICES } from "../../../lib/voices";
@@ -19,24 +25,34 @@ export function ScriptTab({ data, busy, act }: { data: EpisodeResponse; busy: bo
   const { t, fmt } = useI18n();
   const { duration, number } = fmt;
   const { state } = data;
+  const [dirtyScenes, setDirtyScenes] = useState<Record<string, boolean>>({});
+  const markDirty = useCallback((sceneId: string, dirty: boolean) => {
+    const key = `${state.id}:${sceneId}`;
+    setDirtyScenes((previous) => previous[key] === dirty ? previous : { ...previous, [key]: dirty });
+  }, [state.id]);
   const est = data.estimates[modeOf(state.input)];
   const approved = isApproved(state, "script");
   if (!state.script) {
     return (
-      <Empty>
+      <><ResearchPanel key={state.id} id={state.id} busy={busy} /><PronunciationPanel key={`pronunciation-${state.id}`} id={state.id} busy={busy} version={JSON.stringify(state.pronunciationOverrides)} /><Empty>
         {busy ? t("script.writing") : t("script.none")}
         {!busy && (
           <button className="btn-primary" onClick={() => act({ type: "generate-script" })}>
             <Wand2 size={16} /> {t("script.generate")}
           </button>
         )}
-      </Empty>
+      </Empty></>
     );
   }
   const words = state.script.scenes.reduce((n, s) => n + s.narration.split(/\s+/).filter(Boolean).length, 0);
   const chars = state.script.scenes.reduce((n, s) => n + s.narration.length, 0);
+  const unsaved = state.script.scenes.some((s) => dirtyScenes[`${state.id}:${s.id}`]);
   return (
     <div className="grid gap-5">
+      <ResearchPanel key={state.id} id={state.id} busy={busy} scenes={state.script.scenes} onRewrite={state.story ? () => act({ type: "rewrite-script" }) : undefined} />
+      <VoiceAuditCard key={`voice-${state.id}`} state={state} busy={busy} act={act} />
+      <PronunciationPanel key={`pronunciation-${state.id}`} id={state.id} busy={busy} version={JSON.stringify([state.pronunciationOverrides, state.pronunciationPlan, state.voice, state.script])} />
+      {state.narrationEdit && <NarrationUndo key={`${state.id}-${state.narrationEdit.id}`} id={state.id} editId={state.narrationEdit.id} busy={busy} act={act} />}
       {state.story && (
         <div className="grid gap-4 rounded-xl border border-line bg-panel-2/50 p-4 text-sm md:grid-cols-2">
           <div>
@@ -58,7 +74,7 @@ export function ScriptTab({ data, busy, act }: { data: EpisodeResponse; busy: bo
           })}
         </span>
         {!approved && (
-          <button className="btn-primary" disabled={busy} onClick={() => act({ type: "approve-script" })}>
+          <button className="btn-primary" disabled={busy || unsaved} onClick={() => act({ type: "approve-script" })}>
             <Check size={16} /> {t("script.approve")} <span className="font-normal opacity-70">({costOf(est, AFTER_SCRIPT, fmt)})</span>
           </button>
         )}
@@ -68,6 +84,7 @@ export function ScriptTab({ data, busy, act }: { data: EpisodeResponse; busy: bo
           </button>
         )}
       </div>
+      {unsaved && <p className="text-sm text-muted">{t("edit.unsaved")}</p>}
       <ol className="grid gap-3">
         {state.script.scenes.map((scene, i) => {
           const voice = state.voice?.[scene.id];
@@ -88,20 +105,7 @@ export function ScriptTab({ data, busy, act }: { data: EpisodeResponse; busy: bo
                   </div>
                 )}
               </div>
-              <textarea
-                className="field min-h-24 leading-relaxed"
-                rows={Math.min(8, Math.ceil(scene.narration.length / 110) + 1)}
-                defaultValue={scene.narration}
-                disabled={approved || busy}
-                onBlur={(e) => {
-                  if (e.target.value.trim() !== scene.narration)
-                    void act({
-                      type: "edit-narration",
-                      sceneId: scene.id,
-                      narration: e.target.value,
-                    });
-                }}
-              />
+              <NarrationEditor key={`${state.id}-${scene.id}`} id={state.id} sceneId={scene.id} narration={scene.narration} disabled={approved || busy} act={act} onDirtyChange={markDirty} />
             </li>
           );
         })}
@@ -528,10 +532,11 @@ function HumanDecision({
 // ---------------- çekimler ----------------
 
 /** Çekimin küçük resmi: görsel modda üretilen kare, vektör modda inceleme aşamasının render karesi. */
-const thumbOf = (state: EpisodeState, id: string) => state.keyframes?.[id] ?? state.stills?.[id];
+const thumbOf = (state: EpisodeState, id: string) => state.archives?.[id] ?? state.keyframes?.[id] ?? state.stills?.[id];
 
 const scoreOf = (state: EpisodeState, id: string) => {
-  const qa = state.qa?.[id];
+  if (state.archives?.[id] && !state.done.review) return undefined;
+  const qa = state.archives?.[id] ? undefined : state.qa?.[id];
   if (qa && !qa.skipped) return { score: qa.score, issues: qa.issues, bad: !qa.passed };
   const rv = state.review?.shots[id];
   return rv
@@ -554,7 +559,7 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
   const [open, setOpen] = useState<string>();
   const [weakOnly, setWeakOnly] = useState(false);
   const imageMode = (modeOf(state.input)) !== "vector";
-  const failedQa = shots.filter((s) => state.qa?.[s.id] && !state.qa[s.id]!.passed).map((s) => s.id);
+  const failedQa = shots.filter((s) => !state.archives?.[s.id] && state.qa?.[s.id] && !state.qa[s.id]!.passed).map((s) => s.id);
   const kfRow = data.estimates[modeOf(state.input)].rows.find((r) => r.stage === "keyframes");
   const perFrame = kfRow && kfRow.quantity ? kfRow.costUsd / kfRow.quantity : 0;
   if (!shots.length) return <Empty>{t("shots.empty")}</Empty>;
@@ -576,7 +581,7 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
   const scenesPicked = new Set(shots.filter((s) => picked.has(s.id)).map((s) => s.sceneId)).size;
   const pending = Object.keys(state.replans ?? {});
   // Kare incelemesi (render sonrası, yoksa taslak denetimi): zayıflar toplu seçilir, bulguları nota kendiliğinden eklenir.
-  const reviewOf = (id: string) => state.review?.shots[id] ?? state.draftReview?.shots[id];
+  const reviewOf = (id: string) => state.archives?.[id] ? (state.done.review ? state.review?.shots[id] : undefined) : (state.review?.shots[id] ?? state.draftReview?.shots[id]);
   const weak = shots.filter((s) => (reviewOf(s.id)?.score ?? 10) <= DRAFT_REVIEW.badAtMost).map((s) => s.id);
   const findings = [...picked].some((id) => reviewOf(id)?.issues.length);
   const shotsRow = data.estimates[modeOf(state.input)].rows.find((r) => r.stage === "shots");
@@ -682,6 +687,7 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
         </div>
       )}
 
+      <ArchivePicker state={state} busy={busy} act={act} />
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
         {visible.map((s) => (
           <ShotCard
@@ -731,7 +737,7 @@ function ShotCard({
   const { t } = useI18n();
   const thumb = thumbOf(state, shot.id);
   const sc = scoreOf(state, shot.id);
-  const clip = state.clips?.[shot.id];
+  const clip = state.archives?.[shot.id] ? undefined : state.clips?.[shot.id];
   return (
     <div
       className={`group relative overflow-hidden rounded-lg border bg-panel-2 transition ${active ? "border-accent" : picked ? "border-accent/70" : sc?.bad ? "border-bad/60" : "border-line hover:border-muted"}`}
@@ -739,7 +745,7 @@ function ShotCard({
       <button type="button" className="block w-full text-left" onClick={onOpen}>
         {thumb ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={asset(thumb.key)} alt={shot.id} loading="lazy" className="aspect-video w-full object-cover" />
+          <img src={asset(thumb.key)} alt={shot.id} loading="lazy" className={`aspect-video w-full ${state.archives?.[shot.id] ? "object-contain" : "object-cover"}`} />
         ) : (
           <div className="grid aspect-video place-items-center text-xs text-muted">{shot.id}</div>
         )}
@@ -805,8 +811,8 @@ function ShotDetail({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, onMove]);
   const thumb = thumbOf(state, shot.id);
-  const qa = state.qa?.[shot.id];
-  const rv = state.review?.shots[shot.id];
+  const qa = state.archives?.[shot.id] ? undefined : state.qa?.[shot.id];
+  const rv = state.archives?.[shot.id] && !state.done.review ? undefined : state.review?.shots[shot.id];
   const issues = [...(qa?.issues ?? []), ...(rv?.issues ?? [])];
   const scene = state.script?.scenes.find((s) => s.id === shot.sceneId);
   return (
@@ -877,6 +883,7 @@ function ShotDetail({
             <div className="label">{t("shots.desc")}</div>
             <p className="leading-relaxed text-muted">{shot.description}</p>
           </div>
+          <ShotIntentDetails intent={shot.intent} subjectLabel={state.cast?.characters.find((c) => c.id === shot.intent?.subject)?.name ?? state.vectorProps?.[shot.intent?.subject ?? ""]?.description} targetLabel={state.cast?.characters.find((c) => c.id === shot.intent?.target)?.name ?? state.vectorProps?.[shot.intent?.target ?? ""]?.description} narration={scene?.narration} />
           {issues.length > 0 && (
             <div>
               <div className="label">{t("shots.issues")}</div>

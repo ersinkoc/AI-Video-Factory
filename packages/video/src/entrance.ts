@@ -1,8 +1,12 @@
-import type { Timeline, VectorAnim, VectorAnimType, VectorShot } from "@ys/core";
+import { styleCraftOf, type StyleCraft, type Timeline, type VectorAnim, type VectorAnimType, type VectorShot } from "@ys/core";
 import { SCENE_CUT } from "./cut.ts";
 
 type Visual = Timeline["visuals"][number];
 type Assets = Timeline["vectorAssets"];
+
+/** Yalnız render hazırlığında: malzeme girişi anlatıdaki yer değiştirme sayılıp son kadrajı değiştirmesin. */
+const MATERIAL_ENTRANCE = Symbol("material-entrance");
+export const isMaterialEntrance = (a: VectorAnim): boolean => (a as VectorAnim & { [MATERIAL_ENTRANCE]?: true })[MATERIAL_ENTRANCE] === true;
 
 /**
  * Sahnenin parça parça kurulması (sn): geçişten pause sonra ilk katman belirir, sonrakiler gap arayla; her biri length
@@ -21,7 +25,7 @@ const OWN = new Set<VectorAnimType>(["fade_in", "slide_in", "pop", "draw_on", "w
  * en son kişiler (solarak) belirir; aynı türde arkadan öne, soldan sağa. Elde tutulan nesne tutanla birlikte solarak gelir.
  * Kendi girişi olan katmana dokunulmaz. Set eşyası (fixed, varlık kimlikleri) odanın parçasıdır: odayla birlikte gelir.
  */
-export function buildIn(spec: VectorShot, assets: Assets, dur: number, fps: number, fixed: readonly string[] = []): VectorShot {
+export function buildIn(spec: VectorShot, assets: Assets, dur: number, fps: number, fixed: readonly string[] = [], craft?: StyleCraft): VectorShot {
   const kind = (i: number) => assets[spec.layers[i]!.asset]?.kind;
   const bases = new Set(spec.layers.flatMap((l) => (l.on === undefined ? [] : [l.on])));
   const rank = (i: number) => (kind(i) === "character" ? 2 : bases.has(i) ? 0 : 1);
@@ -31,15 +35,16 @@ export function buildIn(spec: VectorShot, assets: Assets, dur: number, fps: numb
     .filter((i) => kind(i) !== undefined && spec.layers[i]!.heldBy === undefined && !own(i) && !fixed.includes(spec.layers[i]!.asset))
     .sort((a, b) => rank(a) - rank(b) || (spec.layers[b]!.depth ?? 0) - (spec.layers[a]!.depth ?? 0) || spec.layers[a]!.x - spec.layers[b]!.x);
   if (!order.length) return spec;
+  const length = craft?.entranceSec ?? ENTER.length;
   const after = SCENE_CUT.frames / fps + ENTER.pause;
-  const k = Math.min(1, (ENTER.within * dur) / (after + (order.length - 1) * ENTER.gap + ENTER.length));
+  const k = Math.min(1, (ENTER.within * dur) / (after + (order.length - 1) * ENTER.gap + length));
   const at = new Map(order.map((i, n) => [i, (after + n * ENTER.gap) * k]));
-  const entrance = (type: VectorAnimType, s: number): VectorAnim => ({ type, start: s / dur, end: (s + ENTER.length * k) / dur });
+  const entrance = (type: VectorAnimType, s: number): VectorAnim => ({ type, start: s / dur, end: (s + length * k) / dur, ...(craft ? { [MATERIAL_ENTRANCE]: true as const } : {}) });
   const layers = spec.layers.map((l, i) => {
     const s = at.get(i);
     // Eski zaman çizelgelerindeki varlıkta meta olmayabilir.
     const big = kind(i) === "character" || (assets[l.asset]?.meta?.realHeight ?? 0) >= ENTER.big;
-    if (s !== undefined) return { ...l, anims: [...l.anims, entrance(big ? "fade_in" : "pop", s)] };
+    if (s !== undefined) return { ...l, anims: [...l.anims, entrance(kind(i) === "character" ? "fade_in" : (craft?.entrance ?? (big ? "fade_in" : "pop")), s)] };
     const holder = l.heldBy === undefined ? undefined : at.get(l.heldBy);
     return holder === undefined || own(i) ? l : { ...l, anims: [...l.anims, entrance("fade_in", holder)] };
   });
@@ -75,5 +80,5 @@ export function visualVector(visual: Visual, assets: Assets, fps: number): Vecto
   if (!visual.vector) return undefined;
   const dur = visual.durationInFrames / fps;
   const spec = briskAnims(visual.vector, dur);
-  return visual.enter ? buildIn(spec, assets, dur, fps, visual.dressing) : spec;
+  return visual.enter ? buildIn(spec, assets, dur, fps, [...(visual.dressing ?? []), ...(visual.carried ?? [])], styleCraftOf(visual.stylePack)) : spec;
 }

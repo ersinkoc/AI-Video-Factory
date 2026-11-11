@@ -12,7 +12,9 @@ import { VOICES } from "../lib/voices";
 import { errorKey } from "../lib/errors";
 import { providerText } from "../lib/text";
 import { useI18n } from "./locale-provider";
+import { CustomStyleEditor } from "./custom-style-editor";
 import { StyleGallery, type SampleKeys } from "./style-gallery";
+import { CharacterBankPicker } from "./character-bank-picker";
 
 const LANGS = ["tr", "en", "es", "pt-BR", "de", "fr", "ar", "hi", "ja", "id"];
 
@@ -60,6 +62,8 @@ export function NewEpisodeForm({
   const router = useRouter();
   const { t, fmt, locale } = useI18n();
   const [pack, setPack] = useState<string>(STYLE_AUTO);
+  const [customStyleId, setCustomStyleId] = useState<string>();
+  const [customStyleDirty, setCustomStyleDirty] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -91,6 +95,8 @@ export function NewEpisodeForm({
     // Mod kartları denetimli (state): seçili kart state'ten gelir.
     if (d.motionMode) setMode(d.motionMode);
     if (d.stylePack) setPack(d.stylePack);
+    setCustomStyleId(d.customStyleId);
+    setCustomStyleDirty(false);
     scheduleEstimate();
   }
 
@@ -121,6 +127,7 @@ export function NewEpisodeForm({
   }, []);
 
   async function submit(form: FormData) {
+    if (pack === STYLE_CUSTOM && customStyleDirty) { setError(t("custom.unsaved")); return; }
     setBusy(true);
     setError(undefined);
     try {
@@ -147,6 +154,7 @@ export function NewEpisodeForm({
           short: form.get("short") === "on",
           lineStyle: form.get("lineStyle") || undefined,
           stylePack: form.get("stylePack"),
+          ...(pack === STYLE_CUSTOM && customStyleId ? { customStyleId } : {}),
           ...(mode === "vector" && presenter ? { presenter } : {}),
           ...(mode === "vector" && bankCast.length ? { bankCast } : {}),
         }),
@@ -254,10 +262,11 @@ export function NewEpisodeForm({
               </div>
             )}
           </div>
-          {Object.keys(samples).length > 0 && <StyleGallery samples={samples} pack={pack} onPick={setPack} />}
-          {mode === "vector" && bank.length > 0 && (
-            <BankPicker bank={bank} presenter={presenter} setPresenter={setPresenter} cast={bankCast} setCast={setBankCast} />
+          <CustomStyleEditor active={pack === STYLE_CUSTOM} selected={customStyleId} onSelect={(id) => { setCustomStyleId(id); if (id) { setPresenter(""); setBankCast([]); } }} onDirty={setCustomStyleDirty} />
+          {mode === "vector" && (
+            <CharacterBankPicker bank={bank} presenter={presenter} setPresenter={setPresenter} cast={bankCast} setCast={setBankCast} disabled={busy} />
           )}
+          <StyleGallery samples={samples} pack={pack} onPick={setPack} />
         </Section>
 
         <Section title={t("form.section.voice")}>
@@ -352,7 +361,7 @@ export function NewEpisodeForm({
           <div className="card text-sm text-muted">{t("form.estPending")}</div>
         )}
         {error && <p className="text-sm text-bad">{error}</p>}
-        <SubmitButton busy={busy} />
+        <SubmitButton busy={busy} blocked={pack === STYLE_CUSTOM && customStyleDirty} />
       </aside>
     </form>
   );
@@ -385,75 +394,13 @@ function Toggle({ name, label, hint, defaultChecked }: { name: string; label: st
  * Gönder düğmesi. Form eylemi bir geçiş (transition) içinde çalışır: eylemin içindeki setBusy(true) eylem bitene dek
  * ekrana yansımaz. Gönderim sürerken düğmeyi kilitlemek için formun kendi durumu (useFormStatus) da okunur.
  */
-function SubmitButton({ busy }: { busy: boolean }) {
+function SubmitButton({ busy, blocked = false }: { busy: boolean; blocked?: boolean }) {
   const { t } = useI18n();
   const { pending } = useFormStatus();
-  const locked = busy || pending;
+  const locked = busy || pending || blocked;
   return (
     <button className="btn-primary justify-center py-3 text-base" disabled={locked}>
-      <Sparkles size={16} /> {locked ? t("form.submitting") : t("form.submit")}
+      <Sparkles size={16} /> {blocked ? t("custom.unsavedShort") : locked ? t("form.submitting") : t("form.submit")}
     </button>
-  );
-}
-
-/** Karakter bankasından sunucu ve kadro seçimi; seçilenlerin stili bölüme uygulanır (sunucu tarafı da denetler). */
-function BankPicker({
-  bank,
-  presenter,
-  setPresenter,
-  cast,
-  setCast,
-}: {
-  bank: LibraryCharacter[];
-  presenter: string;
-  setPresenter: (id: string) => void;
-  cast: string[];
-  setCast: (ids: string[]) => void;
-}) {
-  const { t, locale } = useI18n();
-  const chosen = bank.filter((c) => c.id === presenter || cast.includes(c.id));
-  const styles = new Set(chosen.map((c) => `${c.pack}|${c.lineStyle}`));
-  const first = chosen[0];
-  return (
-    <fieldset className="grid gap-2 rounded-xl border border-line p-3">
-      <legend className="px-1 text-sm font-medium">{t("form.bank.title")}</legend>
-      <p className="text-xs text-muted">{t("form.bank.hint")}</p>
-      <div>
-        <label className="label" htmlFor="presenter">{t("form.bank.presenter")}</label>
-        <select id="presenter" className="field max-w-sm" value={presenter} onChange={(e) => setPresenter(e.target.value)}>
-          <option value="">{t("form.bank.none")}</option>
-          {bank.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-              {c.role ? ` · ${c.role}` : ""}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="text-sm">{t("form.bank.cast")}</div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1">
-        {bank
-          .filter((c) => c.id !== presenter)
-          .map((c) => (
-            <label key={c.id} className="flex items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
-                checked={cast.includes(c.id)}
-                onChange={(e) => setCast(e.target.checked ? [...cast, c.id] : cast.filter((id) => id !== c.id))}
-              />
-              {c.name}
-            </label>
-          ))}
-      </div>
-      {styles.size > 1 ? (
-        <p className="text-xs text-bad">{t("form.bank.mixed")}</p>
-      ) : (
-        first && (
-          <p className="text-xs text-accent">
-            {t("form.bank.style", { pack: stylePackOf(first.pack!)!.name[locale], line: t(`line.${first.lineStyle}` as MessageKey) })}
-          </p>
-        )
-      )}
-    </fieldset>
   );
 }

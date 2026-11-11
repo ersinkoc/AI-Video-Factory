@@ -8,6 +8,28 @@ An AI video factory that produces multilingual, animation-heavy YouTube videos f
 
 Architecture, provider choices and the roadmap are in [docs/PROJE_PLANI.md](docs/PROJE_PLANI.md) (Turkish). Release history: [CHANGELOG.md](CHANGELOG.md).
 
+For time-coded black/freeze, motion, whole-program loudness and shot audio energy/quiet intervals on an existing export, see [Rendered-video audit](docs/RENDER_AUDIT.md).
+
+For export-specific editorial decisions, automatic Short audits and frozen still/clip comparisons, see [Quality workflow and benchmarks](docs/QUALITY_WORKFLOW.md).
+
+For explicit shot subjects/actions, narration ranges and readable-hold plan checks, see [Structured shot intent](docs/SHOT_INTENT.md).
+
+For narration claims, editor-supplied source excerpts, stale review decisions and frozen main-export evidence, see [Claim sources](docs/CLAIM_SOURCES.md).
+
+For narration impact previews, retained audio and saved-revision undo, see [Reviewed narration edits](docs/NARRATION_EDITS.md).
+
+For voice-only silence, timing and script/spoken/caption evidence independent of music, see [Voice stem audit](docs/VOICE_AUDIT.md).
+
+For reusable spoken forms, episode overrides and reviewed voice invalidation, see [Pronunciation dictionaries](docs/PRONUNCIATIONS.md).
+
+For visual presenter/cast selection, filters and pagination in new vector episodes, see [Character gallery](docs/CHARACTER_GALLERY.md).
+
+For bundled heading/body pairs, verified Turkish glyph coverage and editable specimens, see [Episode typography](docs/TYPOGRAPHY.md).
+
+For real collection images, reversible shot inserts and source registers, see [Archive image inserts](docs/ARCHIVE_IMAGES.md).
+
+For free reference-color measurements, explicit palette application and comparison against actual MP4 frames, see [Measured reference direction](docs/REFERENCE_STYLE.md).
+
 ## Sponsor
 
 <table>

@@ -1,5 +1,5 @@
 import { BudgetTier, LineStyle, STYLE_AUTO, STYLE_CUSTOM, stylePackOf } from "@ys/core";
-import { cleanSeries, newEpisodeState, withBankChoice, type EpisodeInput, type MotionMode } from "@ys/pipeline/light";
+import { cleanSeries, loadCustomStyle, newEpisodeState, withBankChoice, type EpisodeInput, type MotionMode } from "@ys/pipeline/light";
 import { msg } from "@ys/core/messages";
 import { apiError, errorResponse } from "../../../lib/api";
 import { repo, startJob, store } from "../../../lib/server";
@@ -28,6 +28,7 @@ interface CreateBody {
   motionMode: MotionMode;
   voiceId?: string;
   styleHint?: string;
+  customStyleId?: string;
   budgetUsd: number;
   vertical?: boolean;
   qa?: boolean;
@@ -57,6 +58,10 @@ export async function POST(req: Request) {
   if (!Number.isFinite(budget) || budget <= 0) return apiError(req, msg("api.budget"));
   const motionMode = (["animated", "mixed", "still", "vector"] as const).find((m) => m === body.motionMode) ?? "animated";
   const lang = typeof body.lang === "string" && /^[a-z]{2,3}(-[A-Z]{2})?$/.test(body.lang) ? body.lang : "tr";
+  if (body.customStyleId !== undefined) {
+    if (typeof body.customStyleId !== "string" || !await loadCustomStyle(store(), body.customStyleId)) return apiError(req, msg("api.style.missing"));
+    if (body.presenter || (Array.isArray(body.bankCast) && body.bankCast.length)) return apiError(req, msg("api.style.bank"));
+  }
   let input: EpisodeInput = {
     topic: body.topic.trim(),
     lang,
@@ -66,6 +71,7 @@ export async function POST(req: Request) {
     aiClipRatio: 0.2,
     budgetUsd: budget,
     voiceId: typeof body.voiceId === "string" && body.voiceId ? body.voiceId : undefined,
+    customStyleId: body.customStyleId,
     styleHint: typeof body.styleHint === "string" ? body.styleHint.trim().slice(0, 300) || undefined : undefined,
     autoApprove: false,
     qa: body.qa !== false,
@@ -86,7 +92,7 @@ export async function POST(req: Request) {
     // Boş: stil paketinin çizgi stili.
     lineStyle: body.lineStyle ? LineStyle.optional().catch(undefined).parse(body.lineStyle) : undefined,
     series: typeof body.series === "string" ? cleanSeries(body.series) : undefined,
-    stylePack: body.stylePack === STYLE_CUSTOM || stylePackOf(body.stylePack) ? body.stylePack : STYLE_AUTO,
+    stylePack: body.customStyleId ? STYLE_CUSTOM : (body.stylePack === STYLE_CUSTOM || stylePackOf(body.stylePack) ? body.stylePack : STYLE_AUTO),
     width: body.vertical ? 1080 : 1920,
     height: body.vertical ? 1920 : 1080,
     fps: 30,

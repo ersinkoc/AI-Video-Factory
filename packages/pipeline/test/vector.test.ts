@@ -69,5 +69,14 @@ describe("vektör timeline", () => {
     expect(tl.visuals.map((v) => v.enter)).toEqual([undefined, undefined, true]);
     expect(tl.vectorAssets).toEqual(assets);
     expect(tl.palette).toEqual(["#111111", "#222222", "#ffcc00"]);
+    const steady = VectorShot.parse({ ...spec, camera: { zoomFrom: 1, zoomTo: 1, panX: 0 } });
+    const pilot = { ...state, style: { ...state.style!, pack: "paper-cutout" }, shots: state.shots!.map((s) => ({ ...s, vector: steady })) };
+    const props = { c1: { ...assets.c1, kind: "prop" as const } };
+    const carried = buildTimeline(pilot, (k) => k, props);
+    expect(carried.visuals.map((v) => v.stylePack)).toEqual(["paper-cutout", "paper-cutout", "paper-cutout"]);
+    expect(carried.visuals.map((v) => v.carried)).toEqual([undefined, ["c1"], ["c1"]]);
+    expect(buildTimeline(pilot, (k) => k, assets).visuals.every((v) => !v.carried)).toBe(true);
+    expect(buildTimeline({ ...pilot, style: { ...pilot.style, pack: "flat-explainer" } }, (k) => k, props).visuals.every((v) => !v.carried)).toBe(true);
+    expect(buildTimeline({ ...pilot, mathBoards: { b: "board.webm" } }, (k) => k, props).visuals.every((v) => !v.carried)).toBe(true);
   });
 });

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { STYLE_CUSTOM, STYLE_PACK_IDS } from "@ys/core";
+import { STYLE_CUSTOM, STYLE_PACK_IDS, Timeline } from "@ys/core";
 import { JsonlLedger } from "@ys/media-gateway";
 import type { EpisodeInput, EpisodeState } from "@ys/pipeline/light";
 import { getJson, putJson } from "@ys/storage";
@@ -30,6 +30,10 @@ const episodes = await import("../../src/app/api/episodes/route.ts");
 const episode = await import("../../src/app/api/episodes/[id]/route.ts");
 const action = await import("../../src/app/api/episodes/[id]/action/route.ts");
 const video = await import("../../src/app/api/episodes/[id]/video/route.ts");
+const renderAudit = await import("../../src/app/api/episodes/[id]/audit/route.ts");
+const sources = await import("../../src/app/api/episodes/[id]/sources/route.ts");
+const edits = await import("../../src/app/api/episodes/[id]/edits/route.ts");
+const archiveImages = await import("../../src/app/api/archive/[id]/image/route.ts");
 const estimate = await import("../../src/app/api/estimate/route.ts");
 const models = await import("../../src/app/api/settings/models/route.ts");
 const characters = await import("../../src/app/api/characters/route.ts");
@@ -75,6 +79,120 @@ beforeEach(() => {
   registry.skipped = [];
 });
 afterEach(() => vi.restoreAllMocks());
+
+describe("narration impact and revision API", () => {
+  it("previews without mutation, binds application to reviewed state and restores a saved revision", async () => {
+    const id = "reviewed-edit", original = await saveEpisode(id, { script: { scenes: [{ id: "s1", beatId: "b", narration: "Old narration", visualIntent: "", emotion: "", location: "" }] }, done: { voice: "t", render: "t" }, voice: { s1: { key: "old.mp3", mimeType: "audio/mpeg", durationMs: 4000, words: [], estimatedTiming: false } }, render: { path: "old.mp4", at: "old", exportId: "old-export" } });
+    const res = await edits.POST(post({ type: "preview", sceneId: "s1", narration: "New narration" }), params({ id }));
+    expect(res.status).toBe(200); const preview = await res.json(); expect(preview.regenerateVoice).toEqual(["s1"]);
+    expect(await load(id)).toEqual(original); expect(spawn).not.toHaveBeenCalled();
+    expect((await act(id, { type: "edit-narration", sceneId: "s1", narration: "New narration", fingerprint: preview.fingerprint })).status).toBe(200);
+    const changed = await load(id); expect(changed.narrationEdit).toBeDefined(); expect(changed.done.voice).toBeUndefined(); expect(changed.render).toEqual(original.render);
+    expect((await act(id, { type: "edit-narration", sceneId: "s1", narration: "Other", fingerprint: preview.fingerprint })).status).toBe(400);
+    const undo = await (await edits.POST(post({ type: "undo-preview", editId: changed.narrationEdit!.id }), params({ id }))).json();
+    expect(undo.before).toBeUndefined(); expect(undo.narration).toBe("Old narration");
+    expect((await act(id, { type: "undo-narration-edit", editId: undo.editId, fingerprint: undo.fingerprint })).status).toBe(200);
+    expect(await load(id)).toEqual(original); expect(spawn).not.toHaveBeenCalled();
+  });
+  it("rejects malformed previews and running producer edits", async () => {
+    const id = "bad-edit"; await saveEpisode(id);
+    expect((await edits.POST(post({ type: "preview", sceneId: "s", narration: 42 }), params({ id }))).status).toBe(400);
+    expect((await edits.POST(post({ type: "preview", sceneId: "s", narration: "New" }), params({ id: ".." }))).status).toBe(400);
+    await lockOf(id, process.pid);
+    expect((await edits.POST(post({ type: "preview", sceneId: "s", narration: "New" }), params({ id }))).status).toBe(400);
+    expect((await act(id, { type: "edit-narration", sceneId: "s", narration: "New" })).status).toBe(400);
+  });
+});
+
+describe("archive image actions and source register", () => {
+  const candidate = { id: `nasa-${"b".repeat(24)}`, provider: "nasa" as const, title: "Apollo 11", creator: "NASA", date: "1969", sourceId: "apollo", sourceUrl: "https://images.nasa.gov/details/apollo", imageUrl: "https://images-assets.nasa.gov/image/apollo.jpg" };
+  it("attaches a cached archive image under the episode lock and restores its generated frame", async () => {
+    const key = "assets/archive/photo.jpg";
+    const image = { key, mimeType: "image/jpeg" as const, source: candidate, width: 2, height: 2, originalSha256: "hash", downloadedAt: "t" };
+    await server.store().put(key, new Uint8Array([1, 2, 3]), "image/jpeg");
+    await putJson(server.store(), `library/archive/items/${candidate.id}.json`, candidate);
+    await putJson(server.store(), `library/archive/imports/${candidate.id}.json`, image);
+    await saveEpisode("archive-test", { shots: [{ id: "shot", sceneId: "s1", kind: "still_motion", startMs: 0, endMs: 4000, description: "space", imagePrompt: "", motionPrompt: "", camera: "static" }], keyframes: { shot: { key: "original.png", mimeType: "image/png" } }, done: { timeline: "t", render: "t" } });
+    expect((await act("archive-test", { type: "use-archive", shotId: "shot", candidateId: candidate.id })).status).toBe(200);
+    const selected = await load("archive-test");
+    expect(selected.archives?.shot).toEqual(image);
+    expect(selected.done.render).toBeUndefined();
+    expect(selected.keyframes?.shot?.key).toBe("original.png");
+    expect((await act("archive-test", { type: "remove-archive", shotId: "shot" })).status).toBe(200);
+    expect((await load("archive-test")).archives?.shot).toBeUndefined();
+    const preview = await archiveImages.GET(new Request("http://localhost/api/archive/x/image"), params({ id: candidate.id }));
+    expect(preview.status).toBe(200);
+    expect(new Uint8Array(await preview.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+  });
+  it("downloads the successful render's sources rather than pending choices", async () => {
+    await saveEpisode("archive-test", { render: { path: "main.mp4", at: "render-t", archiveSources: [{ shotId: "shot", key: "used.jpg", source: candidate }] } });
+    const response = await sources.GET(new Request("http://localhost/api/episodes/archive-test/sources"), params({ id: "archive-test" }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect((await response.json()).images).toEqual([{ shotId: "shot", key: "used.jpg", source: candidate }]);
+    expect((await sources.GET(new Request("http://localhost"), params({ id: ".." }))).status).toBe(400);
+  });
+});
+
+describe("episode rendered-video audit", () => {
+  it("starts voice-only analysis through a distinct job", async () => {
+    await saveEpisode("voice-audit-test");
+    expect((await act("voice-audit-test", { type: "audit-voice" })).status).toBe(200);
+    expect(lastChild().args.slice(-3)).toEqual(["episode", "audit-voice", "voice-audit-test"]);
+  });
+  it("starts an explicit script-only rewrite job rather than generation/render continuation", async () => {
+    await saveEpisode("rewrite-test");
+    expect((await act("rewrite-test", { type: "rewrite-script" })).status).toBe(200);
+    expect(lastChild().args.slice(-3)).toEqual(["episode", "rewrite-script", "rewrite-test"]);
+  });
+  it("starts a Short-only audit and downloads its distinct report", async () => {
+    const key = "episodes/short-audit/render-audits/short-report.json";
+    await putJson(server.store(), key, { target: "short" });
+    await saveEpisode("short-audit", { short: { path: "short.mp4", at: "t", title: "Short", sec: 6, scenes: [], audit: { status: "complete", at: "a", findingsCount: 0, findings: [], checks: [], reportKey: key } } });
+    const downloaded = await renderAudit.GET(new Request("http://localhost/api/episodes/short-audit/audit?short"), params({ id: "short-audit" }));
+    expect(await downloaded.json()).toEqual({ target: "short" });
+    expect(downloaded.headers.get("content-disposition")).toContain("short-audit.short.audit.json");
+    expect((await act("short-audit", { type: "audit-render", target: "short" })).status).toBe(200);
+    expect(lastChild().args.slice(-4)).toEqual(["episode", "audit", "short-audit", "--short"]);
+  });
+  it("starts a free audit job on an old export, without requesting a rerender", async () => {
+    const timeline = Timeline.parse({ episodeId: "audit-test", lang: "en", fps: 30, width: 1920, height: 1080, durationInFrames: 120, visuals: [], audio: [] });
+    await saveEpisode("audit-test", { render: { path: "main.mp4", at: "t" }, timeline });
+    expect((await act("audit-test", { type: "audit-render" })).status).toBe(200);
+    expect(lastChild().args.slice(-3)).toEqual(["episode", "audit", "audit-test"]);
+  });
+
+  it("rejects an audit without a render or while an episode is locked", async () => {
+    await saveEpisode("audit-test");
+    expect((await act("audit-test", { type: "audit-render" })).status).toBe(400);
+    await lockOf("audit-test", process.pid);
+    const locked = await act("audit-test", { type: "audit-render" });
+    expect(locked.status).toBe(400);
+    expect(await locked.json()).toEqual({ error: "Önce çalışan iş bitmeli" });
+  });
+
+  it("downloads only the current episode's report, without immutable caching", async () => {
+    const key = "episodes/audit-test/render-audits/abc-123.json";
+    await putJson(server.store(), key, { findings: ["evidence"] });
+    const state = await saveEpisode("audit-test", { render: { path: "main.mp4", at: "t", audit: { status: "complete", at: "now", findingsCount: 1, findings: [], checks: [], reportKey: key } } });
+    const request = () => new Request("http://localhost/api/episodes/audit-test/audit");
+    const response = await renderAudit.GET(request(), params({ id: state.id }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ findings: ["evidence"] });
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("content-disposition")).toContain("audit-test.audit.json");
+    state.render!.audit!.reportKey = "episodes/another/render-audits/abc-123.json";
+    await server.repo().save(state);
+    expect((await renderAudit.GET(request(), params({ id: state.id }))).status).toBe(404);
+  });
+
+  it("returns missing-report and invalid-id errors explicitly", async () => {
+    await saveEpisode("audit-test", { render: { path: "main.mp4", at: "t" } });
+    const req = new Request("http://localhost/api/episodes/audit-test/audit");
+    expect((await renderAudit.GET(req, params({ id: "audit-test" }))).status).toBe(404);
+    expect((await renderAudit.GET(req, params({ id: ".." }))).status).toBe(400);
+  });
+});
 
 describe("GET /api/styles/[pack]/sample", () => {
   const get = (pack: string, query: string) => styleSample.GET(new Request(`http://x/api/styles/${pack}/sample${query}`), params({ pack }));

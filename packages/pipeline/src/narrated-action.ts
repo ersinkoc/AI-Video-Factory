@@ -1,4 +1,4 @@
-import { ARM_GESTURES, type VectorAnim, type VectorAnimType, type VectorExpression, type VectorShot } from "@ys/core";
+import { ARM_GESTURES, ShotIntent, type VectorAnim, type VectorAnimType, type VectorExpression, type VectorShot } from "@ys/core";
 import { TITLED } from "./name-tags.ts";
 
 /**
@@ -217,18 +217,36 @@ export function withNarratedMoods(spec: VectorShot, description: string, cast: P
  * "hayır" der; yoksa çekimin ortasında NARRATED.headSec saniye. Değişen planı döner, değişiklik yoksa undefined. Render
  * eylemi sahneleyemezse (masa, kâğıt yok) çağıran planı olduğu gibi bırakır.
  */
-export function withNarratedActions(spec: VectorShot, description: string, cast: Person[], dur: number): VectorShot | undefined {
+export function withNarratedActions(spec: VectorShot, description: string, cast: Person[], dur: number, intent?: ShotIntent): VectorShot | undefined {
   let changed = false;
-  const wanted = narratedActions(description, spec, cast);
+  let wanted: Map<number, VectorAnimType>;
+  let target: number | undefined;
+  if (intent) {
+    const parsed = ShotIntent.safeParse(intent);
+    if (!parsed.success || ["hold", "reveal", "compare", "walk", "move"].includes(parsed.data.action)) return undefined;
+    const actor = spec.layers.findIndex((l) => l.asset === parsed.data.subject && cast.some((c) => c.id === l.asset && c.kind !== "object"));
+    if (actor < 0) return undefined;
+    if (parsed.data.target) {
+      target = spec.layers.findIndex((l) => l.asset === parsed.data.target);
+      if (target < 0 || target === actor) return undefined;
+    }
+    wanted = new Map([[actor, parsed.data.action as VectorAnimType]]);
+  } else wanted = narratedActions(description, spec, cast);
   const layers = spec.layers.map((l, i) => {
     const gesture = wanted.get(i);
-    if (!gesture || l.anims.some((a) => a.type === gesture || a.type === "walk")) return l;
+    if (!gesture || l.anims.some((a) => a.type === "walk")) return l;
+    const directed = (a: VectorAnim): VectorAnim => target !== undefined && (gesture === "point" || gesture === "give") ? { ...a, target } : a;
+    if (l.anims.some((a) => a.type === gesture)) {
+      if (target === undefined || (gesture !== "point" && gesture !== "give") || l.anims.every((a) => a.type !== gesture || a.target === target)) return l;
+      changed = true;
+      return { ...l, anims: l.anims.map((a) => a.type === gesture ? directed(a) : a) };
+    }
     let anims: VectorAnim[] | undefined;
     if (ARM_GESTURES.includes(gesture)) {
       const arms = l.anims.filter((a) => ARM_GESTURES.includes(a.type));
       if (arms.some((a) => a.type !== "explain")) return l;
       if (gesture === "give" && !spec.layers.some((q) => q.heldBy === i)) return l;
-      anims = arms.length ? l.anims.map((a) => (a.type === "explain" ? { ...a, type: gesture } : a)) : [...l.anims, { type: gesture, start: 0, end: 1 }];
+      anims = arms.length ? l.anims.map((a) => (a.type === "explain" ? directed({ ...a, type: gesture }) : a)) : [...l.anims, directed({ type: gesture, start: 0, end: 1 })];
     } else if (gesture === "shake_head" && l.anims.some((a) => a.type === "shake")) {
       anims = l.anims.map((a) => (a.type === "shake" ? { ...a, type: gesture } : a));
     } else if (!l.anims.some((a) => a.type === "nod" || a.type === "shake_head")) {

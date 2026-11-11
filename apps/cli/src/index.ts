@@ -52,9 +52,13 @@ Komutlar:
   episode run <id> [--until <aşama>] [--from <aşama>] [--only <aşama>]
               aşamalar: style story script voice shots keyframes clips timeline render
   episode show <id>
+  episode rewrite-script <id>       kaynaklarla yalnız senaryoyu yeniden yaz (Claude kullanımı)
   episode approve <id> script|concept|preview
   episode select <id> <varlık>=<sıra>      örn. c1=2 (konsept adayı seç)
   episode preview <id>              seçilen referanslarla deneme kareleri
+  episode audit <id>                mevcut videoyu ücretsiz denetle (yeniden render yok)
+    episode audit-voice <id>          mevcut konuşma kayıtlarını müzikten bağımsız denetle
+  episode compare-style <id>        mevcut videoyu kaydedilmiş referansla karşılaştır
               new için: [--motion animated|mixed|still|vector] [--manual: onaylarda dur] [--no-qa: kare kontrolü kapalı] [--no-realism: gerçeklik denetimi kapalı] [--side-views: yürüyen karakterlere yan görünüş] [--no-reverse-views: odalara ters açı çizilmez] [--no-set-dressing: odalara set eşyası konmaz] [--no-captions: altyazı videoya gömülmez, yalnız .srt] [--line outline|flat|sketch|ink]
               [--series "Seri adı"] [--style-pack auto|custom|<paket>]  (paketler: pnpm ys styles)
               [--presenter <banka kimliği>] [--with <kimlik,kimlik>]  bankadan sunucu/karakter (vektör; bölüm onların stiline geçer)
@@ -146,6 +150,7 @@ async function main(): Promise<void> {
       series: { type: "string" },
       backfill: { type: "boolean", default: false },
       vertical: { type: "boolean", default: false },
+      short: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
       // "--version" seçenek olarak tanımlı değilse parseArgs "Unknown option" ile düşüyordu.
       version: { type: "boolean", default: false },

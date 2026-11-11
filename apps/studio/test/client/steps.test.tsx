@@ -27,10 +27,11 @@ describe("ScriptTab", () => {
     expect(act).toHaveBeenCalledWith({ type: "generate-script" });
     rerender(<ScriptTab data={makeData(makeState())} busy act={act} />);
     expect(screen.getByText(tr("script.writing"))).toBeTruthy();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: tr("script.generate") })).toBeNull();
+    expect(screen.getByRole("button", { name: tr("research.title") })).toBeTruthy();
   });
 
-  it("onaysız senaryo: istatistik, onay düğmesi maliyetle, anlatım düzenlenince eylem", () => {
+  it("onaysız senaryo: istatistik, onay düğmesi maliyetle, anlatım düzenlemesi açık etki incelemesi bekler", () => {
     const act = okAct();
     const state = makeState({
       story,
@@ -55,8 +56,14 @@ describe("ScriptTab", () => {
     // Değişmeyen metin eylem göndermez.
     fireEvent.blur(first!, { target: { value: `  ${script.scenes[0]!.narration}  ` } });
     expect(act).toHaveBeenCalledTimes(1);
-    fireEvent.blur(first!, { target: { value: "Yeni anlatım" } });
-    expect(act).toHaveBeenLastCalledWith({ type: "edit-narration", sceneId: "s1", narration: "Yeni anlatım" });
+    fireEvent.change(first!, { target: { value: "Yeni anlatım" } });
+    fireEvent.blur(first!);
+    expect(act).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole("button", { name: tr("edit.preview") })[0]!.hasAttribute("disabled")).toBe(false);
+    expect(approve.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(tr("edit.unsaved"))).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: tr("edit.reset") }));
+    expect(approve.hasAttribute("disabled")).toBe(false);
   });
 
   it("onaylı senaryo kilitli; konsept onayından önce geri alınabilir, otomatik onayda geri alma yok", () => {
@@ -73,7 +80,9 @@ describe("ScriptTab", () => {
     rerender(<ScriptTab data={makeData(makeState({ script, approvals: { script: "t" } }, { autoApprove: true }))} busy={false} act={act} />);
     expect(screen.queryByRole("button", { name: tr("script.revoke") })).toBeNull();
     rerender(<ScriptTab data={makeData(makeState({ script }, { autoApprove: true }))} busy={false} act={act} />);
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: tr("script.approve") })).toBeNull();
+    expect(screen.queryByRole("button", { name: tr("script.revoke") })).toBeNull();
+    expect(screen.getByRole("button", { name: tr("research.title") })).toBeTruthy();
   });
 });
 
