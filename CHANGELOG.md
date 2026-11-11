@@ -2,6 +2,10 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.5.0 (2026-11-11)
+
+- Add character gallery, style authoring and evidence-led episode editing
+
 ## v0.4.10 (2026-11-08)
 
 - Confetti is thrown once and settles on the floor instead of raining through the whole shot
