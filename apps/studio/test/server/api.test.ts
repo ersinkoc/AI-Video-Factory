@@ -3,6 +3,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STYLE_CUSTOM, STYLE_PACK_IDS, Timeline } from "@ys/core";
+import { LocalizedError, msg } from "@ys/core/messages";
 import { JsonlLedger } from "@ys/media-gateway";
 import type { EpisodeInput, EpisodeState } from "@ys/pipeline/light";
 import { getJson, putJson } from "@ys/storage";
@@ -30,6 +31,7 @@ const episodes = await import("../../src/app/api/episodes/route.ts");
 const episode = await import("../../src/app/api/episodes/[id]/route.ts");
 const action = await import("../../src/app/api/episodes/[id]/action/route.ts");
 const video = await import("../../src/app/api/episodes/[id]/video/route.ts");
+const timelineRoute = await import("../../src/app/api/episodes/[id]/timeline/route.ts");
 const renderAudit = await import("../../src/app/api/episodes/[id]/audit/route.ts");
 const sources = await import("../../src/app/api/episodes/[id]/sources/route.ts");
 const edits = await import("../../src/app/api/episodes/[id]/edits/route.ts");
@@ -291,6 +293,83 @@ describe("GET /api/assets/[...key]", () => {
 
     expect((await assets.GET(new Request("http://x"), params({ key: ["assets", "yok.png"] }))).status).toBe(404);
   });
+
+  it("oynatıcı için yazı tiplerini video paketinin kurulu dosyasından sunar; bilinmeyen ya da kurulu olmayan 404, başka okuma hatası yukarı çıkar", async () => {
+    const { fontAsset, TYPOGRAPHY_PAIRS } = await import("@ys/core/typography");
+    const face = TYPOGRAPHY_PAIRS.clear.body;
+    const file = fontAsset(face, "latin-ext");
+    // Kök (YS_ROOT) geçici klasör: kurulu paketin yeri orada taklit edilir.
+    const dir = join(root, "packages", "video", "node_modules", "@fontsource", face.id, "files");
+    expect((await assets.GET(new Request("http://x"), params({ key: file.split("/") }))).status).toBe(404);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, file.slice("typography/".length)), new Uint8Array([7, 7, 7]));
+    const font = await assets.GET(new Request("http://x"), params({ key: file.split("/") }));
+    expect(font.status).toBe(200);
+    expect(font.headers.get("content-type")).toBe("font/woff");
+    expect([...new Uint8Array(await font.arrayBuffer())]).toEqual([7, 7, 7]);
+    // Yalnız bilinen yazı tipi dosyaları; yol kaçışı yine yasak.
+    expect((await assets.GET(new Request("http://x"), params({ key: ["typography", "yok.woff"] }))).status).toBe(404);
+    expect((await assets.GET(new Request("http://x"), params({ key: ["typography", "..", "x.woff"] }))).status).toBe(403);
+    // Dosya yerine klasör (EISDIR): "yok" sayılmaz, hata gizlenmez.
+    const other = fontAsset(face, "latin");
+    mkdirSync(join(dir, other.slice("typography/".length)), { recursive: true });
+    await expect(assets.GET(new Request("http://x"), params({ key: other.split("/") }))).rejects.toThrow();
+  });
+
+  it("Range: ses ve klipte ileri sarma için kısmi yanıt", async () => {
+    const bytes = Uint8Array.from({ length: 100 }, (_, i) => i);
+    await server.store().put("assets/ab/ses.wav", bytes, "audio/wav");
+    const get = (range?: string) => assets.GET(new Request("http://x", range ? { headers: { range } } : {}), params({ key: ["assets", "ab", "ses.wav"] }));
+    const whole = await get();
+    expect(whole.status).toBe(200);
+    expect(whole.headers.get("accept-ranges")).toBe("bytes");
+    expect(whole.headers.get("content-type")).toBe("audio/wav");
+    const part = await get("bytes=10-19");
+    expect(part.status).toBe(206);
+    expect(part.headers.get("content-range")).toBe("bytes 10-19/100");
+    expect([...new Uint8Array(await part.arrayBuffer())]).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+    expect((await get("bytes=95-")).headers.get("content-range")).toBe("bytes 95-99/100");
+    expect((await get("bytes=90-500")).headers.get("content-range")).toBe("bytes 90-99/100");
+    const tail = await get("bytes=-3");
+    expect(tail.headers.get("content-range")).toBe("bytes 97-99/100");
+    expect([...new Uint8Array(await tail.arrayBuffer())]).toEqual([97, 98, 99]);
+    expect((await get("bytes=-500")).headers.get("content-range")).toBe("bytes 0-99/100");
+    // Boş ya da tanınmayan aralık tüm dosya; boyut dışı 416.
+    for (const r of ["bytes=-", "items=0-1", "bytes=1-2,5-6"]) expect((await get(r)).status, r).toBe(200);
+    for (const r of ["bytes=100-", "bytes=20-10"]) {
+      const res = await get(r);
+      expect(res.status, r).toBe(416);
+      expect(res.headers.get("content-range")).toBe("bytes */100");
+    }
+  });
+});
+
+describe("GET /api/episodes/[id]/timeline", () => {
+  const timeline = Timeline.parse({ episodeId: "t1", lang: "tr", fps: 30, width: 1920, height: 1080, durationInFrames: 60, visuals: [], audio: [], captions: [{ text: "merhaba", startMs: 0, endMs: 900 }] });
+  const get = (id: string, headers: Record<string, string> = TR) => timelineRoute.GET(new Request("http://x", { headers }), params({ id }));
+
+  it("render'ın gördüğü zaman çizelgesi: altyazı gömülmeyecekse altyazısız", async () => {
+    await saveEpisode("t1", { timeline });
+    const res = await get("t1");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.json()).toEqual(timeline);
+    await saveEpisode("t2", { timeline }, { captions: false });
+    expect((await (await get("t2")).json()).captions).toEqual([]);
+  });
+
+  it("geçersiz kimlik 400, olmayan bölüm 404, zaman çizelgesi yoksa 404, başka hata 500", async () => {
+    expect((await get("../x")).status).toBe(400);
+    const missing = await get("yok", { "accept-language": "en" });
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ error: "Episode not found: yok" });
+    await saveEpisode("t3");
+    const none = await get("t3");
+    expect(none.status).toBe(404);
+    expect(await none.json()).toEqual({ error: "Zaman çizelgesi yok (önce çekimler ve sesler hazırlanmalı)" });
+    vi.spyOn(server.repo(), "load").mockRejectedValueOnce(new Error("disk okunamadı"));
+    expect((await get("t3")).status).toBe(500);
+  });
 });
 
 describe("/api/episodes", () => {
@@ -521,11 +600,33 @@ describe("GET /api/episodes/[id]", () => {
     expect(body.error).toBe("Bölüm bulunamadı: yok");
   });
 
-  it("Error olmayan hata metne çevrilir", async () => {
+  it("Error olmayan hata metne çevrilir; 'bölüm yok' dışındaki hata 404 değil 500'dür", async () => {
     vi.spyOn(server.repo(), "load").mockRejectedValueOnce("dize hata");
     const { res, body } = await get("e1");
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(500);
     expect(body.error).toBe("dize hata");
+    // Okunamayan defter "bölüm bulunamadı" gibi görünmez.
+    await saveEpisode("e-defter");
+    vi.spyOn(JsonlLedger.prototype, "all").mockRejectedValueOnce(new SyntaxError("Unexpected end of JSON input"));
+    const broken = await get("e-defter");
+    expect(broken.res.status).toBe(500);
+    expect(broken.body.error).toBe("Unexpected end of JSON input");
+    // Çevrilebilir ama "bölüm yok" olmayan hata da 500'dür.
+    vi.spyOn(server.repo(), "load").mockRejectedValueOnce(new LocalizedError(msg("api.busy")));
+    expect((await get("e-defter")).res.status).toBe(500);
+  });
+
+  it("öbür modül katmanının fırlattığı 'bölüm yok' hatası da tanınır: 404, isteğin dilinde", async () => {
+    // Next.js sayfaları ve uç noktaları ayrı katmanlarda derler; globalThis'teki depo öbür katmanın sınıfıyla hata fırlatır.
+    const foreign = () => Object.assign(new Error("Bölüm bulunamadı: yok"), { text: msg("err.episode.notFound", { id: "yok" }) });
+    vi.spyOn(server.repo(), "load").mockRejectedValueOnce(foreign());
+    const res = await episode.GET(new Request("http://x", { headers: { "accept-language": "en" } }), params({ id: "yok" }));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Episode not found: yok" });
+    vi.spyOn(server.repo(), "load").mockRejectedValueOnce(foreign());
+    const clip = await video.GET(new Request("http://x", { headers: { "accept-language": "en" } }), params({ id: "yok" }));
+    expect(clip.status).toBe(404);
+    expect(await clip.text()).toBe("Episode not found: yok");
   });
 
   it("tahminler, defter, harcama, kota ve kütüphane tek yanıtta", async () => {
@@ -748,6 +849,14 @@ describe("GET /api/episodes/[id]/video", () => {
 
   it("geçersiz kimlik 400; render yoksa ya da dosya silinmişse 404", async () => {
     expect((await get("Büyük")).status).toBe(400);
+    // Olmayan bölüm 404; okunamayan durum dosyası 500.
+    const missing = await get("v-hic-yok");
+    expect(missing.status).toBe(404);
+    expect(await missing.text()).toBe("Bölüm bulunamadı: v-hic-yok");
+    vi.spyOn(server.repo(), "load").mockRejectedValueOnce(new Error("disk okunamadı"));
+    const unreadable = await get("v-var");
+    expect(unreadable.status).toBe(500);
+    expect(await unreadable.text()).toBe("disk okunamadı");
     expect(await (await get("v-yok")).text()).toBe("Video yok");
     const gone = await get("v-dosyasiz");
     expect(gone.status).toBe(404);
@@ -1019,5 +1128,41 @@ describe("POST /api/episodes/[id]/action", () => {
     await saveEpisode("a8");
     vi.spyOn(server.repo(), "update").mockRejectedValueOnce("dize hata");
     await fail("a8", { type: "set-realism", enabled: true }, "dize hata");
+  });
+});
+
+describe("bozuk istek gövdesi", () => {
+  const raw = (body: string, headers: Record<string, string> = TR) =>
+    new Request("http://localhost:3100/api", { method: "POST", body, headers: { "content-type": "application/json", ...headers } });
+  const BAD = ["{bozuk", "null", "[1]", "\"metin\"", "5", ""];
+  const routes: Record<string, (req: Request) => Promise<Response>> = {
+    "episodes": (req) => episodes.POST(req),
+    "action": (req) => action.POST(req, params({ id: "g1" })),
+    "estimate": (req) => estimate.POST(req),
+    "characters": (req) => characters.POST(req),
+    "mascot": (req) => mascot.POST(req),
+    "models": (req) => models.PUT(req),
+  };
+
+  it("JSON nesnesi olmayan gövde her yazma uç noktasında 400'dür; iş başlamaz, kayıt değişmez", async () => {
+    await saveEpisode("g1");
+    await models.PUT(raw(JSON.stringify({ screenwriter: "claude-haiku-5-5" })));
+    const before = (await server.repo().list()).length;
+    for (const [name, call] of Object.entries(routes)) {
+      for (const body of BAD) {
+        const res = await call(raw(body));
+        expect(res.status, `${name} ${body}`).toBe(400);
+        expect(await res.json(), `${name} ${body}`).toEqual({ error: "Geçersiz istek gövdesi (JSON nesnesi gerekli)" });
+      }
+    }
+    expect(spawn).not.toHaveBeenCalled();
+    expect(await server.repo().list()).toHaveLength(before);
+    // `null` gövde kayıtlı model seçimlerini boş nesneyle ezmez.
+    expect(await (await models.GET()).json()).toEqual({ screenwriter: "claude-haiku-5-5" });
+  });
+
+  it("hata isteğin dilinde döner", async () => {
+    const res = await estimate.POST(raw("null", { cookie: "ys-lang=en" }));
+    expect(await res.json()).toEqual({ error: "Invalid request body (a JSON object is required)" });
   });
 });

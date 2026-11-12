@@ -131,16 +131,19 @@ export function startJob(episodeId: string, label: string, args: string[]): JobV
   child.stderr.on("data", push);
   // "exit": süreç bitince. "close" ise stdout'u devralan torun süreçler (Chrome) kapanana kadar gecikebiliyor ve iş
   // sonsuza dek "çalışıyor" görünüyordu (30 Eki).
-  const finish = (code: number | null, signal?: NodeJS.Signals | null) => {
+  const finish = (code: number | null, signal?: NodeJS.Signals | null, failure?: string) => {
     if (job.status !== "running") return;
     job.status = code === 0 ? "done" : "error";
     // Sessiz çöküşler (yerel modül, bellek) kayıtta hiçbir satır bırakmıyordu; çıkış kodu Windows'ta onaltılık okunur.
-    if (code !== 0) job.log.push(`Süreç çıkış kodu: ${code === null ? signal : `${code} (0x${(code >>> 0).toString(16).toUpperCase()})`}`);
+    if (code !== 0) job.log.push(failure ?? `Süreç çıkış kodu: ${code === null ? signal : `${code} (0x${(code >>> 0).toString(16).toUpperCase()})`}`);
     job.endedAt = new Date().toISOString();
     delete job.child;
   };
   child.on("exit", finish);
   child.on("close", finish);
+  // Süreç hiç başlatılamazsa (node ya da tsx yolu yok, izin, bellek) "exit" gelmez, "error" gelir. Dinleyicisi olmayan
+  // "error" olayı yakalanmamış istisnadır: tek bir işin başlayamaması Stüdyo sunucusunu kapatırdı.
+  child.on("error", (e: Error) => finish(null, null, `Süreç başlatılamadı: ${e.message}`));
   jobs.set(episodeId, job);
   return view(job);
 }

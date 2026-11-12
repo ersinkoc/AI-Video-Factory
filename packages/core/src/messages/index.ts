@@ -65,9 +65,17 @@ export class LocalizedError extends Error {
   }
 }
 
+/**
+ * Çevrilebilir hata mı. Sınıf kimliğine değil yapıya bakılır: Stüdyo'da (Next.js) sayfalar ve API uç noktaları ayrı modül
+ * katmanlarında derlenir, her katmanın kendi `LocalizedError` sınıfı olur. Depo ve bölüm deposu `globalThis` üzerinde tek
+ * kopyadır; onu öbür katman kurduysa fırlattığı hata bu katmanda `instanceof` ile tanınmıyordu (12 Kas: İngilizce arayüzde
+ * "Bölüm bulunamadı" Türkçe çıkıyordu).
+ */
+export const isLocalizedError = (e: unknown): e is LocalizedError => e instanceof Error && isMsg((e as { text?: unknown }).text);
+
 /** Hatanın gösterilecek metni: çevrilebilirse mesajı, değilse düz `message`. */
 export function errorText(e: unknown): Text {
-  if (e instanceof LocalizedError) return e.text;
+  if (isLocalizedError(e)) return e.text;
   if (e instanceof Error) return e.message;
   return String(e);
 }

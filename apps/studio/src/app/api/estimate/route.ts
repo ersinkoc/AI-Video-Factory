@@ -1,5 +1,6 @@
 import { BudgetTier } from "@ys/core";
 import { estimateEpisode, newEpisodeState, type MotionMode } from "@ys/pipeline/light";
+import { errorResponse, readJson } from "../../../lib/api";
 import { estimateContext } from "../../../lib/server";
 
 interface Body {
@@ -18,7 +19,12 @@ interface Body {
 
 /** Yeni bölüm formu için canlı tahmin: henüz oluşturulmamış bir bölümün üç hareket modundaki maliyet ve süresi. */
 export async function POST(req: Request) {
-  const b = (await req.json()) as Body;
+  let b: Body;
+  try {
+    b = await readJson<Body>(req);
+  } catch (e) {
+    return errorResponse(req, e);
+  }
   const state = newEpisodeState({
     topic: "tahmin",
     lang: b.lang || "tr",
