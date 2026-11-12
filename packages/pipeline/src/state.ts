@@ -11,6 +11,10 @@ import { stylePackOf } from "@ys/core";
 
 export type { MotionMode };
 
+/** Ekranda gösterilecek zaman çizelgesi: altyazı gömülmeyecekse (`input.captions === false`) altyazısız. Render ve Stüdyo oynatıcısı ortak kullanır. */
+export const onScreen = (state: { input: { captions?: boolean } }, timeline: Timeline): Timeline =>
+  state.input.captions === false ? { ...timeline, captions: [] } : timeline;
+
 export const STAGES = [
   "style",
   "story",

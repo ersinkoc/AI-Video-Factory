@@ -2,7 +2,7 @@ import { rm } from "node:fs/promises";
 import { msg } from "@ys/core/messages";
 import { groupCosts, mediaSpentMicros } from "@ys/media-gateway";
 import { deleteEpisode, estimateEpisode, lineStyleOf, listLibraryCharacters, motionModeOf, progressOf, runStatusOf, type MotionMode } from "@ys/pipeline/light";
-import { apiError, errorResponse, textResponse } from "../../../../lib/api";
+import { apiError, errorResponse, isMissingEpisode, textResponse } from "../../../../lib/api";
 import { episodeBusy, estimateContext, forgetJob, getJob, ledgerEntries, quotaOf, repo, store, workDirOf } from "../../../../lib/server";
 import type { EpisodeResponse, QuotaView } from "../../../../lib/types";
 
@@ -67,7 +67,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     };
     return Response.json(body);
   } catch (e) {
-    return errorResponse(req, e, 404);
+    // Yalnız "bölüm yok" 404'tür; okunamayan defter ya da tahmin hatası "bulunamadı" gibi görünmesin.
+    return errorResponse(req, e, isMissingEpisode(e) ? 404 : 500);
   }
 }
 

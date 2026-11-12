@@ -1,7 +1,7 @@
 import { BudgetTier, LineStyle, STYLE_AUTO, STYLE_CUSTOM, stylePackOf } from "@ys/core";
 import { cleanSeries, loadCustomStyle, newEpisodeState, withBankChoice, type EpisodeInput, type MotionMode } from "@ys/pipeline/light";
 import { msg } from "@ys/core/messages";
-import { apiError, errorResponse } from "../../../lib/api";
+import { apiError, errorResponse, readJson } from "../../../lib/api";
 import { repo, startJob, store } from "../../../lib/server";
 
 export async function GET() {
@@ -50,7 +50,12 @@ interface CreateBody {
 
 /** Bölümü oluşturur ve senaryo üretimini hemen başlatır (stil → hikâye → senaryo, sonra onay bekler). */
 export async function POST(req: Request) {
-  const body = (await req.json()) as CreateBody;
+  let body: CreateBody;
+  try {
+    body = await readJson<CreateBody>(req);
+  } catch (e) {
+    return errorResponse(req, e);
+  }
   if (typeof body.topic !== "string" || !body.topic.trim()) return apiError(req, msg("api.topic"));
   const minutes = Number(body.minutes ?? 3);
   const budget = Number(body.budgetUsd ?? 20);

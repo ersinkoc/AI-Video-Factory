@@ -1,7 +1,8 @@
 import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { msg } from "@ys/core/messages";
-import { textResponse } from "../../../../../lib/api";
+import { errorText } from "@ys/core/messages";
+import { isMissingEpisode, textResponse } from "../../../../../lib/api";
 import { repo } from "../../../../../lib/server";
 
 /**
@@ -27,7 +28,13 @@ function fileStream(path: string, range?: { start: number; end: number }): Reada
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   if (!/^[a-z0-9][a-z0-9-]{0,120}$/.test(id)) return textResponse(req, msg("api.badEpisode"), 400);
-  const state = await repo().load(id);
+  let state;
+  try {
+    state = await repo().load(id);
+  } catch (e) {
+    // Olmayan bölüm işlenmemiş istisnayla 500 veriyordu.
+    return textResponse(req, errorText(e), isMissingEpisode(e) ? 404 : 500);
+  }
   if (!state.render) return textResponse(req, msg("api.noVideo"), 404);
   // "?srt": videonun yanına yazılan altyazı dosyası (indirme).
   if (new URL(req.url).searchParams.has("srt")) {

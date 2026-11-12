@@ -9,7 +9,8 @@ import { ArchivePicker } from "./archive-picker";
 import type { EpisodeState, PlannedShotState } from "@ys/pipeline/light";
 import { DRAFT_REVIEW, QUALITY_GATE } from "@ys/core/rules";
 import { stylePackOf } from "@ys/core/styles";
-import { Check, CheckSquare, ChevronLeft, ChevronRight, Clapperboard, Mic, RefreshCw, Square, Undo2, Wand2, X } from "lucide-react";
+import { Check, CheckSquare, ChevronLeft, ChevronRight, Clapperboard, Mic, Play, RefreshCw, Square, Undo2, Wand2, X } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import type { MessageKey } from "../../../lib/i18n";
 import type { EpisodeResponse, QuotaView } from "../../../lib/types";
@@ -18,6 +19,9 @@ import { useI18n } from "../../locale-provider";
 import { AFTER_CONCEPT, AFTER_SCRIPT, approved as isApproved, asset, costOf, type Act, modeOf } from "./parts";
 
 const MODES = ["animated", "mixed", "still", "vector"] as const;
+
+// Oynatıcı (Remotion + sahne kodu: three, pixi, paper) yalnız istenince ve yalnız tarayıcıda yüklenir.
+const TimelinePlayer = dynamic(() => import("./timeline-player"), { ssr: false });
 
 // ---------------- senaryo ----------------
 
@@ -558,6 +562,14 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
   const [note, setNote] = useState("");
   const [open, setOpen] = useState<string>();
   const [weakOnly, setWeakOnly] = useState(false);
+  // Oynatıcı: kapalıyken undefined; `shot` varsa o çekimden oynar, `seek` aynı çekimin yeniden istenmesini ayırır.
+  const [playing, setPlaying] = useState<{ shot?: string; seek: number }>();
+  const playFrom = state.done.timeline
+    ? (id: string) => {
+        setOpen(undefined);
+        setPlaying((p) => ({ shot: id, seek: (p?.seek ?? 0) + 1 }));
+      }
+    : undefined;
   const imageMode = (modeOf(state.input)) !== "vector";
   const failedQa = shots.filter((s) => !state.archives?.[s.id] && state.qa?.[s.id] && !state.qa[s.id]!.passed).map((s) => s.id);
   const kfRow = data.estimates[modeOf(state.input)].rows.find((r) => r.stage === "keyframes");
@@ -598,8 +610,15 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
           </button>
         </div>
       )}
+      {playing && state.done.timeline && <TimelinePlayer id={state.id} shot={playing.shot} seek={playing.seek} />}
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-muted">{t("shots.count", { n: shots.length })}</span>
+        {state.done.timeline && (
+          // Zaman çizelgesi hazırsa bölüm render edilmeden oynatılabilir (iş sürerken de: yalnız okur).
+          <button className={`chip ${playing ? "chip-on" : ""}`} onClick={() => setPlaying(playing ? undefined : { seek: 0 })}>
+            <Play size={12} /> {t(playing ? "shots.play.close" : "shots.play")}
+          </button>
+        )}
         <button className={`chip ${weakOnly ? "chip-on" : ""}`} onClick={() => setWeakOnly(!weakOnly)}>
           {t("shots.weakOnly")}
         </button>
@@ -699,6 +718,7 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
             picked={picked.has(s.id)}
             onOpen={() => setOpen(open === s.id ? undefined : s.id)}
             onPick={!busy && (!imageMode || state.keyframes?.[s.id]) ? (range) => toggle(s.id, range) : undefined}
+            onPlay={playFrom && (() => playFrom(s.id))}
           />
         ))}
       </div>
@@ -709,6 +729,7 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
           shot={current}
           index={shots.indexOf(current)}
           total={shots.length}
+          onPlay={playFrom && (() => playFrom(current.id))}
           onClose={() => setOpen(undefined)}
           onMove={(d) => setOpen(shots[(shots.indexOf(current) + d + shots.length) % shots.length]!.id)}
         />
@@ -725,6 +746,7 @@ function ShotCard({
   picked,
   onOpen,
   onPick,
+  onPlay,
 }: {
   state: EpisodeState;
   shot: PlannedShotState;
@@ -733,6 +755,7 @@ function ShotCard({
   picked: boolean;
   onOpen: () => void;
   onPick?: (range: boolean) => void;
+  onPlay?: () => void;
 }) {
   const { t } = useI18n();
   const thumb = thumbOf(state, shot.id);
@@ -780,6 +803,17 @@ function ShotCard({
           {picked ? <CheckSquare size={16} /> : <Square size={16} />}
         </button>
       )}
+      {onPlay && (
+        <button
+          type="button"
+          onClick={onPlay}
+          aria-label={`${t("shots.playFrom")} #${index + 1}`}
+          title={t("shots.playFrom")}
+          className="absolute right-1.5 bottom-9 rounded bg-black/70 p-1 text-white/80 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+        >
+          <Play size={14} />
+        </button>
+      )}
     </div>
   );
 }
@@ -789,6 +823,7 @@ function ShotDetail({
   shot,
   index,
   total,
+  onPlay,
   onClose,
   onMove,
 }: {
@@ -796,6 +831,7 @@ function ShotDetail({
   shot: PlannedShotState;
   index: number;
   total: number;
+  onPlay?: () => void;
   onClose: () => void;
   onMove: (delta: number) => void;
 }) {
@@ -840,6 +876,11 @@ function ShotDetail({
               <span className="font-mono text-xs text-muted">{shot.id}</span>
             </div>
             <div className="flex gap-1">
+              {onPlay && (
+                <button className="btn-ghost px-2 py-1 text-xs" onClick={onPlay}>
+                  <Play size={14} /> {t("shots.playFrom")}
+                </button>
+              )}
               <button className="btn-ghost px-2 py-1 text-xs" onClick={() => onMove(-1)} aria-label="←">
                 <ChevronLeft size={14} />
               </button>

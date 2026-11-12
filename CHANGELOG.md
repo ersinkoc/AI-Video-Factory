@@ -2,6 +2,16 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.5.1 (2026-11-12)
+
+- Play an episode in the Studio without rendering: once the timeline is ready, the Shots tab plays it in the browser with the render's own scene code, voice-over, music, effects, transitions and captions; any shot can be played from its first frame. Smooth playback needs the production build.
+- The Studio listens on this machine only (`127.0.0.1`) and answers only requests addressed to `localhost`, `127.0.0.1` or `[::1]`. To open it on a trusted network, list the address in `YS_STUDIO_HOSTS` and start Next.js with `-H 0.0.0.0` yourself (see the README).
+- Malformed request bodies get a 400 instead of a server error, and an empty body no longer wipes the saved model choices.
+- Errors show in the selected language in the English UI, and a missing episode or its video is a 404.
+- A job that fails to start no longer crashes the Studio server.
+
+After updating, rebuild and restart the Studio: `pnpm studio:build && pnpm studio:start`.
+
 ## v0.5.0 (2026-11-11)
 
 - Add a searchable, filtered and paginated character gallery for new vector episodes, with persistent presenter/cast selections.

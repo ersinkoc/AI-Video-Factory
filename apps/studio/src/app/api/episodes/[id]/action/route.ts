@@ -24,7 +24,7 @@ import {
 } from "@ys/pipeline/light";
 import { importArchiveImage } from "@ys/pipeline/archive";
 import { LocalizedError, msg } from "@ys/core/messages";
-import { apiError, errorResponse } from "../../../../../lib/api";
+import { apiError, errorResponse, readJson } from "../../../../../lib/api";
 import { cancelJob, episodeBusy, getJob, repo, startJob, store } from "../../../../../lib/server";
 
 const EPISODE_ID = /^[a-z0-9][a-z0-9-]{0,120}$/;
@@ -67,10 +67,10 @@ export type StudioAction =
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   if (!EPISODE_ID.test(id)) return apiError(req, msg("api.badEpisode"));
-  const action = (await req.json()) as StudioAction;
   const episodes = repo();
 
   try {
+    const action = await readJson<StudioAction>(req);
     // Çalışan iş (Stüdyo'nun ya da CLI'ın) durum dosyasını bellekteki kopyasıyla yeniden yazar: araya giren her
     // değişiklik kaybolur ya da işin ilerlemesini siler. İptal dışında hiçbir eylem iş sürerken yapılmaz.
     if (action.type !== "cancel") {

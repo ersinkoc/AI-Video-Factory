@@ -1,6 +1,6 @@
 import { LineStyle, msg, stylePackOf } from "@ys/core";
 import { CHARACTER_BANK_ID, listLibraryCharacters } from "@ys/pipeline/light";
-import { apiError, errorResponse } from "../../../lib/api";
+import { apiError, errorResponse, readJson } from "../../../lib/api";
 import { getJob, startJob, store } from "../../../lib/server";
 
 /** Karakter bankası: kütüphanedeki onaylı karakterler ve banka çiziminin iş durumu. */
@@ -19,7 +19,12 @@ interface AddBody {
 
 /** Bankaya konudan bağımsız karakter çizdirir (CLI işi: plan → çizim → kalite kapısı; Claude ~$0.15–0.35). */
 export async function POST(req: Request) {
-  const b = (await req.json()) as AddBody;
+  let b: AddBody;
+  try {
+    b = await readJson<AddBody>(req);
+  } catch (e) {
+    return errorResponse(req, e);
+  }
   const name = typeof b.name === "string" ? b.name.trim().slice(0, 80) : "";
   const description = typeof b.description === "string" ? b.description.trim().slice(0, 800) : "";
   if (!name || !description) return apiError(req, msg("api.bank.fields"));

@@ -107,7 +107,7 @@ import { loadModelSettings } from "./settings.ts";
 import { acquireLock } from "./lock.ts";
 import { CHARACTER_BANK_ID, listLibraryCharacters, noteCharacterUse, seriesMascots, withBankChoice, type LibraryCharacter } from "./library.ts";
 import { loadCustomStyle } from "./custom-styles.ts";
-import { lineStyleOf } from "./state.ts";
+import { lineStyleOf, onScreen } from "./state.ts";
 import { seriesEpisodeIds, seriesOf, seriesStylePack } from "./series.ts";
 import { EpisodeRepo } from "./actions.ts";
 import { loadLessons, mergeLessons, saveLessons, topLessons, type LessonBook } from "./lessons.ts";
@@ -244,8 +244,6 @@ function virtualState(id: string, packId: string, topic: string, lineStyle?: Lin
   };
 }
 
-const onScreen = (state: EpisodeState, timeline: Timeline): Timeline =>
-  state.input.captions === false ? { ...timeline, captions: [] } : timeline;
 /** Kalite kapısını geçemeyen SVG: kullanılmaz (nesne çekimden düşer, karakter/mekân konsepti durdurur). */
 export class AssetRejectedError extends LocalizedError {}
 

@@ -151,6 +151,21 @@ describe("arka plan işleri", () => {
     expect(done.log).not.toContain("Süreç çıkış kodu: 1 (0x1)");
   });
 
+  it("başlatılamayan süreç Stüdyo'yu düşürmez: iş hatayla kapanır, nedeni kayda geçer", () => {
+    server.startJob("e1", "job.script", []);
+    const child = lastChild();
+    // Dinleyici yoksa EventEmitter "error" olayını istisna olarak fırlatır.
+    expect(() => child.emit("error", new Error("spawn node ENOENT"))).not.toThrow();
+    const failed = server.getJob("e1")!;
+    expect(failed.status).toBe("error");
+    expect(failed.endedAt).toBeDefined();
+    expect(failed.log).toEqual(["Süreç başlatılamadı: spawn node ENOENT"]);
+    // Ardından gelen "close" sonucu ve kaydı değiştirmez; yeni iş başlatılabilir.
+    child.emit("close", -2, null);
+    expect(server.getJob("e1")!.log).toHaveLength(1);
+    expect(server.startJob("e1", "job.resume", []).status).toBe("running");
+  });
+
   it("kayıt en çok 400 satır tutar", () => {
     server.startJob("e1", "job.script", []);
     const lines = Array.from({ length: 450 }, (_, i) => `satır ${i}`).join("\n");

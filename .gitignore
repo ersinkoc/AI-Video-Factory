@@ -18,3 +18,6 @@ apps/studio/next-env.d.ts
 coverage/
 
 .temp_files/
+
+# GPU sürücüsünün render sırasında çalışma klasörüne bıraktığı günlük klasörü.
+NVIDIA Corporation/

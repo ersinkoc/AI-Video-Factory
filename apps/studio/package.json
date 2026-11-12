@@ -4,21 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 3100",
+    "dev": "next dev -p 3100 -H 127.0.0.1",
     "build": "next build",
-    "start": "next start -p 3100",
+    "start": "next start -p 3100 -H 127.0.0.1",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@remotion/player": "4.0.539",
     "@ys/core": "workspace:*",
     "@ys/db": "workspace:*",
     "@ys/media-gateway": "workspace:*",
     "@ys/pipeline": "workspace:*",
     "@ys/storage": "workspace:*",
+    "@ys/video": "workspace:*",
     "lucide-react": "1.64.0",
     "next": "16.4.3",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "remotion": "4.0.539",
     "server-only": "0.0.1"
   },
   "devDependencies": {

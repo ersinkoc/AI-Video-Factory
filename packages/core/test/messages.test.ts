@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { errorText, formatText, isMsg, LocalizedError, MESSAGES, msg, trText, type MessageId } from "../src/messages/index.ts";
+import { errorText, formatText, isLocalizedError, isMsg, LocalizedError, MESSAGES, msg, trText, type MessageId } from "../src/messages/index.ts";
 
 const vars = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
@@ -43,5 +43,13 @@ describe("mesaj kataloğu", () => {
     expect(errorText(e)).toEqual({ key: "err.unknown" });
     expect(errorText(new Error("düz"))).toBe("düz");
     expect(errorText("metin")).toBe("metin");
+    // Başka modül kopyasının sınıfından gelen hata (Stüdyo'nun öbür katmanı) yapısından tanınır.
+    const foreign = Object.assign(new Error("Bölüm bulunamadı: x"), { text: msg("err.episode.notFound", { id: "x" }) });
+    expect(foreign instanceof LocalizedError).toBe(false);
+    expect(isLocalizedError(foreign)).toBe(true);
+    expect(errorText(foreign)).toEqual({ key: "err.episode.notFound", params: { id: "x" } });
+    // `text` alanı mesaj değilse düz hatadır; Error olmayan nesne de tanınmaz.
+    expect(errorText(Object.assign(new Error("düz"), { text: "not" }))).toBe("düz");
+    expect(isLocalizedError({ text: msg("err.unknown") })).toBe(false);
   });
 });
