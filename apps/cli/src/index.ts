@@ -20,6 +20,7 @@ import { bankCommand } from "./bank.ts";
 import { samplesCommand } from "./styles.ts";
 import { episodeCommand, positive, renderDemo } from "./episode.ts";
 import { surviveBrokenPipe } from "./pipes.ts";
+import { doctorCommand } from "./doctor.ts";
 
 const LEDGER_FILE = ".data/ledger.jsonl";
 const WORK_DIR = ".data/episodes";
@@ -30,6 +31,7 @@ Kullanım: pnpm ys <komut> [seçenekler]
 
 Komutlar:
   providers                         Etkin ve atlanan sağlayıcıları listeler
+  doctor [--json] [--check-local]    Yerel araçları ve ayarları inceler; üretim yapmaz
   plan   --cap <yetenek>            Para harcamadan router sıralamasını gösterir
   image  --prompt "..." [--ref yol]...
   video  --image yol --prompt "..." [--last yol] [--duration 5]
@@ -154,12 +156,19 @@ async function main(): Promise<void> {
       help: { type: "boolean", short: "h", default: false },
       // "--version" seçenek olarak tanımlı değilse parseArgs "Unknown option" ile düşüyordu.
       version: { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
+      "check-local": { type: "boolean", default: false },
     },
   });
 
   const command = values.version ? "version" : positionals[0];
   if (!command || values.help) {
     console.log(HELP);
+    return;
+  }
+
+  if (command === "doctor") {
+    process.exitCode = await doctorCommand({ json: values.json, checkLocal: values["check-local"] });
     return;
   }
 

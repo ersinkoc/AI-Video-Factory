@@ -214,12 +214,17 @@ pnpm release minor --dry-run                # preview the notes
 
 The release script only runs on `main` with a clean working tree, after typecheck and tests pass.
 
+It rechecks branch/HEAD/tree after validation and commits only version metadata. Failures preserve the current files, index, commits and tags; partial release changes remain available for inspection. See [Release ownership and recovery](docs/RELEASE.md) before resuming a failed release.
+
 ## Commands
+
+The checked-in GitHub workflow runs coverage, types, the Studio build, an offline render/audit smoke and disposable PostgreSQL/RustFS integration. See [Continuous verification](docs/CI.md) for local commands, retained evidence and release boundaries.
 
 | Command | What it does |
 |---|---|
 | `pnpm studio` / `studio:build` / `studio:start` | Studio in development or production mode |
 | `pnpm ys …` | CLI |
+| `pnpm ys doctor [--json] [--check-local]` | [Local environment diagnostics](docs/DOCTOR.md), without generation or paid calls |
 | `pnpm typecheck` | TypeScript 7 check |
 | `pnpm test` | Unit tests (Vitest) |
 | `pnpm test:coverage` | Unit tests with coverage; fails below 100% lines/branches/functions/statements |
