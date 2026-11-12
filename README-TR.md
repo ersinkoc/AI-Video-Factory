@@ -225,12 +225,17 @@ pnpm release minor --dry-run                # notları önizler
 
 Release betiği yalnız `main` dalında, commit edilmemiş değişiklik yokken, typecheck ve testler geçtikten sonra çalışır.
 
+Doğrulama sonrasında dal/HEAD/çalışma ağacını tekrar denetler ve yalnız sürüm bilgilerini commit eder. Hata durumunda dosyalar, index, commit ve etiketler korunur; yarım kalan release değişiklikleri incelenmek üzere yerinde kalır. Sürdürmeden önce [release sahipliği ve toparlama](docs/RELEASE.md) belgesine bakın.
+
 ## Komutlar
+
+GitHub iş akışı; kapsam, tip kontrolü, Studio derlemesi, ücretli üretim yapmadan render/denetim ve geçici PostgreSQL/RustFS entegrasyonunu çalıştırır. Yerel komutlar, saklanan kanıtlar ve release kapsamı için [Continuous verification](docs/CI.md) belgesine bakın.
 
 | Komut | Ne yapar |
 |---|---|
 | `pnpm studio` / `studio:build` / `studio:start` | Stüdyo, geliştirme ya da production modunda |
 | `pnpm ys …` | CLI |
+| `pnpm ys doctor [--json] [--check-local]` | Üretim ve ücretli çağrı yapmadan [yerel ortam tanılaması](docs/DOCTOR.md) |
 | `pnpm typecheck` | TypeScript 7 kontrolü |
 | `pnpm test` | Birim testleri (Vitest) |
 | `pnpm test:coverage` | Kapsamlı birim testleri; satır/dal/fonksiyon/ifade %100 altına düşerse başarısız |

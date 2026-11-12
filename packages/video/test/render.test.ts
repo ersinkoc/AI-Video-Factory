@@ -129,10 +129,11 @@ describe("renderEpisode", () => {
   it("önbellekte olmayan sahneleri tek render'da, sınırlarında anahtar kareyle render edip böler; ses ayrı ve hafif; birleştirip -14 LUFS'a getirir", async () => {
     const output = out("bolum.MP4");
     const progress: number[] = [];
-    const savedTemp = process.env.TEMP;
+    const savedTemp = tmpdir();
+    const savedEnvironment = { TEMP: process.env.TEMP, TMP: process.env.TMP, TMPDIR: process.env.TMPDIR };
     let tempDuring: string | undefined;
     remotion.bundle.mockImplementation(async () => {
-      tempDuring = process.env.TEMP;
+      tempDuring = tmpdir();
       return "http://bundle";
     });
 
@@ -176,7 +177,8 @@ describe("renderEpisode", () => {
     expect(browser.close).toHaveBeenCalledTimes(1);
     // Render sırasında Temp çıktının yanındaki klasöre yönlendirilir, sonra geri alınır ve klasör silinir.
     expect(tempDuring).toBe(join(output, "..", ".render-tmp"));
-    expect(process.env.TEMP).toBe(savedTemp);
+    expect(tmpdir()).toBe(savedTemp);
+    expect({ TEMP: process.env.TEMP, TMP: process.env.TMP, TMPDIR: process.env.TMPDIR }).toEqual(savedEnvironment);
     expect(existsSync(join(output, "..", ".render-tmp"))).toBe(false);
     expect(existsSync(LOCK)).toBe(false);
   });
@@ -345,25 +347,29 @@ describe("renderEpisode", () => {
     expect(await renderEpisode({ timeline, publicDir: DIR, outputPath: output })).toBe(output);
   });
 
-  it("Windows dışında TMPDIR yönlendirilir; önceden yoksa render sonrası yine yoktur", async () => {
-    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
-    Object.defineProperty(process, "platform", { value: "linux" });
-    const saved = process.env.TMPDIR;
-    delete process.env.TMPDIR;
-    let during: string | undefined;
+  it.each([
+    { platform: "win32", configured: true }, { platform: "win32", configured: false },
+    { platform: "linux", configured: true }, { platform: "linux", configured: false },
+  ])("$platform geçici klasörü yönlendirilir ve eski ortam geri alınır (tanımlı: $configured)", async ({ platform, configured }) => {
+    const descriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
+    const keys = platform === "win32" ? ["TEMP", "TMP"] : ["TMPDIR"];
+    const saved = keys.map(k => process.env[k]);
+    Object.defineProperty(process, "platform", { value: platform });
+    for (const key of keys) { if (configured) process.env[key] = DIR; else delete process.env[key]; }
+    const before = keys.map(k => process.env[k]);
+    let during: (string | undefined)[] = [];
     remotion.bundle.mockImplementation(async () => {
-      during = process.env.TMPDIR;
+      during = keys.map(k => process.env[k]);
       return "http://bundle";
     });
     try {
       const output = out("a.mp4");
       await renderEpisode({ timeline, publicDir: DIR, outputPath: output });
-      expect(during).toBe(join(output, "..", ".render-tmp"));
-      expect("TMPDIR" in process.env).toBe(false);
+      expect(during).toEqual(keys.map(() => join(output, "..", ".render-tmp")));
+      expect(keys.map(k => process.env[k])).toEqual(before);
     } finally {
-      Object.defineProperty(process, "platform", platform);
-      if (saved === undefined) delete process.env.TMPDIR;
-      else process.env.TMPDIR = saved;
+      Object.defineProperty(process, "platform", descriptor);
+      keys.forEach((key, i) => { if (saved[i] === undefined) delete process.env[key]; else process.env[key] = saved[i]; });
     }
   });
 });

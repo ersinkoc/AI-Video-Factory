@@ -91,6 +91,8 @@ vi.mock("@ys/pipeline", () => ({
 }));
 const episodeMod = vi.hoisted(() => ({ episodeCommand: vi.fn(async () => {}), renderDemo: vi.fn(async () => {}) }));
 vi.mock("../src/episode.ts", async (orig) => ({ ...(await orig<object>()), ...episodeMod }));
+const doctorMod = vi.hoisted(() => ({ doctorCommand: vi.fn(async (_options: unknown) => 0) }));
+vi.mock("../src/doctor.ts", () => doctorMod);
 
 const cwd = process.cwd();
 let dir = "";
@@ -106,9 +108,11 @@ beforeEach(() => {
   Object.assign(fake.state, { providers: [], skipped: [], gateways: [], planResult: [], pipelines: [], dbUrls: [], dbRecords: [], curateCalls: 0 });
   episodeMod.episodeCommand.mockReset();
   episodeMod.renderDemo.mockReset();
+  doctorMod.doctorCommand.mockClear();
 });
 afterEach(() => {
   process.chdir(cwd);
+  process.exitCode = undefined;
   delete process.env.LEDGER;
   delete process.env.DATABASE_URL;
   vi.restoreAllMocks();
@@ -151,6 +155,12 @@ const provider = (over: Partial<ProviderAdapter> & { id: string }): ProviderAdap
 const lastGateway = () => fake.state.gateways.at(-1)!;
 
 describe("yardım, sürüm ve listeler", () => {
+  it("doctor üretim veya Postgres başlatmadan seçenekleri tanılamaya aktarır", async () => {
+    process.env.LEDGER = "db"; process.env.DATABASE_URL = "postgres://must-not-connect";
+    expect((await cli("doctor", "--json", "--check-local")).code).toBe(0);
+    expect(doctorMod.doctorCommand).toHaveBeenCalledWith({ json: true, checkLocal: true });
+    expect(fake.state.dbUrls).toEqual([]); expect(fake.state.gateways).toEqual([]); expect(fake.state.pipelines).toEqual([]);
+  });
   it("komutsuz ya da --help yardım basar ve 0 ile çıkar", async () => {
     for (const args of [[], ["--help"], ["providers", "-h"]]) {
       const r = await cli(...args);

@@ -271,6 +271,18 @@ Pin the validation environment, record source/input fingerprints and keep genera
 
 Sources: [scripts](../package.json), [test configuration](../vitest.config.ts), [release workflow implementation](../scripts/release.ts), [media tools](../packages/video/src/tools.ts).
 
+Follow-up implementation (12 Nov 2026): [Continuous verification](CI.md) and the
+[checked-in workflow](../.github/workflows/ci.yml) now define separate type/coverage/build,
+offline Remotion render/audit and disposable PostgreSQL/RustFS jobs, with source and media
+fingerprints. Local verification is recorded in the CI document. The hosted workflow has
+not yet run; branch-protection configuration remains outstanding.
+The [release ownership follow-up](RELEASE.md) now rechecks the validated tree, commits only
+metadata paths and preserves failed-release state, with unit and real-Git regression targets.
+The [environment diagnostic CLI](DOCTOR.md) was subsequently implemented as `pnpm ys doctor`,
+with offline checks and an explicit loopback-only ComfyUI connectivity option.
+The original audit and release snapshots above do
+not certify later working-tree edits.
+
 ## Further product opportunities
 
 | Opportunity | Concrete first version | Dependency and completion criterion |

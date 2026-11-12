@@ -8,7 +8,7 @@
  *    bu release'ten okur. --publish olmadan hiçbir şey dışarı gönderilmez.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { bumpVersion, type Bump } from "../packages/core/src/version.ts";
@@ -32,6 +32,7 @@ function run(command: string) {
 
 if (git("rev-parse", "--abbrev-ref", "HEAD") !== "main") fail("Release yalnız main dalından çıkar.");
 if (git("status", "--porcelain")) fail("Çalışma ağacı temiz değil: önce commit et.");
+const initialHead = git("rev-parse", "HEAD");
 
 const pkgPath = "package.json";
 const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
@@ -67,28 +68,16 @@ if (dryRun) process.exit(0);
 run("pnpm typecheck");
 run("pnpm test");
 
-// Buradan sonra bir adım başarısız olursa yerel değişiklikler geri alınır (ağaç kirli kalıp sonraki deneme kilitlenmesin).
-let committed = false;
-const changelogExisted = existsSync("CHANGELOG.md");
-function rollback(e: unknown): never {
-  try {
-    if (committed) {
-      try {
-        git("tag", "-d", tag);
-      } catch {
-        // Etiket oluşmamış olabilir.
-      }
-      git("reset", "--hard", "HEAD~1");
-    }
-    // Hazırlanmış (git add) dosyalar önce indeksten çıkarılır; yoksa checkout indeksteki artırılmış sürümü geri yazardı.
-    git("reset", "-q", "HEAD", "--", pkgPath, "CHANGELOG.md");
-    git("checkout", "HEAD", "--", pkgPath);
-    if (changelogExisted) git("checkout", "HEAD", "--", "CHANGELOG.md");
-    else rmSync("CHANGELOG.md", { force: true });
-  } catch {
-    // Geri alma da başarısızsa aşağıdaki mesaj durumu bildirir.
-  }
-  fail(`Release yarıda kaldı, yerel değişiklikler geri alındı: ${e instanceof Error ? e.message : String(e)}`);
+// Doğrulama sırasında başka bir işlem yazdıysa eski sonuçla yeni kaynak commit edilmez.
+if (git("rev-parse", "--abbrev-ref", "HEAD") !== "main" || git("rev-parse", "HEAD") !== initialHead || git("status", "--porcelain")) {
+  fail("Doğrulama sırasında dal, HEAD veya çalışma ağacı değişti; değişiklikler korundu. Kontrolleri yeniden çalıştırın.");
+}
+
+let releaseCommit: string | undefined;
+function preserveFailure(e: unknown): never {
+  const reason = e instanceof Error ? e.message : String(e);
+  // Path/içerik kontrolü başka bir yazarı kilitlemez; hata sonrası dosya, index veya ref üzerinde yazma yapılmaz.
+  fail(`Release yarıda kaldı; commit, etiket, index ve dosyalar korundu: ${reason}\nÖnce git status, git diff ve git diff --cached ile inceleyin. Otomatik geri alma yapılmadı.${releaseCommit ? `\nEtiket yoksa doğru commit: git tag -a ${tag} ${releaseCommit} -m "Release ${tag}"` : ""}`);
 }
 
 try {
@@ -107,12 +96,12 @@ try {
   writeFileSync(changelogPath, [head!.trimEnd() + "\n", section, ...rest.map((r) => r.trimEnd() + "\n")].join("\n"));
 
   git("add", pkgPath, changelogPath);
-  git("commit", "-m", `Release ${tag}`);
-  committed = true;
+  git("commit", "--only", "-m", `Release ${tag}`, "--", pkgPath, changelogPath);
+  releaseCommit = git("rev-parse", "HEAD");
   // Notlar etiket mesajında da durur: "gh release create --notes-from-tag" boş release açmasın.
   git("tag", "-a", tag, "-m", `Release ${tag}\n\n${notes}`);
 } catch (e) {
-  rollback(e);
+  preserveFailure(e);
 }
 console.log(`✓ ${tag} commit'i ve etiketi oluşturuldu.`);
 

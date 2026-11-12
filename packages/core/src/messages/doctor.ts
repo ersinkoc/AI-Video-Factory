@@ -1,0 +1,18 @@
+export const DOCTOR_MESSAGES = {
+  "doctor.heading": { tr: "Yerel ortam tanılaması (ücretli çağrı yapılmaz)", en: "Local environment diagnostics (no paid calls)" },
+  "doctor.node": { tr: "Node.js {version}; en az 24 gerekir.", en: "Node.js {version}; requires 24 or newer." },
+  "doctor.pnpm": { tr: "Beklenen {expected}; çalıştıran pnpm: {actual}. pnpm ys doctor ile çalıştırın.", en: "Expected {expected}; invoking pnpm: {actual}. Run via pnpm ys doctor." },
+  "doctor.version": { tr: "Sürüm {version} (komut çalıştı).", en: "Version {version} (command executed)." },
+  "doctor.toolMissing": { tr: "PATH üzerinde çalıştırılamadı veya 5 saniyeyi aştı. Tam render/denetim için FFmpeg ve ffprobe kurun; Remotion yedeği bazı işleri destekler.", en: "Not executable on PATH or exceeded 5 seconds. Install FFmpeg and ffprobe for full rendering/audits; the Remotion fallback supports some operations." },
+  "doctor.filtersMissing": { tr: "Eksik FFmpeg filtreleri: {filters}. Tam FFmpeg kurulumu gerekir.", en: "Missing FFmpeg filters: {filters}. A full FFmpeg installation is required." },
+  "doctor.filtersReady": { tr: "Gerekli render/denetim filtreleri listelendi.", en: "Required render/audit filters are listed." },
+  "doctor.browserFound": { tr: "Tarayıcı dosyası erişilebilir. Başlatma ve GPU çalışması sınanmadı.", en: "Browser file is accessible. Launch and GPU operation were not tested." },
+  "doctor.browserMissing": { tr: "Tarayıcı dosyası yok veya çalıştırılamıyor. YS_BROWSER_EXECUTABLE ayarlayın ya da render-demo ile Remotion tarayıcısını kurun; bu komut indirme yapmaz.", en: "Browser file missing or not executable. Set YS_BROWSER_EXECUTABLE or let render-demo install Remotion's browser; this command does not download it." },
+  "doctor.fontsReady": { tr: "{count} yerel WOFF dosyasının başlığı ve uzunluğu doğrulandı; glif ve görünüm sınanmadı.", en: "Validated headers and lengths of {count} local WOFF files; glyphs and appearance were not tested." },
+  "doctor.fontsMissing": { tr: "Font dosyası eksik, okunamıyor veya WOFF başlığı bozuk. pnpm install --frozen-lockfile çalıştırın.", en: "A font file is missing, unreadable or has an invalid WOFF header. Run pnpm install --frozen-lockfile." },
+  "doctor.optionalMissing": { tr: "İsteğe bağlı araç çalıştırılamadı veya 5 saniyeyi aştı; Manim tahtaları kullanılamayabilir. README kurulumuna bakın.", en: "Optional tool unavailable or exceeded 5 seconds; Manim boards may be unavailable. See README setup." },
+  "doctor.providers": { tr: "Yalnız anahtar varlığı kontrol edildi: {configured}. Kimlik doğrulama ve sağlayıcı erişimi sınanmadı.", en: "Credential presence only: {configured}. Authentication and provider connectivity were not tested." },
+  "doctor.localSkipped": { tr: "Ağ kontrolü atlandı. Yerel COMFYUI_URL ve --check-local ile yalnız erişilebilirliği sınayın.", en: "Network check skipped. Set a local COMFYUI_URL and --check-local to test reachability only." },
+  "doctor.localReachable": { tr: "Yerel system_stats HTTP isteği başarılı; modeller ve üretim sınanmadı.", en: "Local system_stats HTTP request succeeded; models and generation were not tested." },
+  "doctor.localUnavailable": { tr: "Yerel HTTP kontrolü başarısız veya süre doldu. Yalnız kimlik bilgisi içermeyen localhost/127.0.0.1/[::1] HTTP(S) adresleri kabul edilir; yönlendirme izlenmez.", en: "Local HTTP check failed or timed out. Only credential-free localhost/127.0.0.1/[::1] HTTP(S) URLs are accepted; redirects are not followed." },
+} as const;

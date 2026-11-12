@@ -9,6 +9,7 @@ import { COSTS_MESSAGES } from "./costs.ts";
 import { GATEWAY_MESSAGES } from "./gateway.ts";
 import { PIPELINE_MESSAGES } from "./pipeline.ts";
 import { STUDIO_MESSAGES } from "./studio.ts";
+import { DOCTOR_MESSAGES } from "./doctor.ts";
 
 export type MessageLocale = "tr" | "en";
 export type MessageTexts = Readonly<Record<string, { readonly tr: string; readonly en: string }>>;
@@ -19,6 +20,7 @@ export const MESSAGES = {
   ...COSTS_MESSAGES,
   ...GATEWAY_MESSAGES,
   ...STUDIO_MESSAGES,
+  ...DOCTOR_MESSAGES,
 } as const satisfies MessageTexts;
 
 export type MessageId = keyof typeof MESSAGES;
