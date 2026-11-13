@@ -2,6 +2,16 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.6.0 (2026-11-13)
+
+- The draft review checks every frame against a checklist: for each of 13 checks (shows what is narrated, the frame has content, nobody cut off or floating, no backdrop box, texts clear of each other and of the subtitles, readable text, scale, clutter, repetition, the narrated action, anything else broken) the critic first writes what it saw in that frame, then gives a verdict. Answers without real evidence are rejected and the frame is asked again. The code scores the frame: 10, minus 3 per major and 1 per minor failure.
+- A scene passes only when every frame was checked and scored 8 or more. Every scene below is re-planned, worst first, in up to three rounds; a re-plan that makes a scene worse is undone.
+- **Behaviour change:** while a scene stays below 8, or its frames could not be reviewed, the render waits for your explicit approval, even in an episode approved automatically from the CLI. The Shots tab lists those scenes with their worst score and offers *Approve anyway*; each frame's details show the checklist with its evidence. `pnpm ys episode show <id>` prints them and `pnpm ys episode approve <id> preview` renders anyway. Episodes reviewed before this version never block.
+- Measured on 30 stored frames: the old single-score critic averaged 5.4 and passed none at 8; the checklist averaged 8.2 and passed 21–22 of 30, with no invalid answers. Cost estimates now count the larger share of re-planned scenes.
+- Reproducible CI, offline diagnostics (`pnpm ys doctor`) and a release helper that never resets the tree on failure.
+
+After updating, rebuild and restart the Studio: `pnpm studio:build && pnpm studio:start`.
+
 ## v0.5.1 (2026-11-12)
 
 - Play an episode in the Studio without rendering: once the timeline is ready, the Shots tab plays it in the browser with the render's own scene code, voice-over, music, effects, transitions and captions; any shot can be played from its first frame. Smooth playback needs the production build.
