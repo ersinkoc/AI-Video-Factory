@@ -43,7 +43,7 @@ The demo currently stops at the normal preview approval gate. The commands above
 
 On PowerShell, create the folder with `New-Item -ItemType Directory -Force out/ci/render`, use `Set-Location out/ci/render`, and set `$env:STORE='fs'; $env:LEDGER='jsonl'; $env:YS_RENDER_GL='swangle'` before the same `node` commands.
 
-For storage integration, start the PostgreSQL and RustFS services described in [Setup](../README.md#setup), migrate the database and run:
+For storage integration, start the PostgreSQL and RustFS services described in [Getting started](GETTING_STARTED.md#optional-docker-services), migrate the database and run:
 
 ```sh
 pnpm db:migrate
