@@ -39,5 +39,8 @@ overrides:
   # 4.8.3 (en son sürüm, minimatch ^10 istiyor) ve 11'de kaldırılan makeRe'yi çağırıyor: patches/trigger.dev@4.8.3.patch
   # onu paket adı kalıbından düzenli ifadeyle değiştirir (yalnız * ** ? jokerleri).
   minimatch@<11.0.1: 11.0.4
+  # Güvenlik (Dependabot): @hono/node-server <2.1.6 ters vekilde ters bölüyle yol denetimini aşma ve WebSocket yükseltmesinde
+  # ECONNRESET ile çökme. MCP SDK (Agent SDK ve trigger.dev zinciri) 2.x istiyor; yamalı sürüm aynı küçük sürümde.
+  '@hono/node-server@>=2.0.0 <2.1.6': 2.1.6
 patchedDependencies:
   trigger.dev@4.8.3: patches/trigger.dev@4.8.3.patch
