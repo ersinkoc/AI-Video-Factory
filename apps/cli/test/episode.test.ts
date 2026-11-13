@@ -274,6 +274,29 @@ describe("episode run, show, preview", () => {
     await expect(episodeCommand(pipeline, "preview", undefined, {})).rejects.toThrow("bölüm kimliği gerekli");
   });
 
+  it("render barajda bekliyorsa hangi sahnelerin tuttuğunu yazar (12 Kas: 8 barajı otomatik onayı da durdurur)", async () => {
+    const checks = { off_story: { evidence: "Ada at her desk, as narrated", verdict: "pass" as const } };
+    const waiting = base({
+      waitingFor: "preview",
+      shots: [{ id: "a1", sceneId: "s1" }, { id: "a2", sceneId: "s1" }, { id: "b1", sceneId: "s2" }, { id: "c1", sceneId: "s3" }, { id: "d1", sceneId: "s4" }] as EpisodeState["shots"],
+      draftReview: { at: "t", rubric: 1, lessons: [], avg: 7, revisedScenes: [], shots: { a1: { score: 6, issues: [], checks }, b1: { score: 10, issues: [], checks }, d1: { score: 5, issues: [], checks } } },
+    });
+    const { pipeline } = fakePipeline([waiting]);
+    await episodeCommand(pipeline, "show", "e1", {});
+    expect(out).toContain("⏸ Onay bekleniyor: preview  →  pnpm ys episode approve e1 preview");
+    expect(out).toContain("  8 barajını geçemeyen sahneler: s1 (en kötü 6/10, 1 kare denetlenemedi), s3 (denetlenemedi), s4 (en kötü 5/10)");
+    // Başka bir kapıda beklerken baraj satırı yazılmaz.
+    out.length = 0;
+    const { pipeline: other } = fakePipeline([{ ...waiting, waitingFor: "concept" }]);
+    await episodeCommand(other, "show", "e1", {});
+    expect(out.some((l) => l.includes("barajını"))).toBe(false);
+    // Barajı geçen bölümde de yazılmaz.
+    out.length = 0;
+    const { pipeline: clean } = fakePipeline([{ ...waiting, draftReview: { ...waiting.draftReview!, shots: { a1: { score: 9, issues: [], checks }, a2: { score: 8, issues: [], checks }, b1: { score: 10, issues: [], checks }, c1: { score: 10, issues: [], checks }, d1: { score: 8, issues: [], checks } } } }]);
+    await episodeCommand(clean, "show", "e1", {});
+    expect(out.some((l) => l.includes("barajını"))).toBe(false);
+  });
+
   it("bilinmeyen alt komut kullanımı gösterir", async () => {
     const { pipeline } = fakePipeline();
     await expect(episodeCommand(pipeline, undefined, undefined, {})).rejects.toThrow("Kullanım: episode new|run|show|preview|approve|select");

@@ -4,9 +4,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { BudgetTier } from "@ys/core";
+import { BudgetTier, DRAFT_REVIEW } from "@ys/core";
 import {
   approve,
+  draftBelow,
   EpisodePipeline,
   estimateWordTimings,
   selectCandidate,
@@ -180,6 +181,12 @@ function printSummary(s: EpisodeState): void {
   if (s.story) console.log(`Başlık:  ${s.story.title}`);
   console.log(`Aşamalar: ${STAGES.map((st) => (s.done[st] ? `✓${st}` : `·${st}`)).join(" ")}`);
   if (s.waitingFor) console.log(`⏸ Onay bekleniyor: ${s.waitingFor}  →  pnpm ys episode approve ${s.id} ${s.waitingFor}`);
+  // Otomatik onaylı bölüm de barajı geçemeyen sahne varken render'da durur: hangi sahnelerin tuttuğu yazılır.
+  const below = s.waitingFor === "preview" ? draftBelow(s) : [];
+  if (below.length) {
+    const scenes = below.map((b) => `${b.sceneId} (${b.worst === null ? "denetlenemedi" : `en kötü ${b.worst}/10`}${b.worst !== null && b.unreviewed ? `, ${b.unreviewed} kare denetlenemedi` : ""})`);
+    console.log(`  ${DRAFT_REVIEW.passAtLeast} barajını geçemeyen sahneler: ${scenes.join(", ")}`);
+  }
   if (s.cast) {
     for (const e of [...s.cast.characters, ...s.cast.locations]) {
       const n = s.concept?.candidates[e.id]?.length ?? 0;

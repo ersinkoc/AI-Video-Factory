@@ -530,7 +530,8 @@ describe("ShotsTab", () => {
     const data = makeData(state);
     data.estimates.vector = makeEstimate("vector", { rows: [row({ stage: "shots", quantity: 4, costUsd: 0.4 })] });
     const { rerender } = renderIn(<ShotsTab data={data} busy={false} act={act} />);
-    fireEvent.click(screen.getByRole("button", { name: `${tr("prod.pickWeak", { max: 4 })} (2)` }));
+    // Eski (kontrol listesiz) kayıtlarda eski sınır: puan 5'in altı.
+    fireEvent.click(screen.getByRole("button", { name: `${tr("prod.pickWeak", { min: 5 })} (2)` }));
     const go = screen.getByRole("button", { name: tr("prod.replan", { n: 1, usd: fmtTr.usd(0.1) }) }) as HTMLButtonElement;
     expect(go.disabled).toBe(false);
     await reactAct(async () => fireEvent.click(go));
@@ -551,6 +552,60 @@ describe("ShotsTab", () => {
     expect(act).toHaveBeenLastCalledWith({ type: "approve-preview" });
     rerender(<ShotsTab data={makeData(shotsState(), { status: { status: "waiting", stage: "voice" } })} busy={false} act={act} />);
     expect(screen.queryByText(tr("shots.waiting"))).toBeNull();
+  });
+
+  it("kontrol listeli taslak (12 Kas): rozet taslaktan, zayıflar 8 barajıyla, onay bandında geçemeyen sahneler, ayrıntıda kanıtlı liste", async () => {
+    const pass = (id: string) => ({ evidence: `checked ${id} in the frame`, verdict: "pass" as const });
+    const checks = (fail?: string) => ({
+      cluttered: pass("cluttered"),
+      off_story: fail ? { evidence: fail, verdict: "fail" as const } : pass("off_story"),
+      text_overlap: { evidence: "No text in this frame.", verdict: "na" as const },
+    });
+    const state = shotsState(
+      {
+        review: undefined,
+        qa: {},
+        draftReview: {
+          at: "t",
+          rubric: 1,
+          lessons: [],
+          avg: 8.7,
+          revisedScenes: [],
+          shots: {
+            sh1: { score: 7, issues: [{ type: "off_story", detail: "shows a kitchen, not the lab" }], checks: checks("shows a kitchen, not the lab") },
+            sh2: { score: 10, issues: [], checks: checks() },
+            sh3: { score: 9, issues: [{ type: "cluttered", detail: "busy wall" }], checks: checks() },
+          },
+        },
+      },
+      { motionMode: "vector" },
+    );
+    const act = okAct();
+    renderIn(<ShotsTab data={makeData(state, { status: { status: "waiting", stage: "render" } })} busy={false} act={act} />);
+    // Render öncesi puanlar kartlarda; kontrol listeli kayıtta 9 geçer, 7 kalır.
+    expect(screen.getByText("7/10 · 1!").className).toContain("text-bad");
+    expect(screen.getByText("9/10 · 1!").className).toContain("text-ok");
+    // s1'in en kötü karesi 7; s9'un tek karesi denetlenmedi. s2 (9) geçti.
+    expect(screen.getByText(tr("shots.below", { min: 8, n: 2 }))).toBeTruthy();
+    expect(screen.getByText(`s1 · ${tr("shots.below.worst", { score: 7 })}`)).toBeTruthy();
+    expect(screen.getByText(`s9 · ${tr("shots.below.unreviewed", { n: 1 })}`)).toBeTruthy();
+    await reactAct(async () => fireEvent.click(screen.getByRole("button", { name: tr("shots.approveBelow") })));
+    expect(act).toHaveBeenLastCalledWith({ type: "approve-preview" });
+    // Zayıf: yalnız denetlenmiş ve geçemeyen kare.
+    expect(screen.getByRole("button", { name: `${tr("prod.pickWeak", { min: 8 })} (1)` })).toBeTruthy();
+    // Ayrıntı: kalan madde başta, kanıtıyla; bulgular ayrıca "Sorunlar" altında yinelenmez.
+    fireEvent.click(screen.getByRole("img", { name: "sh1" }));
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByText(tr("shots.checks"))).toBeTruthy();
+    expect(dialog.queryByText(tr("shots.issues"))).toBeNull();
+    const rows = dialog.getAllByRole("listitem");
+    expect(rows.map((r) => r.textContent)).toEqual([
+      `✗${tr("check.off_story")} — shows a kitchen, not the lab`,
+      `✓${tr("check.cluttered")} — checked cluttered in the frame`,
+      `–${tr("check.text_overlap")} — No text in this frame.`,
+    ]);
+    expect(dialog.getByLabelText(tr("check.verdict.fail"))).toBeTruthy();
+    expect(dialog.getByLabelText(tr("check.verdict.na"))).toBeTruthy();
   });
 
   it("vektör: Shift'li ilk tıklama tek çekim seçer (çapa yok); bekleyen not yoksa satırı yok", () => {

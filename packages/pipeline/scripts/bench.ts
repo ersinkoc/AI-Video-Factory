@@ -17,8 +17,8 @@ import { execFileSync } from "node:child_process";
 import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { cleanModelSettings, shotIntentText, type ModelSettings, type Timeline } from "@ys/core";
-import { models as defaultModels, sceneCritic, type CriticShot } from "@ys/agents";
+import { cleanModelSettings, DRAFT_REVIEW, shotIntentText, type ModelSettings, type Timeline } from "@ys/core";
+import { checklistIssues, checklistProblem, checklistScore, models as defaultModels, sceneCritic, settleChecks, type CriticShot } from "@ys/agents";
 import { renderEpisode, renderStills } from "@ys/video/render";
 import { auditRenderedVideo } from "@ys/video/audit";
 import { stillMoment } from "@ys/video/moment";
@@ -38,7 +38,7 @@ type Category = "close" | "wide" | "group" | "scene";
 /** 30'luk sette kategori payları; az görülenler (kalabalık, kişisiz) üretimdeki oranından fazla örneklenir. */
 const QUOTA: Record<Category, number> = { close: 10, wide: 12, group: 4, scene: 4 };
 const PER_EPISODE = 3;
-const BATCH = 6;
+const BATCH = DRAFT_REVIEW.batch;
 
 interface BenchShot {
   episode: string;
@@ -208,9 +208,16 @@ async function critique(set: BenchSet, files: Record<string, string>, models: Mo
       const res = await sceneCritic(batch, [], { models, log: (m) => console.log(`  ${m}`) }, batch[0]!.subtitles, batch[0]!.style);
       costUsd += res.costUsd;
       for (const s of res.data.shots) {
-        const key = batch.find((b) => b.shotId === s.shotId)?.key;
-        if (key) shots[key] = { score: s.score, issues: s.issues };
-        else console.log(`  tanınmayan çekim kimliği: ${s.shotId}`);
+        const item = batch.find((b) => b.shotId === s.shotId);
+        if (!item) {
+          console.log(`  tanınmayan çekim kimliği: ${s.shotId}`);
+          continue;
+        }
+        // Puan pipeline ile aynı yoldan: kontrol listesi doğrulanır, puanı kod hesaplar.
+        const checks = settleChecks(s.checks, item.subtitles);
+        const problem = checklistProblem(checks);
+        if (problem) console.log(`  geçersiz kontrol listesi (${s.shotId}): ${problem}`);
+        else shots[item.key] = { score: checklistScore(checks), issues: checklistIssues(checks) };
       }
       console.log(`denetim ${i + 1}/${batches.length}: ${res.data.shots.length} çekim, $${res.costUsd.toFixed(4)}`);
     } catch (e) {

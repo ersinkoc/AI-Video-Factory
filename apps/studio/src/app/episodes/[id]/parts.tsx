@@ -1,6 +1,7 @@
 "use client";
 
 import type { EpisodeEstimate, EpisodeState, Gate, RunStatus, Stage } from "@ys/pipeline/light";
+import { scenesBelow } from "@ys/core/rules";
 import { AlertTriangle, Check, CircleDashed, Hourglass, Loader2, PauseCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Formatters, MessageKey } from "../../../lib/i18n";
@@ -8,11 +9,16 @@ import type { Formatters, MessageKey } from "../../../lib/i18n";
 export const asset = (key: string) => `/api/assets/${key}`;
 export const stageKey = (s: string) => `stage.${s}` as MessageKey;
 
+/** Taslak denetiminde barajı geçemeyen sahneler: pipeline'daki draftBelow'un istemci kopyası. */
+export const draftBelow = (state: EpisodeState) => (state.input.qa === false || !state.shots ? [] : scenesBelow(state.shots, state.draftReview));
+
 /**
  * Onay kapısı geçildi mi (CLI'dan otomatik onaylı bölümler dahil). Pipeline'daki isApproved'ın istemci kopyası:
- * istemci paketi @ys/pipeline/light'ın çalışma kodunu (node:fs kullanan modüller) içeremez.
+ * istemci paketi @ys/pipeline/light'ın çalışma kodunu (node:fs kullanan modüller) içeremez. Barajı geçemeyen sahne varken
+ * önizleme kapısı yalnız açık onayla geçilir.
  */
-export const approved = (state: EpisodeState, gate: Gate) => Boolean(state.input.autoApprove || state.approvals?.[gate]);
+export const approved = (state: EpisodeState, gate: Gate) =>
+  gate === "preview" && draftBelow(state).length ? Boolean(state.approvals?.preview) : Boolean(state.input.autoApprove || state.approvals?.[gate]);
 
 /** Bekleyen onay kapısının sekmesi: senaryo, konsept, önizleme (render öncesi, Çekimler). */
 export const gateTab = (stage: Stage | undefined): Tab => (stage === "render" ? "shots" : stage === "voice" ? "concept" : "script");

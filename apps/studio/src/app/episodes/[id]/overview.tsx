@@ -6,6 +6,7 @@ import { RenderAuditCard } from "./render-audit-card";
 import { StyleComparisonCard } from "./style-comparison-card";
 import { QualityIssueBoard } from "./quality-issue-board";
 import { stylePackOf } from "@ys/core/styles";
+import { shotPasses } from "@ys/core/rules";
 import { TYPOGRAPHY_PAIRS } from "@ys/core/typography";
 import type { MessageKey } from "../../../lib/i18n";
 import type { EpisodeResponse } from "../../../lib/types";
@@ -196,7 +197,8 @@ function Review({ data }: { data: EpisodeResponse }) {
   }
   const shots = Object.values(review.shots);
   const avg = shots.length ? shots.reduce((n, s) => n + s.score, 0) / shots.length : 0;
-  const weak = shots.filter((s) => s.score < 6).length;
+  // Kontrol listeli kayıtta 8 barajı, eski genel puanlı kayıtta eski sınır.
+  const weak = shots.filter((s) => (s.checks ? !shotPasses(s) : s.score < 6)).length;
   const counts = new Map<string, number>();
   for (const s of shots) for (const i of s.issues) counts.set(i.type, (counts.get(i.type) ?? 0) + 1);
   const top = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 8);

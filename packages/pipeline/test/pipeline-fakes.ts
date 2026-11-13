@@ -62,6 +62,32 @@ export function mockAgents(orig: Record<string, unknown>): Record<string, unknow
   return out;
 }
 
+/**
+ * Kare denetçisinin kontrol listesi maddeleri (agents/src/review.ts REVIEW_CHECKS; kaynak içe aktarılamaz). Liste değişirse
+ * pipeline'ın doğrulaması (checklistProblem) "eksik madde" diye yakalar, testler kırılır.
+ */
+const MAJOR = ["off_story", "empty", "character_cut_off", "character_floating", "backdrop_box", "text_overlap", "text_on_subtitles"];
+const MINOR = ["cluttered", "repetitive", "wrong_scale", "unreadable_text", "no_action", "other"];
+
+/** Kontrol listeli sahte denetçi yanıtı: `fails` kalan maddeler (değer kanıttır), gerisi kanıtlı "pass". */
+export function checked(shotId: string, fails: Record<string, string> = {}) {
+  return {
+    shotId,
+    checks: Object.fromEntries(
+      [...MAJOR, ...MINOR].map((id) => [id, id in fails ? { evidence: fails[id]!, verdict: "fail" } : { evidence: `looked at ${id} in the frame`, verdict: "pass" }]),
+    ),
+  };
+}
+
+/** İstenen puanı veren yanıt (10'dan ağır kusur başına 3, hafif başına 1): ağırlar listenin başından, hafifler sonra. */
+export function scored(shotId: string, score: number) {
+  const lost = 10 - score;
+  const fails: Record<string, string> = {};
+  for (const id of MAJOR.slice(0, Math.floor(lost / 3))) fails[id] = `${id} problem seen`;
+  for (const id of MINOR.slice(0, lost % 3)) fails[id] = `${id} problem seen`;
+  return checked(shotId, fails);
+}
+
 /** Remotion sahtesi: kareler gerçek (küçük) dosya olarak yazılır, çünkü pipeline onları diskten okur. */
 export const render = {
   stills: loose(async (opts: { frames: Record<string, number>; outDir: string; onWait?: (pid: number) => void }) => {

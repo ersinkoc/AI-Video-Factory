@@ -6,8 +6,8 @@ import type { RenderAuditSummary } from "./render-audit.ts";
 import type { StyleComparison, StyleReference, styleSamples } from "./style-comparison.ts";
 import type { ArchiveImage, ArchiveCandidate } from "@ys/core";
 import type { CastOut, LessonTarget, MotionMode, ScriptOut, ShotPlanOut, StoryOut, StyleBibleOut } from "@ys/agents";
-import type { Ambience, AssetCheck, BudgetTier, FlagSpec, LineStyle, MapSpec, Msg, Timeline, VectorShot, WordTiming } from "@ys/core";
-import { stylePackOf } from "@ys/core";
+import type { Ambience, AssetCheck, BudgetTier, FlagSpec, LineStyle, MapSpec, Msg, SceneBelow, ShotReviewRecord, Timeline, VectorShot, WordTiming } from "@ys/core";
+import { scenesBelow, stylePackOf } from "@ys/core";
 
 export type { MotionMode };
 
@@ -163,7 +163,10 @@ export interface PlannedShotState {
 
 export interface EpisodeReview {
   at: string;
-  shots: Record<string, { score: number; issues: { type: string; detail: string }[] }>;
+  /** Kontrol listesi rubriğinin sürümü (REVIEW_RUBRIC); eski, tek genel puanlı incelemelerde yok. */
+  rubric?: number;
+  /** Kare başına kayıt; kontrol listeli incelemede `checks` maddelerin kanıtı ve kararıdır, puanı kod hesaplar. */
+  shots: Record<string, ShotReviewRecord>;
   /** Bu incelemede çıkan genel kurallar (deftere de yazılır). */
   lessons: { target: LessonTarget; rule: string }[];
 }
@@ -361,7 +364,18 @@ export function gateBefore(stage: Stage): Gate | undefined {
   return (Object.keys(GATES) as Gate[]).find((g) => GATES[g] === stage);
 }
 
+/**
+ * Render öncesi denetimde 8 barajını geçemeyen sahneler (yalnız kontrol listeli taslak incelemesi, denetim açıkken).
+ * Saklanmaz, her seferinde çekimlerden ve kayıtlardan hesaplanır: yeniden plan ya da silinen kayıt listeyi hemen değiştirir.
+ */
+export function draftBelow(state: EpisodeState): SceneBelow[] {
+  if (state.input.qa === false || !state.shots) return [];
+  return scenesBelow(state.shots, state.draftReview);
+}
+
 export function isApproved(state: EpisodeState, gate: Gate): boolean {
+  // Barajı geçemeyen sahne varken render otomatik onaylanmaz: yapımcı ya yeniden oluşturur ya da bilerek onaylar (12 Kas).
+  if (gate === "preview" && draftBelow(state).length) return Boolean(state.approvals?.preview);
   return Boolean(state.input.autoApprove || state.approvals?.[gate]);
 }
 

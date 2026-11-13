@@ -19,6 +19,10 @@ import {
   frameInspector,
   screenwriter,
   sceneCritic,
+  checklistIssues,
+  checklistProblem,
+  checklistScore,
+  settleChecks,
   stylePicker,
   scriptDoctor,
   storyArchitect,
@@ -66,6 +70,9 @@ import {
   uniqueCharacters,
   ANIMATION_LINT,
   DRAFT_REVIEW,
+  REVIEW_RUBRIC,
+  scenesBelow,
+  shotPasses,
   errorText,
   LocalizedError,
   msg,
@@ -262,6 +269,20 @@ export const firstLine = (e: unknown): Text => {
 export function sceneScore(review: EpisodeReview, shots: { id: string }[]): number | undefined {
   const scores = shots.flatMap((s) => (review.shots[s.id] ? [review.shots[s.id]!.score] : []));
   return scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : undefined;
+}
+
+/**
+ * Yeniden plan daha mı kötü: önce barajı geçemeyen (denetlenemeyen dahil) karelerin payına, eşitse ortalamaya bakılır.
+ * Ortalamayı yükseltip sahnede 5 bırakan plan daha iyi sayılmaz (baraj sahnenin en kötü karesine bakar). Pay, sayı değil:
+ * yeniden plan çekim sayısını değiştirir; tek karesi 0 alan plan iki karesi 3 alandan "daha az kötü kare" diye iyi sayılmasın.
+ */
+export function worseScene(review: EpisodeReview, after: { id: string }[], before: { review: EpisodeReview; shots: { id: string }[] }): boolean {
+  const failing = (r: EpisodeReview, shots: { id: string }[]) => (shots.length ? shots.filter((s) => !shotPasses(r.shots[s.id])).length / shots.length : 0);
+  const a = failing(review, after);
+  const b = failing(before.review, before.shots);
+  if (a !== b) return a > b;
+  // Önceki plan hep puanlıdır: sahne ancak denetlenmiş ve geçemeyen bir karesi varken yeniden planlanır.
+  return (sceneScore(review, after) ?? -1) < sceneScore(before.review, before.shots)!;
 }
 
 /** Kodun yaptığı yerleşim düzeltmeleri, çekim başına: yönetmene söylenir (bir dahaki planda kendisi doğru versin). */
@@ -1539,12 +1560,13 @@ export class EpisodePipeline {
         .filter((w) => w.startMs >= startMs && w.startMs < endMs)
         .map((w) => w.text)
         .join(" ");
-    const review: EpisodeReview = { at: new Date().toISOString(), shots: {}, lessons: [] };
+    const review: EpisodeReview = { at: new Date().toISOString(), rubric: REVIEW_RUBRIC, shots: {}, lessons: [] };
     let reviewed = 0;
     const errors: unknown[] = [];
+    // Grup küçük tutulur: her kare için bütün kontrol listesi yazılır, bozuk bir yanıt daha az kare kaybettirir.
     const pass = (list: typeof shots) => {
       const batches: (typeof shots)[] = [];
-      for (let i = 0; i < list.length; i += 6) batches.push(list.slice(i, i + 6));
+      for (let i = 0; i < list.length; i += DRAFT_REVIEW.batch) batches.push(list.slice(i, i + DRAFT_REVIEW.batch));
       return mapLimit(batches, this.deps.concurrency ?? 3, critique);
     };
     const critique = async (batch: typeof shots) => {
@@ -1560,10 +1582,19 @@ export class EpisodePipeline {
       if (!items.length) return;
       try {
         const out = await this.agent(state, stage, sceneCritic(items, known, this.agentDeps, subtitles, style));
+        const asked = new Set(items.map((i) => i.shotId));
         for (const s of out.shots) {
-          // Altyazısız videoda "altyazı alanında" kusuru olamaz (denetçi yine de derse taslak yeniden planlanmasın).
-          const issues = subtitles ? s.issues : s.issues.filter((i) => i.type !== "text_on_subtitles");
-          review.shots[s.shotId] = { score: s.score, issues };
+          if (!asked.has(s.shotId)) continue;
+          // Altyazısız videoda "altyazı alanında" kusuru olamaz (denetçi yine de derse sayılmaz).
+          const checks = settleChecks(s.checks, subtitles);
+          // Gerçekten bakılmamış kare (eksik madde, kanıtsız karar, her karede bakılacak maddeye "uygulanmaz") denetlenmemiş
+          // sayılır: kaydı yazılmaz, bir kez daha istenir; yine olmazsa sahnesi barajı geçemez.
+          const problem = checklistProblem(checks);
+          if (problem) {
+            this.log(msg("log.review.invalid", { shot: s.shotId, reason: problem }));
+            continue;
+          }
+          review.shots[s.shotId] = { score: checklistScore(checks), issues: checklistIssues(checks), checks };
         }
         review.lessons.push(...out.lessons);
         reviewed++;
@@ -1676,6 +1707,7 @@ export class EpisodePipeline {
       critique = await this.critiqueShots(state, "keyframes", timeline, dir, book.lessons.map((l) => l.rule));
     } catch (e) {
       this.log(msg("log.draft.failed", { reason: firstLine(e) }));
+      this.unreviewedDraft(state);
       return;
     }
     const { files, review, unreviewed } = critique;
@@ -1683,33 +1715,44 @@ export class EpisodePipeline {
     state.stills = {};
     await this.storeStills(state, files);
     await this.save(state);
-    // Hiçbir kare denetlenemedi: "sorunsuz taslak" kaydı bırakılmaz (eskisi önceki plana ait), sahneler yeniden planlanmaz.
+    // Hiçbir kare denetlenemedi: sahneler yeniden planlanmaz, ama hiçbiri barajı geçmiş de sayılmaz (render onay bekler).
     if (unreviewed) {
-      delete state.draftReview;
       this.log(msg("log.draft.unreviewed", { error: unreviewed }));
+      this.unreviewedDraft(state);
       return;
     }
 
-    // Yalnız izleyicinin hemen fark edeceği bozukluklar; "dağınık", "konu dışı" gibi yargılar tek başına yeniden plan
-    // gerektirmez (yeniden plan da çoğu zaman aynı puanı alıyordu).
-    const severe = new Set(["character_floating", "text_on_subtitles", "backdrop_box", "character_cut_off", "empty"]);
-    const bad = (id: string) => {
-      const r = review.shots[id];
-      return r !== undefined && (r.score <= DRAFT_REVIEW.badAtMost || r.issues.some((i) => severe.has(i.type)));
-    };
+    // Kontrol listesinden 8 barajı (DRAFT_REVIEW.passAtLeast): denetlenmiş ve geçemeyen karesi olan her sahne yeniden
+    // planlanır, en kötüden başlanarak. Yalnız denetlenemeyen karesi olan sahnenin düzeltilecek bulgusu yoktur; yeniden
+    // planlanmaz ama barajı geçmiş de sayılmaz.
+    const bad = (id: string) => review.shots[id] !== undefined && !shotPasses(review.shots[id]);
     const scores = Object.values(review.shots).map((s) => s.score);
     const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     const worst = (sceneId: string) =>
       Math.min(...state.shots!.filter((s) => s.sceneId === sceneId).map((s) => review.shots[s.id]?.score ?? 10));
-    const limit = Math.max(1, Math.ceil(script.scenes.length * DRAFT_REVIEW.maxShare));
     const scenesToFix = script.scenes
       .filter((sc) => state.shots!.some((s) => s.sceneId === sc.id && bad(s.id)))
-      .sort((a, b) => worst(a.id) - worst(b.id))
-      .slice(0, limit);
+      .sort((a, b) => worst(a.id) - worst(b.id));
     this.log(msg("log.draft.summary", { frames: scores.length, avg: avg.toFixed(1), scenes: scenesToFix.length }));
     state.draftReview = { ...review, avg, revisedScenes: scenesToFix.map((s) => s.id) };
-    if (!scenesToFix.length) return;
-    await this.reviseRounds(state, scenesToFix, review, bad, book, dir, layoutFixes(timeline, assets));
+    if (scenesToFix.length) await this.reviseRounds(state, scenesToFix, review, bad, book, dir, layoutFixes(timeline, assets));
+    this.logBelow(state);
+  }
+
+  /** Taslak hiç denetlenemedi: kontrol listeli boş kayıt, her sahne barajın altında sayılır (render yapımcının onayını bekler). */
+  private unreviewedDraft(state: EpisodeState): void {
+    state.draftReview = { at: new Date().toISOString(), rubric: REVIEW_RUBRIC, shots: {}, lessons: [], avg: 0, revisedScenes: [] };
+    this.logBelow(state);
+  }
+
+  /** Barajı geçemeyen sahneler kalırsa günlüğe yazılır: render yapımcının açık onayını bekleyecek. */
+  private logBelow(state: EpisodeState): void {
+    const below = scenesBelow(state.shots!, state.draftReview);
+    if (!below.length) return;
+    this.log(msg("log.draft.below", {
+      min: DRAFT_REVIEW.passAtLeast,
+      scenes: below.map((b) => (b.worst === null ? `${b.sceneId} (?)` : `${b.sceneId} (${b.worst})`)).join(", "),
+    }));
   }
 
   /**
@@ -1762,7 +1805,11 @@ export class EpisodePipeline {
       }
       if (!check || check.unreviewed) {
         if (check?.unreviewed) this.log(msg("log.draft.recheckSkipped", { error: check.unreviewed }));
-        for (const sc of toFix) kept.add(sc.id);
+        // Yeni plan kalır ama denetlenmedi: eski planın puanları (aynı çekim kimliğiyle) yeni karelere ait sayılmasın.
+        for (const sc of toFix) {
+          kept.add(sc.id);
+          for (const s of before.get(sc.id)!.shots) delete review.shots[s.id];
+        }
         await this.vectorPreviews(state, redo);
         break;
       }
@@ -1774,7 +1821,7 @@ export class EpisodePipeline {
         // Düzeltmeye seçilen sahnenin en az bir denetlenmiş (kötü) karesi var: eski puan hep bilinir.
         const was = old.score!.toFixed(1);
         const is = after === undefined ? "?" : after.toFixed(1);
-        if (after !== undefined && after < old.score!) {
+        if (worseScene(check.review, now, { review, shots: old.shots })) {
           // Geri al: eski plan ve çekimler; eski kareleri ve incelemesi hiç silinmedi.
           reverted.add(sc.id);
           state.shotPlan!.scenes.find((e) => e.sceneId === sc.id)!.shots = old.plan!;
@@ -1880,7 +1927,10 @@ export class EpisodePipeline {
       const shots = { ...state.draftReview?.shots, ...review.shots };
       const scores = Object.values(shots).map((s) => s.score);
       const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-      state.draftReview = { at: review.at, lessons: state.draftReview?.lessons ?? [], revisedScenes: state.draftReview?.revisedScenes ?? [], shots, avg };
+      // Eski (kontrol listesiz) taslağın kalan kayıtlarıyla karışan inceleme rubrikli sayılmaz: eski bölüm kapıda durmaz.
+      const legacy = Boolean(state.draftReview && state.draftReview.rubric !== REVIEW_RUBRIC && Object.keys(state.draftReview.shots).length);
+      state.draftReview = { at: review.at, ...(legacy ? {} : { rubric: review.rubric }), lessons: state.draftReview?.lessons ?? [], revisedScenes: state.draftReview?.revisedScenes ?? [], shots, avg };
+      this.logBelow(state);
       const mine = Object.values(review.shots).map((s) => s.score);
       this.log(msg("log.replan.checked", { n: mine.length, avg: (mine.length ? mine.reduce((a, b) => a + b, 0) / mine.length : 0).toFixed(1) }));
     } catch (e) {

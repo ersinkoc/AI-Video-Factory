@@ -161,6 +161,14 @@ export const PIPELINE_MESSAGES = {
   "log.shots.nameTags": { tr: "  {n} kişiye bölümdeki ilk görünüşünde ad etiketi kondu", en: "  {n} people got a name tag where they first appear in the episode" },
   "log.review.batchSkipped": { tr: "  inceleme grubu atlandı: {error}", en: "  review batch skipped: {error}" },
   "log.review.retry": { tr: "  incelenmeyen {count} kare yeniden inceleniyor", en: "  reviewing {count} missed frames again" },
+  "log.review.invalid": {
+    tr: "  ⚠ {shot} karesinin kontrol listesi geçersiz ({reason}); denetlenmemiş sayıldı",
+    en: "  ⚠ the checklist for frame {shot} is invalid ({reason}); counted as not reviewed",
+  },
+  "log.draft.below": {
+    tr: "  ⚠ {min} barajını geçemeyen sahneler (en kötü kare, ? = denetlenemedi): {scenes}; render onayını bekleyecek",
+    en: "  ⚠ scenes below the {min} bar (worst frame, ? = not reviewed): {scenes}; the render will wait for approval",
+  },
   "log.stills.wait": {
     tr: "  başka bir render sürüyor (süreç {pid}); kareler için sıra bekleniyor",
     en: "  another render is running (process {pid}); waiting in line for the frames",
@@ -168,8 +176,8 @@ export const PIPELINE_MESSAGES = {
   "log.preview.done": { tr: "  önizleme: {n} çekim karesi", en: "  preview: {n} shot frames" },
   "log.preview.failed": { tr: "  önizleme kareleri çıkarılamadı ({error})", en: "  preview frames could not be extracted ({error})" },
   "log.draft.unreviewed": {
-    tr: "  ⚠ taslak karelerin hiçbiri denetlenemedi, taslak denetimi atlandı: {error}",
-    en: "  ⚠ none of the draft frames could be reviewed, draft review skipped: {error}",
+    tr: "  ⚠ taslak karelerin hiçbiri denetlenemedi, sahneler yeniden planlanmadı: {error}",
+    en: "  ⚠ none of the draft frames could be reviewed, no scene was re-planned: {error}",
   },
   "log.draft.failed": {
     tr: "  ⚠ taslak kareler çıkarılamadı, taslak denetimi atlandı: {reason}",

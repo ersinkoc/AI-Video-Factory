@@ -7,7 +7,7 @@ import { PronunciationPanel } from "./pronunciation-panel";
 import { ArchivePicker } from "./archive-picker";
 
 import type { EpisodeState, PlannedShotState } from "@ys/pipeline/light";
-import { DRAFT_REVIEW, QUALITY_GATE } from "@ys/core/rules";
+import { DRAFT_REVIEW, QUALITY_GATE, shotPasses, type ShotReviewRecord } from "@ys/core/rules";
 import { stylePackOf } from "@ys/core/styles";
 import { Check, CheckSquare, ChevronLeft, ChevronRight, Clapperboard, Mic, Play, RefreshCw, Square, Undo2, Wand2, X } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -16,7 +16,7 @@ import type { MessageKey } from "../../../lib/i18n";
 import type { EpisodeResponse, QuotaView } from "../../../lib/types";
 import { VOICES } from "../../../lib/voices";
 import { useI18n } from "../../locale-provider";
-import { AFTER_CONCEPT, AFTER_SCRIPT, approved as isApproved, asset, costOf, type Act, modeOf } from "./parts";
+import { AFTER_CONCEPT, AFTER_SCRIPT, approved as isApproved, asset, costOf, draftBelow, type Act, modeOf } from "./parts";
 
 const MODES = ["animated", "mixed", "still", "vector"] as const;
 
@@ -542,12 +542,14 @@ const scoreOf = (state: EpisodeState, id: string) => {
   if (state.archives?.[id] && !state.done.review) return undefined;
   const qa = state.archives?.[id] ? undefined : state.qa?.[id];
   if (qa && !qa.skipped) return { score: qa.score, issues: qa.issues, bad: !qa.passed };
-  const rv = state.review?.shots[id];
+  // Render sonrası inceleme, yoksa render öncesi taslak denetimi (8 barajı taslakta uygulanır, puanı render'dan önce görünsün).
+  const rv = state.review?.shots[id] ?? state.draftReview?.shots[id];
   return rv
     ? {
         score: rv.score,
         issues: rv.issues,
-        bad: rv.score < 6 || rv.issues.length > 0,
+        // Kontrol listeli kayıtta baraj; eski genel puanlı kayıtta eski kural.
+        bad: rv.checks ? !shotPasses(rv) : rv.score < 6 || rv.issues.length > 0,
       }
     : undefined;
 };
@@ -594,7 +596,14 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
   const pending = Object.keys(state.replans ?? {});
   // Kare incelemesi (render sonrası, yoksa taslak denetimi): zayıflar toplu seçilir, bulguları nota kendiliğinden eklenir.
   const reviewOf = (id: string) => state.archives?.[id] ? (state.done.review ? state.review?.shots[id] : undefined) : (state.review?.shots[id] ?? state.draftReview?.shots[id]);
-  const weak = shots.filter((s) => (reviewOf(s.id)?.score ?? 10) <= DRAFT_REVIEW.badAtMost).map((s) => s.id);
+  // Zayıf: denetlenmiş ve geçemeyen kare (kontrol listeli kayıtta 8 barajı, eski kayıtta eski sınır).
+  const weak = shots.filter((s) => {
+    const r = reviewOf(s.id);
+    return r !== undefined && !shotPasses(r);
+  }).map((s) => s.id);
+  const weakBelow = shots.some((s) => reviewOf(s.id)?.checks) ? DRAFT_REVIEW.passAtLeast : DRAFT_REVIEW.badAtMost + 1;
+  // Barajı geçemeyen sahneler: render yapımcının açık onayını bekler (otomatik onay da durur).
+  const below = draftBelow(state);
   const findings = [...picked].some((id) => reviewOf(id)?.issues.length);
   const shotsRow = data.estimates[modeOf(state.input)].rows.find((r) => r.stage === "shots");
   const perScene = shotsRow && shotsRow.quantity ? shotsRow.costUsd / shotsRow.quantity : 0;
@@ -603,11 +612,27 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
     <div className="grid gap-4">
       {data.status.status === "waiting" && data.status.stage === "render" && (
         // Önizleme kapısı: render yapımcının onayıyla başlar (beğenmediği çekimleri önce yeniden oluşturabilir).
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-accent/50 bg-accent/10 p-3 text-sm">
-          <span className="flex-1">{t("shots.waiting")}</span>
-          <button className="btn-primary py-1.5 text-xs" disabled={busy} onClick={() => act({ type: "approve-preview" })}>
-            <Clapperboard size={14} /> {t("shots.approve")}
-          </button>
+        <div className="grid gap-2 rounded-lg border border-accent/50 bg-accent/10 p-3 text-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex-1">{t("shots.waiting")}</span>
+            <button className="btn-primary py-1.5 text-xs" disabled={busy} onClick={() => act({ type: "approve-preview" })}>
+              <Clapperboard size={14} /> {t(below.length ? "shots.approveBelow" : "shots.approve")}
+            </button>
+          </div>
+          {below.length > 0 && (
+            <div className="grid gap-1 text-xs" role="alert">
+              <p className="text-bad">{t("shots.below", { min: DRAFT_REVIEW.passAtLeast, n: below.length })}</p>
+              <ul className="flex flex-wrap gap-1.5">
+                {below.map((b) => (
+                  <li key={b.sceneId} className="rounded-md bg-bad/15 px-2 py-0.5 tabular-nums">
+                    {b.sceneId}
+                    {b.worst !== null && ` · ${t("shots.below.worst", { score: b.worst })}`}
+                    {b.unreviewed > 0 && ` · ${t("shots.below.unreviewed", { n: b.unreviewed })}`}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
       {playing && state.done.timeline && <TimelinePlayer id={state.id} shot={playing.shot} seek={playing.seek} />}
@@ -669,7 +694,7 @@ export function ShotsTab({ data, busy, act }: { data: EpisodeResponse; busy: boo
             <p className="flex-1 text-xs text-muted">{t("prod.replanHint")}</p>
             {weak.length > 0 && (
               <button className="btn-ghost py-1 text-xs" disabled={busy} onClick={() => setPicked(new Set(weak))}>
-                {t("prod.pickWeak", { max: DRAFT_REVIEW.badAtMost })} ({weak.length})
+                {t("prod.pickWeak", { min: weakBelow })} ({weak.length})
               </button>
             )}
           </div>
@@ -848,8 +873,9 @@ function ShotDetail({
   }, [onClose, onMove]);
   const thumb = thumbOf(state, shot.id);
   const qa = state.archives?.[shot.id] ? undefined : state.qa?.[shot.id];
-  const rv = state.archives?.[shot.id] && !state.done.review ? undefined : state.review?.shots[shot.id];
-  const issues = [...(qa?.issues ?? []), ...(rv?.issues ?? [])];
+  const rv = state.archives?.[shot.id] && !state.done.review ? undefined : (state.review?.shots[shot.id] ?? state.draftReview?.shots[shot.id]);
+  // Kontrol listeli kayıtta bulgular listenin içinde, kanıtıyla gösterilir; ayrıca yinelenmez.
+  const issues = [...(qa?.issues ?? []), ...(rv && !rv.checks ? rv.issues : [])];
   const scene = state.script?.scenes.find((s) => s.id === shot.sceneId);
   return (
     <div
@@ -937,8 +963,36 @@ function ShotDetail({
               </ul>
             </div>
           )}
+          {rv?.checks && <Checklist checks={rv.checks} />}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Denetçinin kontrol listesi: her madde için kararı ve karede gördüğü (kanıt). Kalanlar başta; puan bunlardan hesaplanır
+ * (12 Kas, kullanıcı: "kontrol edilecekleri gerçekten kontrol ettiğine" emin olmak istiyor).
+ */
+function Checklist({ checks }: { checks: NonNullable<ShotReviewRecord["checks"]> }) {
+  const { t } = useI18n();
+  const rank = { fail: 0, pass: 1, na: 2 } as const;
+  const rows = Object.entries(checks).sort((a, b) => rank[a[1].verdict] - rank[b[1].verdict]);
+  return (
+    <div>
+      <div className="label">{t("shots.checks")}</div>
+      <ul className="grid gap-1">
+        {rows.map(([id, c]) => (
+          <li key={id} className={`grid grid-cols-[18px_1fr] gap-1.5 rounded-md px-2 py-1 text-[12.5px] ${c.verdict === "fail" ? "bg-bad/10" : ""}`}>
+            <span aria-label={t(`check.verdict.${c.verdict}`)} className={c.verdict === "fail" ? "text-bad" : c.verdict === "pass" ? "text-ok" : "text-muted"}>
+              {c.verdict === "fail" ? "✗" : c.verdict === "pass" ? "✓" : "–"}
+            </span>
+            <span>
+              <span className="font-medium">{t(`check.${id}` as MessageKey)}</span> <span className="text-muted">— {c.evidence}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { styleCraftBlock, customStyleBlock } from "@ys/core";
+import { DRAFT_REVIEW, styleCraftBlock, customStyleBlock } from "@ys/core";
 import { z } from "zod";
 import { MOTION_REVIEW_POLICY } from "./motion-design.ts";
 import { models, runStructured, type AgentDeps, type AgentImage, type AgentResult } from "./runner.ts";
@@ -21,18 +21,86 @@ export const ShotIssueType = z.enum([
   "backdrop_box",
   "repetitive",
   "off_story",
+  "no_action",
   "other",
 ]);
 
 export const LessonTarget = z.enum(["director", "designer", "script"]);
 export type LessonTarget = z.infer<typeof LessonTarget>;
 
+/**
+ * Kare kontrol listesi (12 Kas, kullanıcı: "her sahnede kontrol edilecekleri gerçekten kontrol ettiğine ... 8 ve üstünü şart
+ * koşalım"). Denetçi eskiden kareye tek bir genel puan ve serbest bir sorun listesi veriyordu; neye baktığı görünmüyordu,
+ * puanlar 4–6'da yığılıyordu. Artık her madde için önce karede gördüğünü (kanıt), sonra kararı yazar; puanı kod hesaplar
+ * (`checklistScore`). Kimlikler `ShotIssueType` değerleridir: kalan kalite görünümü, bulgular ve dersler aynı türlerle sürer.
+ * `always`: "uygulanmaz" denemez (her karede bakılacak şey); `severity`: ağır kusur 8 barajını tek başına geçirmez.
+ */
+export const REVIEW_CHECKS = [
+  { id: "off_story", severity: "major", always: true, ask: "Does the frame show what the shot is about: its subject, its place and the people the intent names? fail when the subject or a named person is missing or the frame shows something else. Smaller mismatches go to other." },
+  { id: "empty", severity: "major", always: true, ask: "Is there something meaningful on screen? fail when the frame is mostly bare or shows only an empty backdrop." },
+  { id: "character_cut_off", severity: "major", always: false, ask: "Is a head or face cut by the frame edge, a person shown only as a sliver at a side edge, or a lower leg crossed by the bottom edge so that only part of a shin or a foot shows? Legs wholly below the edge in medium and close shots are intended (pass). na when there are no people." },
+  { id: "character_floating", severity: "major", always: false, ask: "Do people and objects stand, sit or rest on something? fail when someone or something hangs in the air without a reason (wall items, signs and flying things are fine). na when nothing stands or rests." },
+  { id: "backdrop_box", severity: "major", always: false, ask: "Does a character or prop show its own rectangle or disc background around it? na when there are no characters or props." },
+  { id: "text_overlap", severity: "major", always: false, ask: "Do on-screen texts (title card, labels, name tags, speech bubbles) overlap each other or cover a face? na when there is no on-screen text." },
+  { id: "text_on_subtitles", severity: "major", always: false, ask: "Does an on-screen text sit in the bottom quarter where the subtitles go? na when there is no on-screen text or the video has no burned-in subtitles." },
+  { id: "unreadable_text", severity: "minor", always: false, ask: "Can every on-screen text be read: big enough, enough contrast, not cut? na when there is no on-screen text." },
+  { id: "wrong_scale", severity: "minor", always: false, ask: "Are people and objects at believable sizes next to each other, and is the object the shot is about big enough to recognise? na when there is a single subject with nothing to compare." },
+  { id: "cluttered", severity: "minor", always: true, ask: "Is the frame easy to read: one clear subject, not many elements or a busy background competing with it?" },
+  { id: "repetitive", severity: "minor", always: true, ask: "Does it look different enough from the frames listed before it (layout, framing, place)? The first image has nothing before it: pass." },
+  { id: "no_action", severity: "minor", always: false, ask: "When the intent or narration says a person does something (points, types, writes, reads, cheers, walks, holds up…), is that action visible? na when no action is described." },
+  { id: "other", severity: "minor", always: true, ask: "Anything else a viewer would notice as broken or wrong: a garbled drawing, broken anatomy, an object from the wrong era, a wrong detail the intent names? pass when nothing." },
+] as const satisfies readonly { id: z.infer<typeof ShotIssueType>; severity: "major" | "minor"; always: boolean; ask: string }[];
+export type CheckId = (typeof REVIEW_CHECKS)[number]["id"];
+
+const Check = z.object({
+  evidence: z.string().describe("What you actually see in THIS frame that decides the check: name the thing and where it is (for fail: the problem and where). One short sentence."),
+  verdict: z.enum(["pass", "fail", "na"]),
+});
+export type CheckAnswer = z.infer<typeof Check>;
+const Checks = z.object(Object.fromEntries(REVIEW_CHECKS.map((c) => [c.id, Check.describe(c.ask)])) as Record<CheckId, typeof Check>);
+export type ShotChecks = z.infer<typeof Checks>;
+
+/** Kanıt sayılmayan, her kareye yazılabilecek geçiştirme yanıtları. */
+const GENERIC = /^(ok|okay|fine|good|great|none|nothing( wrong| to report)?|n\/?a|na|pass(ed)?|yes|no|no (issues?|problems?|defects?)( found| seen| visible)?|looks? (fine|good|ok))[.!]?$/i;
+/** Kanıtın en kısa uzunluğu (karakter): "No text on screen." gibi bir gözlem sığar, "ok" sığmaz. */
+export const MIN_EVIDENCE = 12;
+
+/** Altyazı gömülmüyorsa altyazı alanı maddesi uygulanmaz (denetçi yine de "fail" derse sayılmaz). */
+export function settleChecks(checks: ShotChecks, subtitles: boolean): ShotChecks {
+  return subtitles ? checks : { ...checks, text_on_subtitles: { evidence: "No burned-in subtitles in this video.", verdict: "na" } };
+}
+
+/**
+ * Yanıt gerçekten kontrol edilmiş mi: her madde var, kanıtı gözlem (geçiştirme değil), her karede bakılacak madde
+ * "uygulanmaz" değil. Sorun varsa nedeni, yoksa undefined. Geçersiz kare denetlenmemiş sayılır (yeniden istenir).
+ */
+export function checklistProblem(checks: Partial<Record<CheckId, CheckAnswer>> | undefined): string | undefined {
+  for (const c of REVIEW_CHECKS) {
+    const a = checks?.[c.id];
+    if (!a) return `${c.id}: missing`;
+    const evidence = a.evidence.trim();
+    if (evidence.length < MIN_EVIDENCE || GENERIC.test(evidence)) return `${c.id}: no evidence ("${evidence}")`;
+    if (c.always && a.verdict === "na") return `${c.id}: na is not allowed`;
+  }
+  return undefined;
+}
+
+/** Kontrol listesinden puan: 10'dan başlar, ağır kusur DRAFT_REVIEW.major, hafif kusur DRAFT_REVIEW.minor düşürür. */
+export function checklistScore(checks: ShotChecks): number {
+  const lost = REVIEW_CHECKS.reduce((n, c) => n + (checks[c.id].verdict === "fail" ? (c.severity === "major" ? DRAFT_REVIEW.major : DRAFT_REVIEW.minor) : 0), 0);
+  return Math.max(0, 10 - lost);
+}
+
+/** Kalan maddeler sorun olarak (bulgular, kalite görünümü, dersler ve yeniden plan notu bunları okur). */
+export function checklistIssues(checks: ShotChecks): { type: CheckId; detail: string }[] {
+  return REVIEW_CHECKS.filter((c) => checks[c.id].verdict === "fail").map((c) => ({ type: c.id, detail: checks[c.id].evidence.trim() }));
+}
+
 export const SceneCriticOut = z.object({
   shots: z.array(
     z.object({
       shotId: z.string(),
-      score: z.number().int().min(0).max(10).describe("How good the frame is as a video frame, 10 = great"),
-      issues: z.array(z.object({ type: ShotIssueType, detail: z.string() })),
+      checks: Checks.describe("Every check for this frame, each with evidence from the frame and a verdict"),
     }),
   ),
   lessons: z
@@ -73,15 +141,14 @@ export function sceneCritic(
 The channel chose the art style and the palette: a monochrome, sepia, grey, pencil or otherwise limited palette and the style's own texture (grain, screentone, paper, hatching) are intended, not problems. Do not report them and do not give lessons about the palette or the style; report colour only when a subject or a text cannot be told apart from what is behind it.
 ${MOTION_REVIEW_POLICY}
 ${styleCraftBlock(style?.craftPreset ?? style?.pack, true)}${customStyleBlock(style, true)}
-Report only problems a viewer would notice:
-- text_overlap: on-screen texts overlap each other or a face; ${subtitles ? "text_on_subtitles: text sits in the bottom quarter where subtitles go; " : ""}unreadable_text: low contrast or tiny.
-- cluttered: too many elements or a busy background competing with the subject; empty: nothing meaningful on screen.
-- character_cut_off / character_floating / wrong_scale: placement problems; backdrop_box: a character or prop shows its own rectangle/disc background.
-- repetitive: looks the same as the previous frames (same colours, same layout); off_story: does not match the intent.
+Check every frame against the whole checklist; for EVERY image answer EVERY check in "checks". For each check, first write the evidence: what you actually see in that frame that decides it (name the thing and where it is; for a fail, the problem and where), then the verdict: pass, fail, or na where the check allows it. Look at the frame for each check; an answer that could be written without looking ("ok", "fine", "no issues") is rejected and the frame is asked again. Every evidence, na included, is a short phrase of at least ${MIN_EVIDENCE} characters naming what you saw, e.g. "There is no on-screen text in this frame." or "Ada stands on the floor beside the desk.", never "None" or "No text.". You give no score: the code counts the failed checks. Fail a check only for a problem a viewer would notice at normal viewing; small imperfections pass. The verdict follows your own evidence: when the evidence names such a problem (something missing, wrong, cut, covered or not matching the narration), the verdict is fail; never describe a problem and pass it.${subtitles ? "" : " This video has no burned-in subtitles: text_on_subtitles is na."}
+The checks:
+${REVIEW_CHECKS.map((c) => `- ${c.id}: ${c.ask}${c.always ? " (never na)" : ""}`).join("\n")}
+Here and above, "report" means fail the matching check, and "do not report" means that check passes for that reason.
 The camera behaves like a real lens: in medium and close shots the wall, extras and people far in front of or behind the subject are deliberately soft (depth of field), objects moving fast (sliding in, popping up, shaking) and scene transitions show motion blur, and screens glow slightly. Do not report that softness; report blur only when the subject itself, a speaking person or a text the shot is about cannot be read. A round magnifier inset with a thin dashed pointer is also drawn by code on purpose: it enlarges a small narrated prop (the prop itself stays in place, so the copy is intended). Do not report it as an inset, overlay, disc, duplicate or second focal point and give no lesson against it; report it only when it covers a face, the subject or a text. Shot sizes follow film grammar: a medium shot frames people from the knee, thigh or waist up and a close-up from the chest up, so legs, shins and feet that are wholly below the frame edge are intended there, not character_cut_off; do not write that the legs run off the bottom edge or that the feet or shins are cut off, and give no lesson asking for feet in frame. Report a cut only when a head or face is cut, a person shows as a sliver at a side edge, or the bottom edge crosses a lower leg so that only part of a shin or a foot shows. Names follow documentary practice: code shows a person's name tag where they first appear, so a later frame without a name label is fine; do not report missing name labels and give no lesson asking for them.
 lessons: up to 3 general rules (not about a single shot) for the director (layout, texts, mood), the designer (drawing assets) or the script, only if a problem appears in several shots. Skip rules already known:
 ${known.map((k) => `- ${k}`).join("\n") || "- (none yet)"}`,
-      prompt: shots.map((s, i) => `Image ${i + 1} = ${s.shotId}: ${s.intent}`).join("\n"),
+      prompt: `${shots.map((s, i) => `Image ${i + 1} = ${s.shotId}: ${s.intent}`).join("\n")}\nAnswer all ${REVIEW_CHECKS.length} checks for each of the ${shots.length} image(s).`,
     },
     deps,
   );

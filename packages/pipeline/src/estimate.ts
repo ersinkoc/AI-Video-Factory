@@ -57,7 +57,10 @@ const QA = { usd: 0.0012, ms: 3_000, redrawRate: 0.45 };
  * sahne yönetmeni ~$0.14/sahne (10 dk bölümde ~$0.04); ikisinin arası alındı. Üçüncü ölçüm (30 Eki, Pony Express, referans
  * görselli): karakter ilk çizimi (Opus) $0.10–0.21, ort. ~$0.15; mekân (Sonnet) ~$0.04; kapı denetimi çizim başı ~$0.002.
  */
-const VECTOR = { characterUsd: 0.15, backgroundUsd: 0.04, assetSec: 30, sceneUsd: 0.1, sceneSec: 36, propUsd: 0.017, propSec: 12, propsPerScene: 2, renderX: 1.9, reviseRate: 0.4, retryRate: 0.5 };
+// reviseRate/retryRate (8 barajı, 13 Kas ölçümü): tezgâhın 30 karesini kontrol listeli denetçi iki ölçümde %73 oranında
+// 8 ve üstü puanladı (eski genel puanla 0). Sahne başına ortalama 4,7 kare: sahnelerin ~%80'i ilk denetimde en az bir
+// geçemeyen kare taşır. Yeniden planın geçme oranı henüz ölçülmedi; çoğunun bir tur daha alacağı varsayılır.
+const VECTOR = { characterUsd: 0.15, backgroundUsd: 0.04, assetSec: 30, sceneUsd: 0.1, sceneSec: 36, propUsd: 0.017, propSec: 12, propsPerScene: 2, renderX: 1.9, reviseRate: 0.8, retryRate: 0.8 };
 
 /**
  * Kalite kapısı (30 Eki): her SVG kullanılmadan önce iki ucuz görsel çağrıyla (kör tahmin + kapı, Haiku) denetlenir;
@@ -83,8 +86,11 @@ const SET_DRESSING = { agentUsd: 0.02, agentSec: 20 };
 
 const withReality = (drawUsd: number) => GATE.planUsd + drawUsd * (1 + GATE.extraDraws) + GATE.checkUsd * (1 + GATE.extraDraws);
 
-/** Render sonrası inceleme. Henüz ölçülmedi: kare denetiminin (Haiku, ~$0.001/görsel) 6 karelik grubundan tahmin. */
-const REVIEW = { perBatch: 6, batchUsd: 0.006, batchSec: 8, stillSec: 0.8 };
+/**
+ * Kare denetimi. 13 Kas ölçümü: kontrol listeli denetçi (Haiku 5.5) kare başına ~$0.0015 (30 kare $0.044–0.046; her kare
+ * için 13 madde kanıtıyla), grup en çok 4 kare (DRAFT_REVIEW.batch).
+ */
+const REVIEW = { perBatch: DRAFT_REVIEW.batch, batchUsd: 0.006, batchSec: 14, stillSec: 0.8 };
 /** Yayın paketi: tek yazım çağrısı (başlık, açıklama, bölümler, etiketler) + yerel küçük resim karesi. */
 const PACKAGE = { usd: 0.03, sec: 25 };
 

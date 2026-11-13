@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AssetRejectedError, type EpisodeState, type PlannedShotState } from "../src/index.ts";
+import { AssetRejectedError, draftBelow, isApproved, type EpisodeState, type PlannedShotState } from "../src/index.ts";
 import { ICONIC_PROP } from "../src/pipeline.ts";
-import { callsOf, geo, onAgent, refs, render, resetFakes } from "./pipeline-fakes.ts";
+import { callsOf, checked, geo, onAgent, refs, render, resetFakes, scored } from "./pipeline-fakes.ts";
 import { CAST, CHARACTER_SVG, harness, makeState, PROP_SVG, ROOM_SVG, SCRIPT, STYLE, voiceOf, vshot, type Harness } from "./pipeline-harness.ts";
 
 vi.mock("@ys/agents", async (orig) => (await import("./pipeline-fakes.ts")).mockAgents(await orig()));
@@ -430,10 +430,10 @@ it("sends deliberate archive inserts and structured shot intent to the frame rev
   state.archives = { [first.id]: { key: "archive.jpg", mimeType: "image/jpeg", source, width: 1, height: 1, downloadedAt: "t", originalSha256: "hash" } };
   await h.store.put("archive.jpg", Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==", "base64")); await h.pipeline.save(state);
   onAgent("sceneCritic", (items: { shotId: string; intent: string }[]) => {
-    return { shots: items.map((i) => ({ shotId: i.shotId, score: 8, issues: [] })), lessons: [] };
+    return { shots: items.map((i) => scored(i.shotId, 8)), lessons: [] };
   });
   await h.pipeline.run(id, { only: "keyframes" });
-  const item = (callsOf("sceneCritic")[0]!.args[0] as { shotId: string; intent: string }[]).find((i) => i.shotId === first.id)!;
+  const item =(callsOf("sceneCritic")[0]!.args[0] as { shotId: string; intent: string }[]).find((i) => i.shotId === first.id)!;
   expect(item.intent).toContain("Intentional real archive photograph/document insert"); expect(item.intent).toContain("Original document remains visible");
 });
 
@@ -659,8 +659,15 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     agents();
     render.stills.mockRejectedValueOnce(new Error("tarayıcı açılamadı\nayrıntı"));
     const id = await keyframeReady(h, {}, { vectorProps: {} });
-    await h.pipeline.run(id, { only: "keyframes" });
+    const state = await h.pipeline.run(id, { only: "keyframes" });
     expect(h.logs).toContain("  ⚠ taslak kareler çıkarılamadı, taslak denetimi atlandı: tarayıcı açılamadı");
+    // Denetlenemeyen taslak geçmiş sayılmaz: her sahne barajın altında, render (otomatik onaylı da olsa) onay bekler.
+    expect(state.draftReview).toMatchObject({ rubric: 1, shots: {}, avg: 0, revisedScenes: [] });
+    expect(draftBelow(state)).toEqual([
+      { sceneId: "s1", worst: null, unreviewed: 2 },
+      { sceneId: "s2", worst: null, unreviewed: 1 },
+    ]);
+    expect(h.logs).toContain("  ⚠ 8 barajını geçemeyen sahneler (en kötü kare, ? = denetlenemedi): s1 (?), s2 (?); render onayını bekleyecek");
     render.stills.mockRejectedValueOnce("düz");
     await h.pipeline.run(id, { only: "keyframes" });
     expect(h.logs).toContain("  ⚠ taslak kareler çıkarılamadı, taslak denetimi atlandı: düz");
@@ -672,13 +679,17 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     h.store.putJsonSync("library/lessons.json", { lessons: [{ target: "designer", rule: "Thick outlines", count: 1, firstSeen: "x", lastSeen: "x", episodes: [] }] });
     onAgent("sceneCritic", (items: { shotId: string }[], known: string[]) => {
       expect(known).toEqual(["Thick outlines"]);
-      return { shots: items.map((i) => ({ shotId: i.shotId, score: 8, issues: [] })), lessons: [] };
+      return { shots: items.map((i) => scored(i.shotId, 8)), lessons: [] };
     });
     const id = await keyframeReady(h, {}, { vectorProps: {} });
     const state = await h.pipeline.run(id, { only: "keyframes" });
-    expect(state.draftReview).toMatchObject({ avg: 8, revisedScenes: [] });
+    // 8 barajı tam sınırda geçilir: iki hafif kusur yeniden plan gerektirmez. s2-sh1'in vektörü yok, karesi çıkmaz:
+    // denetlenemeyen kare geçmiş sayılmaz, yalnız o sahne render onayını tutar (yeniden planlanmaz, bulgusu yok).
+    expect(state.draftReview).toMatchObject({ rubric: 1, avg: 8, revisedScenes: [] });
+    expect(draftBelow(state)).toEqual([{ sceneId: "s2", worst: null, unreviewed: 1 }]);
     expect(Object.keys(state.stills!).sort()).toEqual(["s1-sh1", "s1-sh2"]);
     expect(h.logs).toContain("  taslak: 2 kare, ortalama 8.0/10; yeniden planlanacak sahne: 0");
+    expect(h.logs).toContain("  ⚠ 8 barajını geçemeyen sahneler (en kötü kare, ? = denetlenemedi): s2 (?); render onayını bekleyecek");
     expect(callsOf("vectorDirector")).toHaveLength(0);
     // Tasarımcı dersleri de verildi (kütüphane defterinden).
   });
@@ -691,10 +702,10 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
         .filter((i) => i.shotId !== "s1-sh2")
         .map((i) =>
           i.intent.startsWith("fixed")
-            ? { shotId: i.shotId, score: 9, issues: [] }
+            ? checked(i.shotId)
             : i.shotId === "s1-sh1"
-              ? { shotId: i.shotId, score: 4, issues: [{ type: "character_floating", detail: "floats" }] }
-              : { shotId: i.shotId, score: 9, issues: i.shotId.startsWith("s2") ? [{ type: "repetitive", detail: "same pose" }] : [] },
+              ? checked(i.shotId, { character_floating: "Ada floats above the floor" })
+              : checked(i.shotId, i.shotId.startsWith("s2") ? { repetitive: "same pose as the frame before" } : {}),
         ),
       lessons: [],
     }));
@@ -733,17 +744,20 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     // Yönetmen sahnenin taslak karelerini çekim sırasıyla görür.
     expect(asked.images.map((i) => i.mimeType)).toEqual(["image/jpeg", "image/jpeg", "image/jpeg"]);
     expect(feedback.split("\n")).toEqual([
-      "- shot 1 (score 4): character_floating: floats; code had to fix: layer 0: piksel konumu derinliğe çevrildi",
+      "- shot 1 (score 7): character_floating: Ada floats above the floor; code had to fix: layer 0: piksel konumu derinliğe çevrildi",
       "- shot 2 (score ?): code had to fix: layer 0: piksel konumu derinliğe çevrildi",
     ]);
-    // Son kontrol: yalnız yeni plan denetlenir, puanı yükseldiği için kalır; ölen çekimlerin puanı silinir.
+    // Tek bir ağır kusur (7) sahneyi barajın altında bırakır; s2'nin hafif kusuru (9) geçer, yeniden planlanmaz.
+    expect(callsOf("vectorDirector")).toHaveLength(1);
+    // Son kontrol: yalnız yeni plan denetlenir, geçemeyen kare kalmadığı için kalır; ölen çekimlerin puanı silinir.
     expect(callsOf("sceneCritic").at(-1)!.args[0]).toEqual([expect.objectContaining({ shotId: "s1-sh1", intent: expect.stringMatching(/^fixed/) })]);
-    expect(state.draftReview).toMatchObject({ revisedScenes: ["s1"], avg: 9 });
+    expect(state.draftReview).toMatchObject({ rubric: 1, revisedScenes: ["s1"], avg: 9.5 });
     expect(Object.keys(state.draftReview!.shots).sort()).toEqual(["s1-sh1", "s2-sh1"]);
     expect(h.logs).toContain("  s1 (düzeltme): 1 çekim, 1 yeni nesne, 0 yeni mekân");
     expect(h.logs).toContain("  son kontrol (tur 1): s1 sahnesinin yeni kareleri denetleniyor");
-    expect(h.logs).toContain("  s1: yeni plan kaldı (6.5 → 9.0/10)");
-    expect(h.logs).toContain("  son kontrol: ortalama 9.0/10, 1 sahnenin yeni planı kaldı");
+    expect(h.logs).toContain("  s1: yeni plan kaldı (8.5 → 10.0/10)");
+    expect(h.logs).toContain("  son kontrol: ortalama 9.5/10, 1 sahnenin yeni planı kaldı");
+    expect(draftBelow(state)).toEqual([]);
     // Yeni plan: s1 tek çekim; s2 planı olduğu gibi (klip çekimi planda yok, düşer).
     expect(state.shots!.map((s) => s.id)).toEqual(["s1-sh1", "s2-sh1"]);
     expect(state.shotPlan!.scenes[0]!.shots).toHaveLength(1);
@@ -766,11 +780,11 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     });
   };
 
-  it("son kontrol: puanı düşen yeni plan geri alınır; ikinci turda atılan deneme yönetmene söylenir", async () => {
+  it("son kontrol: kötüleşen yeni plan geri alınır, atılan denemeler sonraki turlarda yönetmene söylenir; 3 turdan sonra geçemeyen sahne render onayını tutar", async () => {
     const h = harness();
     agents();
     h.store.putJsonSync("library/lessons.json", { lessons: [{ target: "director", rule: "Fill the frame", count: 1, firstSeen: "x", lastSeen: "x", episodes: [] }] });
-    // İlk deneme: kötü ve bulgulu (ikinci çekimi puansız döner); ikinci deneme: daha da kötü, bulgusuz.
+    // İlk deneme: daha kötü ve bulgulu (ikinci çekimi denetlenemez); sonraki denemeler: en kötü.
     onAgent("sceneCritic", (items: { shotId: string; intent: string }[], known: string[]) => {
       expect(known).toEqual(["Fill the frame"]);
       return {
@@ -778,11 +792,11 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
           .filter((i) => !i.intent.startsWith("worse b"))
           .map((i) =>
             i.intent.startsWith("worse a")
-              ? { shotId: i.shotId, score: 2, issues: [{ type: "empty", detail: "bare" }] }
-              : i.intent.startsWith("worst")
-                ? { shotId: i.shotId, score: 1, issues: [] }
-                : { shotId: i.shotId, score: i.shotId.startsWith("s1") ? 3 : 9, issues: [] },
-          ),
+              ? checked(i.shotId, { off_story: "shows a kitchen, not the lab", empty: "only a bare wall is visible", character_cut_off: "Ada's head is cut at the top" })
+              : scored(i.shotId, i.shotId.startsWith("s1") ? 3 : 9),
+          )
+          // Sonraki denemelerin karesi denetlenemez: geçemeyen pay aynı (hepsi), ortalama bilinmiyor → daha kötü sayılır.
+          .filter((a) => !items.find((i) => i.shotId === a.shotId)!.intent.startsWith("worst")),
         lessons: [],
       };
     });
@@ -804,16 +818,25 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     const state = await h.pipeline.run(id, { only: "keyframes" });
 
     const calls = callsOf("vectorDirector").map((c) => c.args[0] as { feedback: string; images: unknown[] });
-    expect(calls).toHaveLength(2);
-    // Geri alınan planın kareleri yerinde: ikinci turda da yönetmen eski planın iki karesini görür.
-    expect(calls.map((c) => c.images.length)).toEqual([2, 2]);
+    expect(calls).toHaveLength(3);
+    // Geri alınan planın kareleri yerinde: sonraki turlarda da yönetmen eski planın iki karesini görür.
+    expect(calls.map((c) => c.images.length)).toEqual([2, 2, 2]);
     expect(calls[0]!.feedback).not.toContain("earlier re-plan");
-    expect(calls[1]!.feedback).toContain(
-      "An earlier re-plan scored 2.0 against the current plan's 3.0 and was discarded. It planned: shot 1: worse a | shot 2: worse b. Its problems: shot 1 empty: bare. Take a different approach.",
-    );
-    expect(h.logs).toContain("  s1: yeni plan daha kötü (3.0 → 2.0/10), eski plan geri alındı");
+    const first =
+      "An earlier re-plan scored 1.0 against the current plan's 3.0 and was discarded. It planned: shot 1: worse a | shot 2: worse b. Its problems: shot 1 off_story: shows a kitchen, not the lab; shot 1 empty: only a bare wall is visible; shot 1 character_cut_off: Ada's head is cut at the top. Take a different approach.";
+    expect(calls[1]!.feedback).toContain(first);
+    expect(calls[2]!.feedback).toContain(first);
+    expect(calls[2]!.feedback).toContain("An earlier re-plan scored ? against the current plan's 3.0 and was discarded. It planned: shot 1: worst. Take a different approach.");
     expect(h.logs).toContain("  s1: yeni plan daha kötü (3.0 → 1.0/10), eski plan geri alındı");
-    expect(h.logs).toContain("  son kontrol (tur 2): s1 sahnesinin yeni kareleri denetleniyor");
+    expect(h.logs).toContain("  s1: yeni plan daha kötü (3.0 → ?/10), eski plan geri alındı");
+    expect(h.logs).toContain("  son kontrol (tur 3): s1 sahnesinin yeni kareleri denetleniyor");
+    expect(h.logs).not.toContain("  son kontrol (tur 4): s1 sahnesinin yeni kareleri denetleniyor");
+    // Turlar bitti, sahne hâlâ barajın altında: render otomatik onaylı bölümde de açık onay bekler.
+    expect(h.logs).toContain("  ⚠ 8 barajını geçemeyen sahneler (en kötü kare, ? = denetlenemedi): s1 (3); render onayını bekleyecek");
+    expect(draftBelow(state)).toEqual([{ sceneId: "s1", worst: 3, unreviewed: 0 }]);
+    expect(isApproved({ ...state, input: { ...state.input, autoApprove: true } }, "preview")).toBe(false);
+    expect(isApproved({ ...state, approvals: { preview: "t" } }, "preview")).toBe(true);
+    expect(isApproved({ ...state, input: { ...state.input, autoApprove: true } }, "script")).toBe(true);
     // Eski plan, çekimler, kareler ve puanlar geri geldi.
     expect(state.shotPlan!.scenes[0]!.shots).toEqual(plan);
     // (s2'nin planı boş: yeniden kurulan çekim listesinde yok.)
@@ -834,7 +857,7 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
       let n = 0;
       onAgent("sceneCritic", (items: { shotId: string }[]) => {
         if (n++ && fail === "critic") throw new Error("API hatası 429: limit");
-        return { shots: items.map((i) => ({ shotId: i.shotId, score: i.shotId.startsWith("s1") ? 3 : 9, issues: [] })), lessons: [] };
+        return { shots: items.map((i) => scored(i.shotId, i.shotId.startsWith("s1") ? 3 : 9)), lessons: [] };
       });
       onAgent("vectorDirector", () => ({ shots: [{ startWord: 0, description: "new", ambience: "none", spec: vshot({ layers: [] }) }], newProps: [], newBackgrounds: [] }));
       const id = await keyframeReady(h, {}, { vectorProps: {}, shotPlan: { scenes: [{ sceneId: "s1", shots: [] }, { sceneId: "s2", shots: [] }] } as never });
@@ -846,13 +869,15 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
       expect(state.shots!.map((s) => s.description)).toEqual(["new"]);
       expect(state.draftReview!.revisedScenes).toEqual(["s1"]);
       expect(h.logs).toContain("  önizleme: 1 çekim karesi");
+      // Yeni planın karesi denetlenemedi: sahne geçmiş sayılmaz, render onay bekler.
+      expect(draftBelow(state)).toEqual([{ sceneId: "s1", worst: null, unreviewed: 1 }]);
     }
   });
 
   it("yapımcının notu: yalnız notlu sahne notla yeniden planlanır, otomatik düzeltme turları yapılmaz, önizlemeler yenilenir, son kontrol puanlar", async () => {
     const h = harness();
     agents();
-    onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => ({ shotId: i.shotId, score: 7, issues: [] })), lessons: [] }));
+    onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => scored(i.shotId, 7)), lessons: [] }));
     // Normal çalıştırmada s2'yi yeniden planlatacak bir animasyon kusuru: notlu çalıştırmada denetim yapılmaz.
     lint.shot.mockImplementation((v) => (v.shotId === "s2-sh1" ? [{ code: "face_cut", shotId: "s2-sh1", detail: "x", replan: true }] : []));
     onAgent("vectorDirector", () => ({ shots: [{ startWord: 0, description: "map 1453", ambience: "none", spec: vshot({ layers: [] }) }], newProps: [], newBackgrounds: [] }));
@@ -885,9 +910,14 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     expect(state.review!.shots).toEqual({ "s0-x": { score: 9, issues: [] } });
     // Son kontrol: yalnız yeniden planlanan çekimler denetlenir, puanları taslak incelemesine yazılır; not geri alınmaz.
     expect(callsOf("sceneCritic")).toHaveLength(1);
-    expect(state.draftReview!.shots).toEqual({ "s1-sh1": { score: 7, issues: [] }, "s2-sh1": { score: 7, issues: [] } });
+    const seven = { score: 7, issues: [{ type: "off_story", detail: "off_story problem seen" }], checks: expect.objectContaining({ off_story: { evidence: "off_story problem seen", verdict: "fail" } }) };
+    expect(state.draftReview!.shots).toEqual({ "s1-sh1": seven, "s2-sh1": seven });
     expect(state.draftReview!.avg).toBe(7);
     expect(h.logs).toContain("  son kontrol: yeniden planlanan 2 kare, ortalama 7.0/10");
+    // Notla yeniden oluşturma otomatik tur yapmaz; barajın altında kalan sahneler render onayını tutar.
+    expect(state.draftReview!.rubric).toBe(1);
+    expect(draftBelow(state).map((b) => b.sceneId)).toEqual(["s1", "s2"]);
+    expect(h.logs).toContain("  ⚠ 8 barajını geçemeyen sahneler (en kötü kare, ? = denetlenemedi): s1 (7), s2 (7); render onayını bekleyecek");
     expect(lint.shot).not.toHaveBeenCalled();
     expect(state.replans).toBeUndefined();
     expect(state.shots!.map((s) => s.id)).toEqual(["s1-sh1", "s2-sh1"]);
@@ -898,6 +928,28 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     const fresh = await h.pipeline.run(bare, { only: "keyframes" });
     expect(h.logs.filter((l) => l.startsWith("  yapımcının notuyla"))).toHaveLength(2);
     expect(fresh.draftReview).toMatchObject({ lessons: [], revisedScenes: [], avg: 7 });
+  });
+
+  it("eski (kontrol listesiz) taslağı olan bölüm notla yeniden oluşturulunca rubrikli sayılmaz, render'da durmaz", async () => {
+    const h = harness();
+    agents();
+    onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => scored(i.shotId, 5)), lessons: [] }));
+    onAgent("vectorDirector", () => ({ shots: [{ startWord: 0, description: "n", ambience: "none", spec: vshot({ layers: [] }) }], newProps: [], newBackgrounds: [] }));
+    const shot = (id: string, sceneId: string, startMs: number) => ({ id, sceneId, kind: "still_motion", startMs, endMs: startMs + 500, description: "d", imagePrompt: "", motionPrompt: "", camera: "static", vector: vshot({ layers: [] }) });
+    const planned = { startWord: 0, characterIds: [], locationId: "", kind: "still_motion", description: "other", imagePrompt: "", motionPrompt: "", camera: "static", ambience: "none", vector: vshot({ layers: [] }) };
+    const id = await keyframeReady(h, {}, {
+      vectorProps: {},
+      shotPlan: { scenes: [{ sceneId: "s1", shots: [] }, { sceneId: "s2", shots: [planned] }] } as never,
+      shots: [shot("s1-sh1", "s1", 0), shot("s2-sh1", "s2", 2400)] as never,
+      replans: { s1: { note: "x", shots: [], at: "t" } },
+      // Eski genel puanlı kayıt (s2): yeniden planlanmadığı için kalır.
+      draftReview: { at: "t", lessons: [], avg: 6, revisedScenes: [], shots: { "s2-sh1": { score: 6, issues: [] } } },
+    });
+    const state = await h.pipeline.run(id, { only: "keyframes" });
+    expect(state.draftReview!.rubric).toBeUndefined();
+    expect(state.draftReview!.shots["s1-sh1"]!.checks).toBeDefined();
+    expect(draftBelow(state)).toEqual([]);
+    expect(isApproved({ ...state, input: { ...state.input, autoApprove: true } }, "preview")).toBe(true);
   });
 
   it("yapımcının notundan sonraki son kontrol yapılamazsa üretim sürer; kare denetimi kapalıysa yapılmaz", async () => {
@@ -928,13 +980,12 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     expect(callsOf("sceneCritic")).toHaveLength(calls);
   });
 
-  it("yalnız en kötü sahneler yeniden planlanır: en kötüden başlanır, sahnelerin en çok çeyreği", async () => {
+  it("barajı geçemeyen her sahne yeniden planlanır (eski %25 sınırı yok), en kötüden başlanır", async () => {
     const h = harness();
     agents();
     onAgent("sceneCritic", (items: { shotId: string; intent: string }[]) => ({
-      // s1-sh2 için kare dönmez: puanı bilinmeyen kare sıralamada en iyi sayılır. Yeni planın karesi de puansız döner:
-      // yeni plan kalır (karşılaştırılamaz), kötü sayılmadığı için ikinci tur yok.
-      shots: items.filter((i) => i.shotId !== "s1-sh2" && !i.intent.startsWith("x")).map((i) => ({ shotId: i.shotId, score: i.shotId.startsWith("s1") ? 4 : 2, issues: [] })),
+      // s1-sh2'nin karesi denetlenemez: sıralamada en kötü kareye etki etmez (s1'in en kötüsü 7).
+      shots: items.filter((i) => i.shotId !== "s1-sh2" || i.intent.startsWith("x")).map((i) => (i.intent.startsWith("x") ? checked(i.shotId) : scored(i.shotId, i.shotId === "s1-sh1" ? 7 : 4))),
       lessons: [],
     }));
     onAgent("vectorDirector", () => ({ shots: [{ startWord: 0, description: "x", ambience: "none", spec: vshot({ layers: [] }) }], newProps: [], newBackgrounds: [] }));
@@ -945,16 +996,55 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
       shots: [shot("s1-sh1", "s1", 0), shot("s1-sh2", "s1", 700), shot("s2-sh1", "s2", 2400)] as never,
     });
     const state = await h.pipeline.run(id, { only: "keyframes" });
-    // İki sahne de kötü ama 2 sahnenin çeyreği 1: yalnız en kötüsü (s2) yeniden planlanır.
-    expect(state.draftReview!.revisedScenes).toEqual(["s2"]);
-    expect(callsOf("vectorDirector")).toHaveLength(1);
-    expect(h.logs).toContain("  s2: yeni plan kaldı (2.0 → ?/10)");
+    expect(h.logs).toContain("  taslak: 2 kare, ortalama 5.5/10; yeniden planlanacak sahne: 2");
+    expect(h.logs).toContain("  son kontrol (tur 1): s2, s1 sahnesinin yeni kareleri denetleniyor");
+    expect(callsOf("vectorDirector")).toHaveLength(2);
+    expect(state.draftReview!.revisedScenes).toEqual(["s1", "s2"]);
+    expect(h.logs).toContain("  s2: yeni plan kaldı (4.0 → 10.0/10)");
+    expect(draftBelow(state)).toEqual([]);
+  });
+
+  it("yalnız denetlenemeyen karesi olan sahne yeniden planlanmaz (düzeltilecek bulgu yok) ama barajı geçmiş de sayılmaz", async () => {
+    const h = harness();
+    agents();
+    onAgent("sceneCritic", (items: { shotId: string; intent: string }[]) => ({
+      shots: items.filter((i) => !i.shotId.startsWith("s1") && !i.intent.startsWith("y")).map((i) => (i.intent.startsWith("x") ? checked(i.shotId) : scored(i.shotId, 4))),
+      lessons: [],
+    }));
+    // s2'nin yeni planı iki çekim: biri geçer (10), öbürü denetlenemez. Geçemeyen pay 1'den 1/2'ye iner: plan kalır,
+    // denetlenemeyen çekimin kaydı yoktur ve sahne barajda kalır.
+    onAgent("vectorDirector", () => ({
+      shots: [
+        { startWord: 0, description: "x", ambience: "none", spec: vshot({ layers: [] }) },
+        { startWord: 2, description: "y", ambience: "none", spec: vshot({ layers: [] }) },
+      ],
+      newProps: [],
+      newBackgrounds: [],
+    }));
+    const shot = (id: string, sceneId: string, startMs: number) => ({ id, sceneId, kind: "still_motion", startMs, endMs: startMs + 500, description: "a", imagePrompt: "", motionPrompt: "", camera: "static", vector: vshot({ layers: [] }) });
+    // s1'in planı korunur (yeniden plan çekim listesini plandan kurar): iki çekimi de denetlenemez.
+    const planned = (startWord: number) => ({ startWord, characterIds: [], locationId: "", kind: "still_motion", description: "kept", imagePrompt: "", motionPrompt: "", camera: "static", ambience: "none", vector: vshot({ layers: [] }) });
+    const id = await keyframeReady(h, {}, {
+      vectorProps: {},
+      shotPlan: { scenes: [{ sceneId: "s1", shots: [planned(0), planned(1)] }, { sceneId: "s2", shots: [] }] } as never,
+      shots: [shot("s1-sh1", "s1", 0), shot("s1-sh2", "s1", 700), shot("s2-sh1", "s2", 2400)] as never,
+    });
+    const state = await h.pipeline.run(id, { only: "keyframes" });
+    expect(callsOf("vectorDirector").map((c) => (c.args[0] as { scene: { id: string } }).scene.id)).toEqual(["s2"]);
+    expect(state.shots!.filter((s) => s.sceneId === "s1")).toHaveLength(2);
+    expect(state.shots!.filter((s) => s.sceneId === "s2").map((s) => s.description)).toEqual(["x", "y"]);
+    expect(h.logs).toContain("  s2: yeni plan kaldı (4.0 → 10.0/10)");
+    expect(draftBelow(state)).toEqual([
+      { sceneId: "s1", worst: null, unreviewed: 2 },
+      { sceneId: "s2", worst: null, unreviewed: 1 },
+    ]);
+    expect(h.logs).toContain("  ⚠ 8 barajını geçemeyen sahneler (en kötü kare, ? = denetlenemedi): s1 (?), s2 (?); render onayını bekleyecek");
   });
 
   it("planda sahnesi olmayan yeniden plan yok sayılır", async () => {
     const h = harness();
     agents();
-    onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => ({ shotId: i.shotId, score: 2, issues: [] })), lessons: [] }));
+    onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => scored(i.shotId, 2)), lessons: [] }));
     onAgent("vectorDirector", () => ({ shots: [{ startWord: 0, description: "x", ambience: "none", spec: vshot({ layers: [] }) }], newProps: [], newBackgrounds: [] }));
     const id = await keyframeReady(h, {}, { vectorProps: {}, shotPlan: { scenes: [] }, voice: { s1: voiceOf("s1") } });
     const state = await h.pipeline.run(id, { only: "keyframes" });
@@ -963,7 +1053,7 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     expect(state.shots).toEqual([]);
   });
 
-  it("hiçbir taslak kare denetlenemezse kayıt bırakılmaz, sahneler yeniden planlanmaz; kareler yine yazılır", async () => {
+  it("hiçbir taslak kare denetlenemezse sahneler yeniden planlanmaz ama hiçbiri geçmiş sayılmaz; eski kayıt kalmaz, kareler yine yazılır", async () => {
     const h = harness();
     agents();
     onAgent("sceneCritic", () => {
@@ -972,8 +1062,15 @@ describe("vektör taslak denetimi (kare denetimi açık)", () => {
     const old = { at: "t", lessons: [], avg: 9, revisedScenes: [], shots: { "s1-sh1": { score: 9, issues: [] } } };
     const id = await keyframeReady(h, {}, { vectorProps: {}, draftReview: old });
     const state = await h.pipeline.run(id, { only: "keyframes" });
-    expect(h.logs).toContain("  ⚠ taslak karelerin hiçbiri denetlenemedi, taslak denetimi atlandı: API hatası 429: limit");
-    expect(state.draftReview).toBeUndefined();
+    expect(h.logs).toContain("  ⚠ taslak karelerin hiçbiri denetlenemedi, sahneler yeniden planlanmadı: API hatası 429: limit");
+    expect(state.draftReview).toMatchObject({ rubric: 1, shots: {}, avg: 0 });
+    expect(draftBelow(state)).toEqual([
+      { sceneId: "s1", worst: null, unreviewed: 2 },
+      { sceneId: "s2", worst: null, unreviewed: 1 },
+    ]);
+    // Denetim kapalı bölümde baraj yoktur.
+    expect(draftBelow({ ...state, input: { ...state.input, qa: false } })).toEqual([]);
+    expect(draftBelow({ ...state, shots: undefined })).toEqual([]);
     expect(Object.keys(state.stills!).sort()).toEqual(["s1-sh1", "s1-sh2"]);
     expect(callsOf("vectorDirector")).toHaveLength(0);
   });
@@ -1201,7 +1298,7 @@ it("passes custom material and visible checks into the production critic", async
  const h = harness(); agents();
  const style = { ...STYLE, craftPreset: "paper-cutout", reviewRules: ["Readable short headings"] };
  const id = await keyframeReady(h, {}, { vectorProps: {}, style });
- onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => ({ shotId: i.shotId, score: 9, issues: [] })), lessons: [] }));
+ onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => scored(i.shotId, 9)), lessons: [] }));
  await h.pipeline.run(id, { only: "keyframes" });
  expect(callsOf("sceneCritic")[0]!.args[4]).toMatchObject({ craftPreset: "paper-cutout", reviewRules: style.reviewRules });
 });

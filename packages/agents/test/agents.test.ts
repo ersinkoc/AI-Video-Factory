@@ -14,7 +14,14 @@ import {
   models,
   planBlock,
   propPhysics,
+  REVIEW_CHECKS,
   sceneCritic,
+  SceneCriticOut,
+  checklistIssues,
+  checklistProblem,
+  checklistScore,
+  settleChecks,
+  type ShotChecks,
   scriptDoctor,
   screenwriter,
   storyArchitect,
@@ -201,20 +208,63 @@ describe("görsel denetçiler", () => {
     // İsim etiketi ilk görünüşte bir kez (8 Kas, IPv4: 30 çekimin 10'unda "Cerf'in isim etiketi yok"; 26 bölümde 90 not).
     expect(a.system).toContain("do not report missing name labels and give no lesson asking for them");
     expect(a.images).toEqual(["Aw==", "BA=="]);
-    expect(a.prompt).toBe("Image 1 = sh1: atlı\nImage 2 = sh2: çöl");
+    expect(a.prompt).toBe("Image 1 = sh1: atlı\nImage 2 = sh2: çöl\nAnswer all 13 checks for each of the 2 image(s).");
+    // Kontrol listesi (12 Kas): her madde komutta, önce kanıt sonra karar; puanı denetçi değil kod verir.
+    for (const c of REVIEW_CHECKS) expect(a.system).toContain(`- ${c.id}: ${c.ask}`);
+    expect(a.system).toContain("- off_story: Does the frame show what the shot is about");
+    expect(a.system).toContain("pass when nothing. (never na)");
+    expect(a.system).toContain("first write the evidence");
+    // 13 Kas ölçümü: denetçi "anlatılan başarı karede yok" yazıp maddeyi geçirmişti; karar kanıtı izler.
+    expect(a.system).toContain("The verdict follows your own evidence");
+    // Kanıt kuralı denetçiye de söylenir (kod reddeder; söylenmezse "No text." gibi yanıtlar kareyi denetlenmemiş bırakır).
+    expect(a.system).toContain('Every evidence, na included, is a short phrase of at least 12 characters naming what you saw, e.g. "There is no on-screen text in this frame."');
+    expect(a.system).toContain("You give no score: the code counts the failed checks.");
     const b = await capture((d) => sceneCritic(shots, ["Yazıyı üste koy"], d));
     expect(b.system).toContain("- Yazıyı üste koy");
     expect(b.system).not.toContain("(none yet)");
     expect(a.system).toContain("subtitles at the bottom");
-    expect(a.system).toContain("text_on_subtitles:");
+    expect(a.system).not.toContain("text_on_subtitles is na.");
     const c = await capture((d) => sceneCritic(shots, [], d, false));
     expect(c.system).toContain("no burned-in subtitles");
-    expect(c.system).not.toContain("text_on_subtitles:");
+    expect(c.system).toContain("This video has no burned-in subtitles: text_on_subtitles is na.");
     // Bölümün stili ve paleti verilir; paketin bilerek seçtiği palet kusur sayılmaz.
     expect(a.system).toContain("(flat vector style, ");
     const m = await capture((d) => sceneCritic(shots, [], d, true, { artStyle: "manga screentone", palette: ["#111111", "#eeeeee"] }));
     expect(m.system).toContain("(art style: manga screentone; palette: #111111, #eeeeee, subtitles at the bottom)");
     expect(m.system).toContain("not problems. Do not report them and do not give lessons about the palette or the style");
+  });
+
+  it("kontrol listesi: her madde şemada zorunlu, kanıt karardan önce; puanı ve bulguları kod çıkarır", () => {
+    const clean = Object.fromEntries(REVIEW_CHECKS.map((c) => [c.id, { evidence: `looked at ${c.id} closely`, verdict: "pass" }])) as ShotChecks;
+    // Şema bir maddeyi atlayan yanıtı kabul etmez; kanıt alanı karardan önce gelir (önce bakıp sonra karar).
+    const { wrong_scale: _dropped, ...partial } = clean;
+    expect(SceneCriticOut.safeParse({ shots: [{ shotId: "a", checks: partial }], lessons: [] }).success).toBe(false);
+    expect(SceneCriticOut.safeParse({ shots: [{ shotId: "a", checks: clean }], lessons: [] }).success).toBe(true);
+    expect(Object.keys(SceneCriticOut.shape.shots.element.shape.checks.shape.off_story.shape)).toEqual(["evidence", "verdict"]);
+
+    expect(checklistProblem(clean)).toBeUndefined();
+    expect(checklistScore(clean)).toBe(10);
+    expect(checklistIssues(clean)).toEqual([]);
+    // Ağır kusur −3, hafif −1; 8 = ağır kusur yok, en çok iki hafif kusur. Puan 0'ın altına inmez.
+    const fail = (ids: string[]) => ({ ...clean, ...Object.fromEntries(ids.map((id) => [id, { evidence: ` ${id} is wrong here `, verdict: "fail" }])) }) as ShotChecks;
+    expect(checklistScore(fail(["cluttered", "repetitive"]))).toBe(8);
+    expect(checklistScore(fail(["off_story"]))).toBe(7);
+    expect(checklistScore(fail(REVIEW_CHECKS.map((c) => c.id)))).toBe(0);
+    expect(checklistIssues(fail(["empty", "other"]))).toEqual([{ type: "empty", detail: "empty is wrong here" }, { type: "other", detail: "other is wrong here" }]);
+    // Uygulanmaz madde puanı düşürmez.
+    expect(checklistScore({ ...clean, text_overlap: { evidence: "There is no text in the frame.", verdict: "na" } })).toBe(10);
+
+    expect(checklistProblem(undefined)).toBe("off_story: missing");
+    expect(checklistProblem({ ...clean, empty: { evidence: "N/A", verdict: "pass" } })).toBe('empty: no evidence ("N/A")');
+    expect(checklistProblem({ ...clean, empty: { evidence: "no issues found", verdict: "pass" } })).toBe('empty: no evidence ("no issues found")');
+    expect(checklistProblem({ ...clean, cluttered: { evidence: "One clear subject: Ada.", verdict: "na" } })).toBe("cluttered: na is not allowed");
+    expect(checklistProblem({ ...clean, text_overlap: { evidence: "There is no text in the frame.", verdict: "na" } })).toBeUndefined();
+
+    // Altyazı gömülmüyorsa altyazı alanı maddesi uygulanmaz.
+    const flagged = fail(["text_on_subtitles"]);
+    expect(settleChecks(flagged, true)).toBe(flagged);
+    expect(settleChecks(flagged, false).text_on_subtitles).toEqual({ evidence: "No burned-in subtitles in this video.", verdict: "na" });
+    expect(checklistScore(settleChecks(flagged, false))).toBe(10);
   });
 
   it("ders küratörü kuralları indeksli listeler", async () => {

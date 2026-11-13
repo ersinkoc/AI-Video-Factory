@@ -7,7 +7,7 @@ import { EpisodeRepo } from "../src/actions.ts";
 import { applyPronunciationImpact, loadPronunciationBook, mutateSharedPronunciations, previewPronunciationImpact } from "../src/pronunciation-settings.ts";
 import { formatText, STYLE_PACKS } from "@ys/core";
 import { FRAME_RULES, levelOf, QuotaError, type EpisodeState } from "../src/index.ts";
-import { callsOf, onAgent, render, media, resetFakes } from "./pipeline-fakes.ts";
+import { callsOf, checked, onAgent, render, media, resetFakes, scored } from "./pipeline-fakes.ts";
 import { CAST, harness, makeState, scene, SCRIPT, STYLE, voiceOf } from "./pipeline-harness.ts";
 
 vi.mock("@ys/agents", async (orig) => (await import("./pipeline-fakes.ts")).mockAgents(await orig()));
@@ -1111,7 +1111,7 @@ describe("timeline, render ve inceleme", () => {
     expect(existsSync(state.render!.path.replace(/\.mp4$/, ".srt"))).toBe(false);
   });
 
-  it("inceleme: kareler 6'lık gruplarla denetlenir, dersler deftere yazılır", async () => {
+  it("inceleme: kareler 4'lük gruplarla kontrol listesine göre denetlenir, puanı kod hesaplar, dersler deftere yazılır", async () => {
     const h = harness();
     const none = await h.seed(makeState());
     await expect(h.pipeline.run(none, { only: "review" })).rejects.toThrow("timeline/shots yok");
@@ -1120,16 +1120,23 @@ describe("timeline, render ve inceleme", () => {
     const id = await ready(h);
     await h.pipeline.run(id, { only: "timeline" });
     onAgent("sceneCritic", (items: { shotId: string; intent: string }[]) => ({
-      shots: items.map((i) => ({ shotId: i.shotId, score: 6, issues: i.shotId === "s1-sh1" ? [{ type: "cluttered", detail: "x" }, { type: "cluttered", detail: "y" }] : [] })),
-      lessons: items.length === 6 ? [{ target: "director", rule: "Keep one focus per shot" }] : [],
+      // s1-sh1: bir ağır (−3) ve bir hafif (−1) kusur → 6; ötekiler temiz → 10.
+      shots: items.map((i) => (i.shotId === "s1-sh1" ? checked(i.shotId, { empty: "only a bare wall is visible", cluttered: "six signs compete with the desk" }) : checked(i.shotId))),
+      lessons: items.length === 4 ? [{ target: "director", rule: "Keep one focus per shot" }] : [],
     }));
     const state = await h.pipeline.run(id, { only: "review" });
     const batches = callsOf("sceneCritic").map((c) => c.args[0] as { shotId: string; intent: string }[]);
-    expect(batches.map((b) => b.length).sort()).toEqual([1, 6]);
+    expect(batches.map((b) => b.length).sort()).toEqual([3, 4]);
     expect(batches.flat().find((i) => i.shotId === "s1-sh1")!.intent).toBe('shot 0 | narration: "bir"');
     expect(Object.keys(state.stills!)).toHaveLength(7);
     expect(state.stills!["s1-sh1"]!.key).toMatch(new RegExp(`^assets/stills/${id}/s1-sh1-[0-9a-f]{12}\\.jpg$`));
-    expect(h.logs).toContain("  7 kare, ortalama 6.0/10; sorunlar: cluttered×2");
+    expect(state.review!.rubric).toBe(1);
+    expect(state.review!.shots["s1-sh1"]).toMatchObject({
+      score: 6,
+      issues: [{ type: "empty", detail: "only a bare wall is visible" }, { type: "cluttered", detail: "six signs compete with the desk" }],
+    });
+    expect(state.review!.shots["s1-sh1"]!.checks!.off_story).toEqual({ evidence: "looked at off_story in the frame", verdict: "pass" });
+    expect(h.logs).toContain("  7 kare, ortalama 9.4/10; sorunlar: empty×1, cluttered×1");
     expect(h.logs).toContain("  ders (director): Keep one focus per shot");
     expect(callsOf("sceneCritic")[0]!.args[1]).toEqual(["No floating people"]);
     expect(h.store.json("library/lessons.json").lessons.map((l: { rule: string }) => l.rule)).toEqual(["No floating people", "Keep one focus per shot"]);
@@ -1141,7 +1148,7 @@ describe("timeline, render ve inceleme", () => {
     const id = await ready(h);
     await h.pipeline.run(id, { only: "timeline" });
     onAgent("sceneCritic", (items: { shotId: string }[]) => ({
-      shots: items.map((i) => ({ shotId: i.shotId, score: 5, issues: [{ type: "text_on_subtitles", detail: "feet" }, { type: "empty", detail: "wall" }] })),
+      shots: items.map((i) => checked(i.shotId, { text_on_subtitles: "the label sits in the bottom quarter", empty: "only a bare wall is visible" })),
       lessons: [],
     }));
     const on = await h.pipeline.run(id, { only: "review" });
@@ -1150,7 +1157,8 @@ describe("timeline, render ve inceleme", () => {
     // Bölümün stili ve paleti denetçiye gider: paketin bilerek seçtiği palet kusur sayılmasın.
     const styled = await h.pipeline.load(id);
     expect(callsOf("sceneCritic")[0]!.args[4]).toEqual({ artStyle: styled.style!.artStyle, palette: styled.style!.palette, pack: styled.style!.pack });
-    expect(on.review!.shots["s1-sh1"]!.issues.map((i) => i.type)).toEqual(["text_on_subtitles", "empty"]);
+    // Bulgular kontrol listesinin sırasıyla.
+    expect(on.review!.shots["s1-sh1"]!.issues.map((i) => i.type)).toEqual(["empty", "text_on_subtitles"]);
 
     const s = await h.pipeline.load(id);
     s.input.captions = false;
@@ -1161,6 +1169,10 @@ describe("timeline, render ve inceleme", () => {
     expect(render.stills.mock.calls.at(-1)![0].timeline.speech.length).toBeGreaterThan(0);
     expect(callsOf("sceneCritic").at(-1)!.args[3]).toBe(false);
     expect(off.review!.shots["s1-sh1"]!.issues.map((i) => i.type)).toEqual(["empty"]);
+    // Altyazısız videoda madde uygulanmaz sayılır ve puanı düşürmez (iki ağır kusur 4, biri düşünce 7).
+    expect(on.review!.shots["s1-sh1"]!.score).toBe(4);
+    expect(off.review!.shots["s1-sh1"]!.score).toBe(7);
+    expect(off.review!.shots["s1-sh1"]!.checks!.text_on_subtitles!.verdict).toBe("na");
     // Anlatım yine denetçiye gider (altyazı yalnız kareden çıkar).
     const items = callsOf("sceneCritic").slice(-2).flatMap((c) => c.args[0] as { shotId: string; intent: string }[]);
     expect(items.find((i) => i.shotId === "s1-sh1")!.intent).toBe('shot 0 | narration: "bir"');
@@ -1170,7 +1182,7 @@ describe("timeline, render ve inceleme", () => {
     const h = harness();
     const id = await ready(h);
     await h.pipeline.run(id, { only: "timeline" });
-    onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => ({ shotId: i.shotId, score: 7, issues: [] })), lessons: [] }));
+    onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => scored(i.shotId, 7)), lessons: [] }));
     const complete = await h.pipeline.run(id, { only: "review" });
     expect(Object.keys(complete.review!.shots)).toHaveLength(7);
     expect(complete.done.review).toBeDefined();
@@ -1180,10 +1192,10 @@ describe("timeline, render ve inceleme", () => {
     expect(callsOf("sceneCritic")).toHaveLength(2);
 
     onAgent("sceneCritic", (items: { shotId: string }[]) => {
-      if (items.length === 6) throw new Error("critic yok");
-      return { shots: items.map((i) => ({ shotId: i.shotId, score: 7, issues: [] })), lessons: [] };
+      if (items.length === 4) throw new Error("critic yok");
+      return { shots: items.map((i) => scored(i.shotId, 7)), lessons: [] };
     });
-    await expect(h.pipeline.run(id, { only: "review" })).rejects.toThrow("İnceleme eksik: 1/7 kare incelendi");
+    await expect(h.pipeline.run(id, { only: "review" })).rejects.toThrow("İnceleme eksik: 3/7 kare incelendi");
     expect(h.logs).toContain("  inceleme grubu atlandı: critic yok");
     const pending = await h.load(id);
     expect(pending.done.review).toBeUndefined();
@@ -1217,13 +1229,13 @@ describe("timeline, render ve inceleme", () => {
     await h.pipeline.run(id, { only: "timeline" });
     for (const mode of ["empty", "omitted", "foreign"]) {
       onAgent("sceneCritic", (items: { shotId: string }[]) => ({
-        shots: mode === "empty" ? [] : mode === "foreign" ? [{ shotId: "unknown", score: 10, issues: [] }] : items.slice(1).map((i) => ({ shotId: i.shotId, score: 7, issues: [] })),
+        shots: mode === "empty" ? [] : mode === "foreign" ? [checked("unknown")] : items.slice(1).map((i) => scored(i.shotId, 7)),
         lessons: [],
       }));
       await expect(h.pipeline.run(id, { only: "review" })).rejects.toThrow("İnceleme eksik:");
       expect((await h.load(id)).done.review).toBeUndefined();
     }
-    onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => ({ shotId: i.shotId, score: 7, issues: [] })), lessons: [] }));
+    onAgent("sceneCritic", (items: { shotId: string }[]) => ({ shots: items.map((i) => scored(i.shotId, 7)), lessons: [] }));
     const complete = await h.pipeline.run(id, { only: "review" });
     expect(Object.keys(complete.review!.shots)).toHaveLength(7);
     expect(complete.done.review).toBeDefined();
@@ -1237,9 +1249,9 @@ describe("timeline, render ve inceleme", () => {
     let first = true;
     onAgent("sceneCritic", (items: { shotId: string }[]) => {
       // İlk turda ilk grubun ilk karesi yanıtta yok; ikinci turda hepsi var.
-      const drop = first && items.length === 6;
+      const drop = first && items.length === 4;
       if (drop) first = false;
-      return { shots: (drop ? items.slice(1) : items).map((i) => ({ shotId: i.shotId, score: 7, issues: [] })), lessons: [] };
+      return { shots: (drop ? items.slice(1) : items).map((i) => scored(i.shotId, 7)), lessons: [] };
     });
     const done = await h.pipeline.run(id, { only: "review" });
     expect(Object.keys(done.review!.shots)).toHaveLength(7);
@@ -1247,6 +1259,35 @@ describe("timeline, render ve inceleme", () => {
     expect(h.logs).toContain("  incelenmeyen 1 kare yeniden inceleniyor");
     // Yeniden deneme yalnız eksik kareyi gönderir.
     expect((callsOf("sceneCritic").at(-1)!.args[0] as unknown[]).length).toBe(1);
+  });
+
+  it("gerçekten bakılmamış kontrol listesi (eksik madde, kanıtsız karar, her karede bakılacak maddeye 'uygulanmaz') kabul edilmez, kare bir kez daha istenir", async () => {
+    const h = harness();
+    const id = await ready(h);
+    await h.pipeline.run(id, { only: "timeline" });
+    const lazy = (shotId: string, n: number) => {
+      const a = checked(shotId) as { shotId: string; checks: Record<string, { evidence: string; verdict: string } | undefined> };
+      if (n === 0) delete a.checks.wrong_scale;
+      if (n === 1) a.checks.cluttered = { evidence: "ok", verdict: "pass" };
+      if (n === 2) a.checks.other = { evidence: "  Looks fine.  ", verdict: "pass" };
+      if (n === 3) a.checks.off_story = { evidence: "the frame shows the desk and Ada", verdict: "na" };
+      return a;
+    };
+    let round = 0;
+    onAgent("sceneCritic", (items: { shotId: string }[]) => {
+      // İlk turda ilk grubun dört karesi dört ayrı biçimde geçersiz; yeniden istenince düzgün.
+      const first = round++ === 0;
+      return { shots: items.map((i, n) => (first ? lazy(i.shotId, n) : checked(i.shotId))), lessons: [] };
+    });
+    const done = await h.pipeline.run(id, { only: "review" });
+    expect(Object.keys(done.review!.shots)).toHaveLength(7);
+    for (const line of [
+      "  ⚠ s1-sh1 karesinin kontrol listesi geçersiz (wrong_scale: missing); denetlenmemiş sayıldı",
+      '  ⚠ s1-sh2 karesinin kontrol listesi geçersiz (cluttered: no evidence ("ok")); denetlenmemiş sayıldı',
+      '  ⚠ s1-sh3 karesinin kontrol listesi geçersiz (other: no evidence ("Looks fine.")); denetlenmemiş sayıldı',
+      "  incelenmeyen 4 kare yeniden inceleniyor",
+    ]) expect(h.logs).toContain(line);
+    expect(h.logs.some((l) => l.includes("off_story: na is not allowed"))).toBe(true);
   });
 
 });

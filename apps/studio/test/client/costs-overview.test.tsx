@@ -305,6 +305,11 @@ describe("OverviewTab", () => {
     expect(screen.getByText("2.0").className).toContain("text-bad");
     rerender(<OverviewTab data={makeData(makeState({ review: { at: "x", shots: {}, lessons: [] } }))} />);
     expect(screen.getByText("0.0")).toBeTruthy();
+    // Kontrol listeli kayıtta zayıf = 8 barajının altı (7 zayıf, 9 değil); eski kayıtta 6'nın altı.
+    const checks = { off_story: { evidence: "Ada at her desk, as narrated", verdict: "pass" as const } };
+    const listed = { at: "x", rubric: 1, lessons: [], shots: { a: { score: 7, issues: [], checks }, b: { score: 9, issues: [], checks }, c: { score: 7, issues: [] } } };
+    rerender(<OverviewTab data={makeData(makeState({ review: listed }))} />);
+    expect(screen.getByText(tr("ov.weak"), { exact: false }).textContent).toBe(`${tr("ov.weak")}: 1 / 3`);
   });
 
   it("bilinmeyen ses ve sağlayıcı yoksa ses satırı tire", () => {
