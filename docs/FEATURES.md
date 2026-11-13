@@ -140,7 +140,7 @@ later episodes follow; a lesson never overrides a style's palette.
 Before the render a draft review does the same on preview frames, against a checklist: for every frame the
 critic answers each check (shows what is narrated, the frame has content, nobody cut off or floating, no
 backdrop box, texts clear of each other and of the subtitles and readable, scale, clutter, repetition, the
-narrated action, anything else broken), first writing what it saw in that frame, and the code scores the frame
+narrated action, anatomy judged against the art style, anything else broken), first writing what it saw in that frame, and the code scores the frame
 (10, minus 3 for each major and 1 for each minor failure). An answer without real evidence is rejected and the
 frame asked again. A scene passes only when every frame was checked and scored 8 or more.
 

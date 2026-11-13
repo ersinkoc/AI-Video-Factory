@@ -208,7 +208,7 @@ describe("görsel denetçiler", () => {
     // İsim etiketi ilk görünüşte bir kez (8 Kas, IPv4: 30 çekimin 10'unda "Cerf'in isim etiketi yok"; 26 bölümde 90 not).
     expect(a.system).toContain("do not report missing name labels and give no lesson asking for them");
     expect(a.images).toEqual(["Aw==", "BA=="]);
-    expect(a.prompt).toBe("Image 1 = sh1: atlı\nImage 2 = sh2: çöl\nAnswer all 13 checks for each of the 2 image(s).");
+    expect(a.prompt).toBe("Image 1 = sh1: atlı\nImage 2 = sh2: çöl\nAnswer all 14 checks for each of the 2 image(s).");
     // Kontrol listesi (12 Kas): her madde komutta, önce kanıt sonra karar; puanı denetçi değil kod verir.
     for (const c of REVIEW_CHECKS) expect(a.system).toContain(`- ${c.id}: ${c.ask}`);
     expect(a.system).toContain("- off_story: Does the frame show what the shot is about");

@@ -22,6 +22,7 @@ export const ShotIssueType = z.enum([
   "repetitive",
   "off_story",
   "no_action",
+  "broken_anatomy",
   "other",
 ]);
 
@@ -48,7 +49,8 @@ export const REVIEW_CHECKS = [
   { id: "cluttered", severity: "minor", always: true, ask: "Is the frame easy to read: one clear subject, not many elements or a busy background competing with it?" },
   { id: "repetitive", severity: "minor", always: true, ask: "Does it look different enough from the frames listed before it (layout, framing, place)? The first image has nothing before it: pass." },
   { id: "no_action", severity: "minor", always: false, ask: "When the intent or narration says a person does something (points, types, writes, reads, cheers, walks, holds up…), is that action visible? na when no action is described." },
-  { id: "other", severity: "minor", always: true, ask: "Anything else a viewer would notice as broken or wrong: a garbled drawing, broken anatomy, an object from the wrong era, a wrong detail the intent names? pass when nothing." },
+  { id: "broken_anatomy", severity: "minor", always: false, ask: "Look at each person's body part by part: head, neck, shoulders, arms, hands, legs. Judge proportions against the channel's own style (big stylised heads, chibi, simple or low-poly bodies are the style, not defects), and fail only what breaks inside that style: a stretched or missing neck, an arm or leg bent the wrong way or twisted, a missing, extra or detached hand or limb, a part floating off the body. Name the person and the part. na when there are no people." },
+  { id: "other", severity: "minor", always: true, ask: "Anything else a viewer would notice as broken or wrong: a garbled drawing, an object from the wrong era, a wrong detail the intent names? pass when nothing." },
 ] as const satisfies readonly { id: z.infer<typeof ShotIssueType>; severity: "major" | "minor"; always: boolean; ask: string }[];
 export type CheckId = (typeof REVIEW_CHECKS)[number]["id"];
 

@@ -67,7 +67,7 @@ export function mockAgents(orig: Record<string, unknown>): Record<string, unknow
  * pipeline'ın doğrulaması (checklistProblem) "eksik madde" diye yakalar, testler kırılır.
  */
 const MAJOR = ["off_story", "empty", "character_cut_off", "character_floating", "backdrop_box", "text_overlap", "text_on_subtitles"];
-const MINOR = ["cluttered", "repetitive", "wrong_scale", "unreadable_text", "no_action", "other"];
+const MINOR = ["cluttered", "repetitive", "wrong_scale", "unreadable_text", "no_action", "broken_anatomy", "other"];
 
 /** Kontrol listeli sahte denetçi yanıtı: `fails` kalan maddeler (değer kanıttır), gerisi kanıtlı "pass". */
 export function checked(shotId: string, fails: Record<string, string> = {}) {
