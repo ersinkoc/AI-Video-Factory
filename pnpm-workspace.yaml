@@ -42,5 +42,8 @@ overrides:
   # Güvenlik (Dependabot): @hono/node-server <2.1.6 ters vekilde ters bölüyle yol denetimini aşma ve WebSocket yükseltmesinde
   # ECONNRESET ile çökme. MCP SDK (Agent SDK ve trigger.dev zinciri) 2.x istiyor; yamalı sürüm aynı küçük sürümde.
   '@hono/node-server@>=2.0.0 <2.1.6': 2.1.6
+  # Aynı zincirde hono'nun kendisi: <4.13.16 csrf/validator/mount/RegExpRouter ara katman atlamaları ve css helper HTML
+  # enjeksiyonu. MCP SDK ^4 istiyor; en son 4.x yamaya alındı.
+  hono@<4.13.16: 4.13.18
 patchedDependencies:
   trigger.dev@4.8.3: patches/trigger.dev@4.8.3.patch
