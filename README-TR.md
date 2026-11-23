@@ -6,7 +6,7 @@
 
 ![AI Video Factory 0.6.0 — 64 stil, tek video fabrikası.](docs/assets/ai-video-factory-0.6.0-styles.png)
 
-Bir konudan seslendirilmiş, animasyonlu YouTube videosu üretin. Claude ajanları hikâyeyi ve senaryoyu yazar, çekimleri planlar, vektör çizimleri tasarlar ve sonucu inceler. Medya sağlayıcıları ses, görsel ve klipleri üretir; Remotion son videoyu render eder. Web Stüdyo süreci görünür kılar, onayları size bırakır.
+Bir konudan seslendirilmiş, animasyonlu YouTube videosu üretin. Claude ajanları hikâyeyi ve senaryoyu yazar, çekimleri planlar, vektör çizimleri tasarlar ve sonucu inceler. Medya sağlayıcıları ses, görsel ve klipleri üretir; Remotion son videoyu render eder. Aynı fabrika kendi görüntünüzden ya da bir YouTube videosundan dikey Short keser ve bir briften hareketli grafik filmi yapar. Web Stüdyo süreci görünür kılar, onayları size bırakır.
 
 [Dokümanlar](docs/README.md) · [Başlangıç](docs/GETTING_STARTED.md) · [Stüdyo rehberi](docs/STUDIO.md) · [CLI rehberi](docs/CLI.md) · [Sürüm geçmişi](CHANGELOG.md)
 
@@ -17,10 +17,10 @@ Bir konudan seslendirilmiş, animasyonlu YouTube videosu üretin. Claude ajanlar
 - **Birden fazla dilde seslendirilmiş video:** eşzamanlı altyazı, dudak hareketi, müzik ve ses efektleri. Stüdyo Türkçe ve İngilizce kullanılabilir.
 - **Yayın paketi:** video, `.srt` altyazı, başlık, açıklama, bölümler, etiketler, kapak görseli ve yatay bölümlerden dikey Short.
 - **Kendi görüntünüzden Short:** videolarınızı ve resimlerinizi yükleyin, süreyi seçin (15–180 sn); AI en iyi anları seçer, 9:16'ya kadrajlar, anlatım ekler ya da asıl konuşmayı korur, altyazı, ekran yazıları, müzik ve efekt sesleriyle birlikte işler.
-- **Hareketli grafik filmi:** insan figürü ve çizim yok. Yönetmen ajanı bir ritim çizelgesi ve kinetik yazı, grafik, sistem diyagramı, kart montajı, parçacık alanı ve basit 3D nesneden sahneler yazar; kod bunları vuruşa oturtarak çizer, aynı tempoda sentezlenen müzik ve efekt ekler. Bir brif, isteğe bağlı marka renkleri ve logo ya da ekran görüntüleri verirsiniz; 16:9 ya da 9:16, anlatım isteğe bağlı. Render'dan önce bir kare denetimi her sahnede kesik, çakışan ya da okunmayan yazıya ve eksik öğeye bakar.
+- **Hareketli grafik filmi:** insan figürü ve çizim yok. Yönetmen ajanı bir ritim çizelgesi ve kinetik yazı, grafik ve sayaç, sistem diyagramı, kart ızgarası ve montajı, parçacık alanı ve basit 3D nesneden sahneler yazar; kod bunları vuruşa oturtarak çizer, aynı tempoda sentezlenen müzik ve efekt ekler. Bir brif, isteğe bağlı marka renkleri ve logo ya da ekran görüntüleri verirsiniz; 16:9 ya da 9:16, anlatım isteğe bağlı. Her sahnenin render'dan önce bir önizleme karesi olur; kare denetimi kesik, çakışan ya da okunmayan yazıya ve eksik öğeye bakar; anlatımsız filmde 8/10'un altındaki sahneler bir kez yönetmene geri döner. Brifte olmayan rakamlar "temsili veri" rozeti taşır. Filmi bir notla yeniden yaptırabilir; kapak karesi, yayın paketi ve 16:9 filmden dikey bir Short alırsınız.
 - **YouTube videosundan Short:** sahibi olduğunuz bir videonun adresini verin; video indirilip sahne sahne incelenir, sahne günlüğü, kesilecek yerler ve puanlı Short adayları çıkar. Seçtiğiniz adaylar asıl konuşması altyazılı dikey Short olur.
-- **ACP ile istediğiniz model:** Claude'un yanında her ajan, Antigravity (`agy`) gibi bir Agent Client Protocol ajanında ve onun Gemini, Claude ya da GPT-OSS modelleriyle çalışabilir; seçim Modeller sayfasında ajan başına yapılır.
-- **Üretim boyunca inceleme:** senaryo/konsept onayları, çekim önizlemeleri, çizim denetimleri, seçili çekimleri yenileme ve çıktı denetimleri.
+- **ACP ile istediğiniz model:** Claude'un yanında her ajan, Antigravity (`agy`) gibi bir Agent Client Protocol ajanında ve onun Gemini, Claude ya da GPT-OSS modelleriyle çalışabilir; seçim Modeller sayfasında ajan başına yapılır. Bütün ajanları böyle çalışan anlatımsız bir hareketli grafik filmi hiçbir ücret doğurmaz.
+- **Üretim boyunca inceleme:** senaryo ve konsept onayları, çekim önizlemeleri ve çizim denetimleri. Render'dan önce her kare bir kontrol listesiyle denetlenir ve 8/10 almalıdır; barajın altındaki sahneler yeniden planlanır, altında kalan sahne varken render onayınızı bekler. Seçili çekimleri bir notla yeniden yaptırabilir, bölümü render etmeden tarayıcıda oynatabilirsiniz.
 - **Kaldığı yerden süren, maliyeti izlenen üretim:** aşama kaydı, üretim önbelleği, yedek sağlayıcı ve ücretli çağrılardan önce tahmin.
 
 Bölüm bütçesi ücretli görsel, ses ve video API'lerini sınırlar. Claude ajan kullanımı ayrı izlenir ve bu sınırı aşabilir. Ayrıntılar [Üretim özellikleri](docs/FEATURES.md) rehberinde.
@@ -76,7 +76,7 @@ Bunun yerine kendi videolarınızdan ve resimlerinizden dikey Short kesmek için
 pnpm ys episode new --footage gezi.mp4 --footage gundogumu.jpg --sec 30 --overlay "Hayatımın sabahı" --manual
 ```
 
-Ya da bir briften hareketli grafik filmi yapın (anlatımsız film ücretli API kullanmaz):
+Ya da bir briften hareketli grafik filmi yapın (anlatımsız film ücretli API kullanmaz; 9:16 için `--vertical` ekleyin):
 
 ```sh
 pnpm ys episode new --film --topic "Relay dağıtımları 40 dakikadan 12'ye indiriyor" --sec 30 --color "#2563eb" --asset logo.png

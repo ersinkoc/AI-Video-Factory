@@ -6,7 +6,7 @@
 
 ![AI Video Factory 0.6.0 — 64 styles, one video factory.](docs/assets/ai-video-factory-0.6.0-styles.png)
 
-Turn a topic into a narrated, animated YouTube video. Claude agents write the story and script, plan shots, design vector art and review the result. Media providers supply voice, images and clips; Remotion renders the final cut. The web Studio keeps the process visible and puts approvals in your hands.
+Turn a topic into a narrated, animated YouTube video. Claude agents write the story and script, plan shots, design vector art and review the result. Media providers supply voice, images and clips; Remotion renders the final cut. The same factory cuts vertical Shorts from your own footage or a YouTube video and makes motion-graphics films from a brief. The web Studio keeps the process visible and puts approvals in your hands.
 
 [Documentation](docs/README.md) · [Getting started](docs/GETTING_STARTED.md) · [Studio guide](docs/STUDIO.md) · [CLI guide](docs/CLI.md) · [Changelog](CHANGELOG.md)
 
@@ -17,10 +17,10 @@ Turn a topic into a narrated, animated YouTube video. Claude agents write the st
 - **Narrated videos in multiple languages:** synchronized captions, lip sync, music and sound effects. The Studio supports English and Turkish.
 - **A publishing package:** video, `.srt` subtitles, title, description, chapters, tags, thumbnail and a vertical Short from horizontal episodes.
 - **Shorts from your own footage:** upload your videos and images, pick a length (15–180 s), and AI picks the best moments, frames them for 9:16, adds a voice-over or keeps the original speech, and burns in captions, on-screen texts, music and sound effects.
+- **Motion-graphics films:** no people and no drawings. A director agent writes a rhythm sheet and scenes of kinetic type, charts and counters, system diagrams, card grids and montages, particle fields and simple 3D objects; code draws them on the beat with a matching synthesized score and sound effects. You give a brief, optional brand colours and a logo or screenshots; 16:9 or 9:16, narration optional. Every scene gets a preview frame before the render, and a frame check looks for cut, overlapping or unreadable text and missing elements; without narration, scenes below 8/10 go back to the director once. Figures that are not in your brief carry an "illustrative data" badge. Remake the film with a note, and get a cover frame, a publishing package and, from a 16:9 film, a vertical Short.
 - **Shorts from a YouTube video:** paste the address of a video you own; it is downloaded and gone through scene by scene, and you get a scene log, what to cut, and ranked Short candidates. The ones you pick become vertical Shorts with the original speech as captions.
-- **Motion-graphics films:** no people and no drawings. A director agent writes a rhythm sheet and scenes of kinetic type, charts, system diagrams, card montages, particle fields and simple 3D objects, and code draws them on the beat with a matching synthesized score and sound effects. You give a brief, optional brand colours and logo or screenshots; 16:9 or 9:16, narration optional. Before the render a frame check looks at every scene for cut, overlapping or unreadable text and missing elements.
-- **Any model through ACP:** besides Claude, each agent can run on an Agent Client Protocol agent such as Antigravity (`agy`), with its Gemini, Claude or GPT-OSS models, picked per agent on the Models page.
-- **Review throughout production:** script/concept approvals, shot previews, drawing checks, selected-shot revisions and export audits.
+- **Any model through ACP:** besides Claude, each agent can run on an Agent Client Protocol agent such as Antigravity (`agy`), with its Gemini, Claude or GPT-OSS models, picked per agent on the Models page. A motion-graphics film without narration whose agents all run this way costs nothing.
+- **Review throughout production:** script and concept approvals, shot previews and drawing checks. Before the render every frame is checked against a checklist and must score 8/10; scenes below the bar are replanned, and while any stays below, the render waits for your approval. Re-create selected shots with a note, and play an episode in the browser without rendering it.
 - **Resumable, cost-aware production:** saved stage progress, generation caching, provider fallback and estimates before paid calls.
 
 The episode budget caps paid image, voice and video APIs. Claude agent usage is tracked separately and can exceed that cap. See [Production features](docs/FEATURES.md) for the details.
@@ -76,7 +76,7 @@ To cut a vertical Short from your own videos and images instead:
 pnpm ys episode new --footage trip.mp4 --footage sunrise.jpg --sec 30 --overlay "Best morning ever" --manual
 ```
 
-Or make a motion-graphics film from a brief (no narration means no paid API):
+Or make a motion-graphics film from a brief (no narration means no paid API; add `--vertical` for 9:16):
 
 ```sh
 pnpm ys episode new --film --topic "Relay cuts deploys from 40 to 12 minutes" --sec 30 --color "#2563eb" --asset logo.png
