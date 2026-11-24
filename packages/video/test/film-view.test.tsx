@@ -22,7 +22,7 @@ vi.mock("../src/PixiParticles.tsx", () => ({ PixiParticles: (p: Record<string, u
 vi.mock("../src/Scene3D.tsx", () => ({ Scene3D: (p: { spec: Record<string, unknown> }) => (gl.three.push(p.spec), <canvas data-three={String(p.spec.preset)} />) }));
 
 const { FilmScene, ILLUSTRATIVE } = await import("../src/motion-film/Film.tsx");
-const { bindLine, capMarked, foldedIndex, markedWords, PILL_LIFT, pillRoom } = await import("../src/motion-film/Kinetic.tsx");
+const { bindLine, capMarked, foldedIndex, markedWords, PILL_DROP, PILL_LIFT, pillRoom } = await import("../src/motion-film/Kinetic.tsx");
 const { halves, labelSpot, layoutNodes } = await import("../src/motion-film/Diagram.tsx");
 const { gridShape } = await import("../src/motion-film/Grid.tsx");
 const { titleSizes } = await import("../src/motion-film/Ambient.tsx");
@@ -183,6 +183,14 @@ describe("kinetik yazı", () => {
     const words = draw(kinetic("words", { kinetic: { lines: ["Yeni Ölçü"], mode: "words", highlight: "Ölçü" } }), 200);
     expect(words.querySelector<HTMLElement>("[data-pill]")!.style.paddingTop).toBe(`${PILL_LIFT}em`);
     expect(words.querySelector<HTMLElement>("[data-word]")!.parentElement!.style.alignItems).toBe("baseline");
+  });
+
+  it("hap altta satırına pay ekler, alttaki satırın yüksek harflerine binmez (her kipte)", () => {
+    const drop = (mode: "rise" | "slam" | "words") =>
+      draw(kinetic(mode, { kinetic: { lines: ["9,1 sobre 10", "Índice de satisfacción"], mode, highlight: "9,1 sobre 10" } }), 200).querySelector<HTMLElement>("[data-pill]")!.style.marginBottom;
+    expect([drop("slam"), drop("rise"), drop("words")]).toEqual([`${PILL_DROP}em`, `${PILL_DROP}em`, `${PILL_DROP}em`]);
+    // Pay hapın alt taşmasını (0,16 em) karşılar.
+    expect(PILL_DROP).toBeGreaterThanOrEqual(0.16);
   });
 
   it("bölüm kartı: sayaç ve toplam, bölüm bilgisi yoksa 01/01", () => {

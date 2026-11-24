@@ -134,6 +134,15 @@ const PILL_BLEED = "0.2em";
  */
 export const PILL_LIFT = 0.1;
 
+/**
+ * Hapın altta satıra eklediği pay (em). Hap alt uzantılar için satır kutusunun 0,16 em altına iner; slam ve kelime
+ * kipinde satır aralığı 1,08 olduğundan bu, alttaki satırın yüksek harflerine biniyordu, zemin vurgu renginde hap yazıyla
+ * aynı renkte olduğundan "d", "t", "f" hapa karışıyordu (24 Kas, 16:9 İspanyolca film m8 "9,1 sobre 10 / Índice de
+ * satisfacción"; denetçi geçirdi, gözle bulundu). Pay kenar boşluğu olarak eklenir: hapın satırı (kaymış satırda hapın
+ * bulunduğu sıra) o kadar büyür, alttaki satır hapın altından başlar; 0,04 em fazlası alttaki büyük harfin vurgusuna.
+ */
+export const PILL_DROP = 0.2;
+
 /** Metinde üstünde işaret olan büyük harf var mı (NFD'de büyük harf + U+0300–U+0315 arası üst birleşen işaret). */
 export const capMarked = (text: string) =>
   Array.from(text.normalize("NFD")).some((c, j, all) => j > 0 && /\p{Lu}/u.test(all[j - 1]!) && c.codePointAt(0)! >= 0x300 && c.codePointAt(0)! <= 0x315);
@@ -152,7 +161,7 @@ export function Marked({ text, highlight, pill, colors }: { text: string; highli
   return (
     <>
       {bindNumbers(before)}
-      <span data-pill="" style={{ position: "relative", display: "inline-block", isolation: "isolate", paddingTop: capMarked(mark) ? `${PILL_LIFT}em` : 0, marginLeft: before ? PILL_BLEED : 0, marginRight: after ? PILL_BLEED : 0, color: pill > 0.5 ? colors.onAccent : undefined }}>
+      <span data-pill="" style={{ position: "relative", display: "inline-block", isolation: "isolate", paddingTop: capMarked(mark) ? `${PILL_LIFT}em` : 0, marginBottom: `${PILL_DROP}em`, marginLeft: before ? PILL_BLEED : 0, marginRight: after ? PILL_BLEED : 0, color: pill > 0.5 ? colors.onAccent : undefined }}>
         <span style={{ position: "absolute", inset: `0.04em -${PILL_BLEED} -0.16em`, borderRadius: "0.18em", background: colors.accent, transform: `scaleX(${pill})`, transformOrigin: "0 50%", zIndex: -1 }} />
         {bindNumbers(mark, true)}
       </span>

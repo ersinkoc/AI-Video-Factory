@@ -668,7 +668,12 @@ anlatımsız (müzik + efekt, TTS seçilebilir); brif + logo/ekran + marka renkl
   düşürdü: "1,2 milyon" haplı satır sayıdan sonra kayıyor, "1,2" tek başına kalıyor, hap sağı boş iki satırlık bir bloğa
   dönüyordu. Dikey kinetik satırda sayı ardındaki kelimeye bölünmez boşlukla bağlanır: hapın içinde her kelimeye, dışında
   yalnız büyüklük kelimesine (bin, milyon, milyar…); sığdırma bağlı ikiliyi tek kelime sayar. Her sayıyı bağlamak Lumen'in
-  "100,000 notes." satırını küçültüyordu, kural o yüzden dar. Düzeltilmiş kopya 18 karede 10.
+  "100,000 notes." satırını küçültüyordu, kural o yüzden dar. Düzeltilmiş kopya 18 karede 10. Onuncu yeni brif (16:9,
+  İspanyolca, iki marka rengi, çatı bostanı kooperatifi) her karede 10 aldı, kusuru gözle bulundu: hap alt uzantılar için
+  satırının 0,16 em altına iniyor, slam ve kelime kipinin 1,08 satır aralığında alttaki satırın yüksek harflerine
+  biniyordu ("9,1 sobre 10 / Índice de satisfacción"; vurgu zeminde hap yazıyla aynı renk, "d", "t", "f" hapa karışıyordu).
+  Hap altta 0,2 em kenar boşluğu ekler: satırı o kadar büyür, alttaki satır hapın altından başlar. Düzeltilmiş kopya 10
+  karede 10; haplı regresyon kopyaları 10'da kaldı, düşen kareler önceden geçmiş karelerle bayt bayt aynıydı.
 
 ## 17. Pazar Haritası (Ekim 2026)
 
