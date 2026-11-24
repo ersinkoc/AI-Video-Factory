@@ -2,6 +2,10 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.6.19 (2026-11-25)
+
+- Motion-graphics films: a highlight box no longer runs into the line below it; with a tight two-line title the box could cover the tall letters of the next line and, on an accent background, blend with them.
+
 ## v0.6.18 (2026-11-24)
 
 - Motion-graphics films: in vertical films a number stays on the same line as its magnitude ("1,2 milyon", "3 million") and, inside a highlight, as the word after it; a highlighted "1,2 milyon" could split over two lines into a lopsided box.
