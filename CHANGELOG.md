@@ -2,6 +2,12 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.6.15 (2026-11-24)
+
+- Motion-graphics films: a counter with a note now keeps the note in its own space below the number; in 16:9 the note could cover the digits.
+- A diagram's connector labels keep clear of the boxes; between close boxes they could disappear behind them.
+- When a film's revision fixes the frames but loses rhythm, the log now says so and names what got worse.
+
 ## v0.6.14 (2026-11-23)
 
 - Motion-graphics films: a counter in a short scene now finishes counting and stays on its final value long enough to read; it could be cut mid-count and show the wrong number.
