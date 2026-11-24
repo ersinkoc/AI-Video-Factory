@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { fitSize, fitWrapped, type PartProps } from "./context.ts";
+import { bindNumbers, fitSize, fitWrapped, type PartProps } from "./context.ts";
 import { enterK, expoOut, FILM, wordsOf } from "./timing.ts";
 
 /**
@@ -12,7 +12,8 @@ export function Kinetic(p: PartProps) {
   const { box, colors, heading, frame, fps, enters } = p;
   const tall = p.height > p.width;
   // Dikeyde satırlar kayar (fitWrapped), yatayda her satır tek satıra sığar.
-  const fit = k.lines.map((l) => pillRoom(l, k.highlight));
+  // Sayı ardındaki kelimeyle tek kelime sayılır (bindLine; Marked da öyle çizer).
+  const fit = k.lines.map((l) => pillRoom(bindLine(l, k.highlight), k.highlight && bindNumbers(k.highlight, true)));
   const size = tall ? fitWrapped(fit, box.w, box.h * 0.8, 170, heading.em) : fitSize(fit, box.w, 220, heading.em);
   // Kayan satırlar dengelenir, sonda tek kelime kalmaz (text-wrap: balance, satır sayısını artırmaz; 23 Kas, 9:16 film:
   // "Verified on / a", "that draws / it."; Chrome 157'de pretty bu kısa satırlarda bir şey değiştirmedi).
@@ -143,27 +144,39 @@ export const capMarked = (text: string) =>
  * film denetçisi AI Video Factory m5/m7/m8).
  */
 export function Marked({ text, highlight, pill, colors }: { text: string; highlight?: string; pill: number; colors: PartProps["colors"] }): ReactNode {
-  const i = highlight ? foldedIndex(text, highlight) : -1;
-  if (i < 0) return text;
-  // Hapın hemen ardındaki noktalama hapın içine alınır: dikeyde hap kayınca nokta tek başına alt satıra düşüyordu; hap
-  // kendi içinde kayabilir.
-  const end = i + highlight!.length;
-  const tail = /^[^\s]*/.exec(text.slice(end))![0];
-  const mark = text.slice(i, end + tail.length);
-  const before = text.slice(0, i);
-  const after = text.slice(end + tail.length);
+  const parts = pillParts(text, highlight);
+  if (!parts) return bindNumbers(text);
+  const { before, mark, after } = parts;
   // Hap iki yana PILL_BLEED taşar: satırda komşu yazı olan yanda o kadar boşluk eklenir, yoksa kelime aralığı ~0,05 em'e
   // iner ve hap komşu kelimeye yapışır (23 Kas, 9:16 film: "ilk|altı ayı.", "14|çiftlik."; kelime kipi bunu zaten yapıyordu).
   return (
     <>
-      {before}
+      {bindNumbers(before)}
       <span data-pill="" style={{ position: "relative", display: "inline-block", isolation: "isolate", paddingTop: capMarked(mark) ? `${PILL_LIFT}em` : 0, marginLeft: before ? PILL_BLEED : 0, marginRight: after ? PILL_BLEED : 0, color: pill > 0.5 ? colors.onAccent : undefined }}>
         <span style={{ position: "absolute", inset: `0.04em -${PILL_BLEED} -0.16em`, borderRadius: "0.18em", background: colors.accent, transform: `scaleX(${pill})`, transformOrigin: "0 50%", zIndex: -1 }} />
-        {mark}
+        {bindNumbers(mark, true)}
       </span>
-      {after}
+      {bindNumbers(after)}
     </>
   );
+}
+
+/**
+ * Satırın hapın öncesi, hap ve sonrası. Hapın hemen ardındaki noktalama hapın içine alınır: dikeyde hap kayınca nokta tek
+ * başına alt satıra düşüyordu; hap kendi içinde kayabilir.
+ */
+function pillParts(text: string, highlight?: string): { before: string; mark: string; after: string } | undefined {
+  const i = highlight ? foldedIndex(text, highlight) : -1;
+  if (i < 0) return undefined;
+  const end = i + highlight!.length;
+  const tail = /^[^\s]*/.exec(text.slice(end))![0];
+  return { before: text.slice(0, i), mark: text.slice(i, end + tail.length), after: text.slice(end + tail.length) };
+}
+
+/** Satır, Marked'ın çizdiği gibi bağlanmış: hapın içinde sayı her kelimeye, dışında yalnız büyüklük kelimesine (bindNumbers). */
+export function bindLine(text: string, highlight?: string): string {
+  const parts = pillParts(text, highlight);
+  return parts ? bindNumbers(parts.before) + bindNumbers(parts.mark, true) + bindNumbers(parts.after) : bindNumbers(text);
 }
 
 /**

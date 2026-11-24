@@ -43,18 +43,21 @@ export function emOf(face: { id: string; generic: string }): number {
 export function fitWrapped(lines: readonly string[], width: number, height: number, max: number, perChar: number, lineHeight = 1.12): number {
   for (let size = max; size > 24; size *= 0.96) {
     const char = size * perChar;
-    const fits = lines.every((line) => line.split(/\s+/).every((word) => word.length * char <= width));
+    const fits = lines.every((line) => line.split(/ +/).every((word) => word.length * char <= width));
     const rows = lines.reduce((n, line) => n + rowsOf(line, width, char), 0);
     if (fits && rows * size * lineHeight <= height) return Math.round(size);
   }
   return 24;
 }
 
-/** Satırın kelime sınırından kayınca kaç satır tuttuğu (açgözlü kaydırma; char: bir harfin genişliği, px). */
+/**
+ * Satırın kelime sınırından kayınca kaç satır tuttuğu (açgözlü kaydırma; char: bir harfin genişliği, px). Yalnız düz
+ * boşlukta kayar: bölünmez boşluk (bindNumbers) tarayıcıda da satır bölmez, iki yanı tek kelimedir.
+ */
 export function rowsOf(line: string, width: number, char: number): number {
   let rows = 1;
   let used = 0;
-  for (const word of line.split(/\s+/).filter(Boolean)) {
+  for (const word of line.split(/ +/).filter(Boolean)) {
     const w = word.length * char;
     if (used && used + char + w > width) {
       rows++;
@@ -69,6 +72,22 @@ export function fitSize(lines: readonly string[], width: number, max: number, pe
   const longest = Math.max(1, ...lines.map((l) => l.length));
   return Math.round(Math.min(max, width / (longest * perChar)));
 }
+
+/** Bölünmez boşluk (U+00A0). */
+const NBSP = String.fromCharCode(0xa0);
+
+/** Sayıdan hiç ayrılmayan büyüklük kelimeleri. */
+const MAGNITUDES = new Set(["bin", "milyon", "milyar", "trilyon", "thousand", "million", "billion", "trillion"]);
+
+/**
+ * Sayı ardındaki kelimeyle bir satırda kalır, aradaki boşluk bölünmez olur: büyüklük kelimesiyle her yerde ("1,2 milyon"),
+ * any ile her kelimeyle (hapın içi: "48 saat"). Dikeyde satır sayıdan sonra kayıyor, "1,2" bir satırda "milyon" alttakinde
+ * kalıyor, iki satıra kayan hap sağı boş bir bloğa dönüyordu (24 Kas, 9:16 Türkçe film m8 "1,2 milyon / kitap", film
+ * denetçisi). Hap dışında her kelimeyi bağlamak kısa bir satırı tek satıra zorlayıp küçültüyordu (Lumen "100,000 notes.").
+ */
+export const bindNumbers = (text: string, any = false) =>
+  text.replace(/(\d[\d.,]*%?) (\p{L}+)/gu, (whole, n: string, w: string) =>
+    any || MAGNITUDES.has(w.toLocaleLowerCase("tr")) || MAGNITUDES.has(w.toLowerCase()) ? n + NBSP + w : whole);
 
 /**
  * Ayraçlı etiket ya da not ("İzle · Sahneler", "Dinle - Metin") ad ve alt yazı olarak iki satırdır, ayraç düşer: kendiliğinden
