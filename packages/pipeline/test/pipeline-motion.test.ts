@@ -351,7 +351,8 @@ describe("film kare denetimi", () => {
     expect(callsOf("filmCritic")).toHaveLength(2);
     expect(state.motionFilm!.title).toBe("Relay");
     expect(state.motionLint!.map((i) => i.kind)).not.toContain("hook");
-    expect(h.logs.some((l) => l.includes("önceki film kalıyor") && l.includes("%33 → %0"))).toBe(true);
+    // Kayıt neden tutulmadığını söyler: kareler iyileşti, ritim bulgusu arttı (adıyla).
+    expect(h.logs.some((l) => l.includes("ritim bulguları arttı (hook") && l.includes("%33 → %0"))).toBe(true);
   });
 
   it("ikinci inceleme yapılamazsa ya da yönetmen düşerse önceki film kalır", async () => {

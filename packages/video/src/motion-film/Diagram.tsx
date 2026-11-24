@@ -25,6 +25,9 @@ export function Diagram(p: PartProps) {
   const label = fitSize(g.nodes.map((n) => { const [a, b] = labelParts(n.label); return b === undefined ? halves(a) : a.length >= b.length ? a : b; }), nodeW * 0.86, nodeH * 0.36, heading.em);
   const beat = beatFrames(p.bpm, fps);
   const tq = enterK(frame, 0, fps);
+  const edgeSize = Math.round(label * 0.75);
+  // Etiketin kaçınacağı düğüm kutuları (düğümler SVG'nin üstünde çizilir, altında kalan etiket görünmez).
+  const boxes = g.nodes.map((n) => { const c = place.at.get(n.id)!; return { x: c.x - nodeW / 2, y: c.y - nodeH / 2, w: nodeW, h: nodeH }; });
 
   return (
     <div style={{ position: "absolute", inset: 0, color: colors.fg }}>
@@ -60,14 +63,14 @@ export function Diagram(p: PartProps) {
               {e.label && k > 0.98 && (
                 // Etiket bağın yanında, çizgiye dik yönde (üstüne binmez), zemin renginde bir hale ile.
                 <text
-                  {...labelSpot(s, e.label.length * Math.round(label * 0.75) * body.em, Math.round(label * 0.75), label * 0.3)}
+                  {...labelSpot(s, e.label.length * edgeSize * body.em, edgeSize, label * 0.3, boxes, area)}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fill={colors.fg}
                   stroke={colors.bg}
                   strokeWidth={8}
                   paintOrder="stroke"
-                  style={{ fontFamily: body.family, fontWeight: body.weight, fontSize: Math.round(label * 0.75) }}
+                  style={{ fontFamily: body.family, fontWeight: body.weight, fontSize: edgeSize }}
                 >
                   {e.label}
                 </text>
@@ -120,21 +123,34 @@ export function Diagram(p: PartProps) {
   );
 }
 
-/** Etiketin iki satıra bölünmüş hâlinin uzun satırı (tek kelimeyse kendisi). */
 /**
  * Bağ etiketinin merkezi: bağın ortasından çizgiye dik, üst yana (yatay bağda yukarı, dikeyde yana), etiketin kutusu
  * çizgiye değmeyecek kadar (kutunun dik yöndeki yarı genişliği + gap). 23 Kas, film denetçisi AI Video Factory m13:
  * eğik bağda yalnız yazı yüksekliği kadar açılan "< 8 puan" çizginin üstüne biniyordu; sola giden bağda kayma çizgiye dik
  * de değildi ("tekrar").
  */
-export function labelSpot(s: { x1: number; y1: number; x2: number; y2: number }, w: number, h: number, gap: number): { x: number; y: number } {
+export function labelSpot(s: { x1: number; y1: number; x2: number; y2: number }, w: number, h: number, gap: number, avoid: readonly Rect[] = [], bounds?: Rect): { x: number; y: number } {
   const ang = Math.atan2(s.y2 - s.y1, s.x2 - s.x1);
   const [sin, cos] = [Math.sin(ang), Math.cos(ang)];
   // Dik yön (sin, −cos); aşağı bakıyorsa ters çevrilir (etiket bağın üstünde).
   const flip = -cos > 1e-9 ? -1 : 1;
   const off = (w / 2) * Math.abs(sin) + (h / 2) * Math.abs(cos) + gap;
-  return { x: (s.x1 + s.x2) / 2 + flip * sin * off, y: (s.y1 + s.y2) / 2 - flip * cos * off };
+  const spot = (side: number, by: number) => ({ x: (s.x1 + s.x2) / 2 + side * sin * by, y: (s.y1 + s.y2) / 2 - side * cos * by });
+  // Etiket düğüm kutularına binmez: önce üst yanda dik yönde uzaklaşır, olmazsa alt yanda; ikisi de alana sığmazsa ilk yer
+  // (23 Kas, 16:9 film m3: dört sütunda düğümler arası ~100 px, "every 30 s" iki düğümün altında kaldı, denetçi 2/10).
+  const clear = (p: { x: number; y: number }) => {
+    const r = { x: p.x - w / 2, y: p.y - h / 2, w, h };
+    const inside = !bounds || (r.y >= bounds.y && r.x >= bounds.x && r.x + w <= bounds.x + bounds.w && r.y + h <= bounds.y + bounds.h);
+    return inside && avoid.every((b) => r.x >= b.x + b.w + gap / 2 || r.x + w <= b.x - gap / 2 || r.y >= b.y + b.h + gap / 2 || r.y + h <= b.y - gap / 2);
+  };
+  const reach = Math.max(0, ...avoid.map((b) => Math.max(b.w, b.h))) + h;
+  for (const side of [flip, -flip]) {
+    for (let by = off; by <= off + reach; by += Math.max(2, h / 4)) if (clear(spot(side, by))) return spot(side, by);
+  }
+  return spot(flip, off);
 }
+
+type Rect = { x: number; y: number; w: number; h: number };
 
 function NodeLabel({ label }: { label: string }) {
   const [a, b] = labelParts(label);
@@ -148,6 +164,7 @@ function NodeLabel({ label }: { label: string }) {
   );
 }
 
+/** Etiketin iki satıra bölünmüş hâlinin uzun satırı (tek kelimeyse kendisi). */
 export function halves(label: string): string {
   const words = label.split(/\s+/);
   let best = label;

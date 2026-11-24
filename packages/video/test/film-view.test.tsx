@@ -193,6 +193,24 @@ describe("veri hikayesi", () => {
     expect(colorOf("ink")).toBe(PALETTE.accent);
   });
 
+  it("sayacın notu sayının altındaki kendi bandında, sayı bandın üstüne sığar (iki oranda); notsuz sayaç alanın tamamını kullanır", () => {
+    const noted = count({ data: { chart: "count", title: "Average alert to phones", callout: "From river rise to SMS", count: { to: 40, suffix: " s" } } });
+    for (const [w, h] of [[1920, 1080], [1080, 1920]] as const) {
+      clock.width = w;
+      clock.height = h;
+      const c = draw(noted, 200);
+      const num = c.querySelector("[data-count]") as HTMLElement;
+      const callout = c.querySelector("[data-callout]") as HTMLElement;
+      const [top, height, size] = [num.style.top, num.style.height, num.style.fontSize].map(parseFloat) as [number, number, number];
+      // Notun üst kenarı (alt ucu - boyu ~1,9 × yazı boyu) sayının satır kutusunun (merkez + 0,6 × boy) altında.
+      const calloutTop = parseFloat(callout.style.top) - parseFloat(callout.style.fontSize) * 1.9;
+      expect(calloutTop).toBeGreaterThanOrEqual(top + height / 2 + 0.6 * size);
+      const plain = draw(count({ data: { ...noted.data!, callout: undefined } }), 200).querySelector("[data-count]") as HTMLElement;
+      expect(parseFloat(plain.style.height)).toBeGreaterThan(height);
+    }
+    expect(calloutPoint(count().data!, { x: 0, y: 100, w: 800, h: 500 }, 200, 40)).toEqual({ x: 400, y: 600 });
+  });
+
   it("çubuklarda not grafiğin üstündeki bantta, genişliğiyle grafiğin içinde; kayan başlık grafiği aşağı iter", () => {
     const chart = { x: 100, y: 300, w: 800, h: 600 };
     const d = bars().data!;
@@ -269,6 +287,26 @@ describe("sistem diyagramı", () => {
       if (s.y1 !== s.y2 && s.x1 !== s.x2) expect(p.y).toBeLessThan((s.y1 + s.y2) / 2);
     }
     expect(halves("Deploy")).toBe("Deploy");
+  });
+
+  it("bağ etiketi düğüm kutularına binmez: önce üstte uzaklaşır, başlık alanına çıkamazsa alta iner, hiç yer yoksa ilk yer", () => {
+    // 16:9'da dört sütun: düğümler arası 100 px, "every 30 s" ~190 px (23 Kas, film m3).
+    const boxes = [{ x: 0, y: 0, w: 300, h: 134 }, { x: 400, y: 0, w: 300, h: 134 }];
+    const s = { x1: 306, y1: 67, x2: 394, y2: 67 };
+    const hits = (p: { x: number; y: number }) => boxes.some((b) => p.x + 96 > b.x && p.x - 96 < b.x + b.w && p.y + 15 > b.y && p.y - 15 < b.y + b.h);
+    expect(labelSpot(s, 192, 30, 12)).toEqual({ x: 350, y: 40 });
+    const up = labelSpot(s, 192, 30, 12, boxes);
+    expect(hits(up)).toBe(false);
+    expect(up.y).toBeLessThan(0);
+    const down = labelSpot(s, 192, 30, 12, boxes, { x: -100, y: -10, w: 900, h: 400 });
+    expect(hits(down)).toBe(false);
+    expect(down.y).toBeGreaterThan(134);
+    expect(labelSpot(s, 192, 30, 12, boxes, { x: 0, y: 0, w: 700, h: 134 })).toEqual({ x: 350, y: 40 });
+    // Kısa bağın etiketleri çizilen diyagramda da düğümlerin dışında (dört sütun, 1920×1080).
+    const nodes = ["Water sensor", "LoRa gateway", "Rise-rate model", "SMS alert"].map((label, i) => ({ id: `n${i}`, label, col: i, row: 1 }));
+    const c = draw(diagram({ diagram: { title: "From river sensor to SMS", nodes, edges: [0, 1, 2].map((i) => ({ from: `n${i}`, to: `n${i + 1}`, label: "every 30 s" })), packets: false } }), 239);
+    const top = Math.min(...[...c.querySelectorAll("[data-node]")].map((n) => parseFloat((n as HTMLElement).style.top)));
+    for (const t of c.querySelectorAll("[data-edge] text")) expect(Number(t.getAttribute("y")) + parseFloat((t as SVGElement).style.fontSize) / 2).toBeLessThan(top);
   });
 
   it("ayraçlı düğüm etiketi ad ve alt yazı olarak iki satırdır, ayraç düşer", () => {

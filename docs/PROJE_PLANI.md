@@ -650,7 +650,12 @@ anlatımsız (müzik + efekt, TTS seçilebilir); brif + logo/ekran + marka renkl
   Türkçe, iki marka rengi) dört kusur çıkardı: 2 vuruşluk sahnede sayaç kesmeden önce inmiyordu ("1.187", "3.088";
   sahne artık sayış bitip son değer okunacak kadar uzar), açık zeminde turuncu sayaç 1,75:1'di (sayaç ve montaj rakamı
   vurguyu yalnız okunuyorsa alır), satır içi hap önceki kelimeye yapışıyordu (komşu yanda boşluk) ve şema düğümünün
-  yazısı kenardan kenaraydı (iç boşluk, sığmayan etiket iki satır). Düzeltilmiş kopya 15 karede 10.
+  yazısı kenardan kenaraydı (iç boşluk, sığmayan etiket iki satır). Düzeltilmiş kopya 15 karede 10. Altıncı yeni brif
+  (16:9, İngilizce, üç marka rengi) iki kusur çıkardı, denetçi ikisini de düşürdü: notlu sayaçta not rakamların altına
+  biniyordu (sayı artık notun bandının üstüne sığar) ve dört sütunlu şemada kısa bağların etiketleri düğümlerin altında
+  kalıyordu (etiket düğümlerden uzaklaşır, üstte yer yoksa alta iner). Denetçinin düzeltmesi bu sahnelerde notları ve
+  etiketleri düşürdüğü için geri alınmıştı; günlük artık bunu "ritim bulguları arttı" diye adıyla söyler. Orijinal plan
+  15 karede 10.
 
 ## 17. Pazar Haritası (Ekim 2026)
 

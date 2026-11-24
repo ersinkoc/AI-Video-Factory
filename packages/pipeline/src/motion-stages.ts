@@ -227,7 +227,7 @@ export function motionStages(ctx: MotionContext): Partial<Record<Stage, StageFn>
     const before = { motionFilm: state.motionFilm, motionTimed: state.motionTimed, motionLint: state.motionLint, script: state.script, story: state.story, shots: state.shots, timeline: state.timeline, draftReview: state.draftReview, stills: state.stills };
     const was = reviewShare(review, before.shots!.map((s) => s.id));
     // Yönetmene giden ritim bulguları (kanca, boşluk, patlama…) artmamalı: kare denetimi ritme bakmaz.
-    const directable = (issues: FilmIssue[]) => issues.filter((i) => DIRECTABLE.has(i.kind)).length;
+    const rhythm = (issues: FilmIssue[]) => issues.filter((i) => DIRECTABLE.has(i.kind)).map((i) => i.kind);
     let film: MotionFilm;
     try {
       film = await direct(state, { film: state.motionFilm!, notes });
@@ -244,13 +244,17 @@ export function motionStages(ctx: MotionContext): Partial<Record<Stage, StageFn>
     const timeline = await build(state);
     const again = await ctx.review(state, timeline);
     const now = again ? reviewShare(again, state.shots.map((s) => s.id)) : undefined;
-    if (again && betterFilm(now!, was) && directable(state.motionLint) <= directable(before.motionLint!)) {
+    const better = again && betterFilm(now!, was);
+    const kinds = rhythm(state.motionLint);
+    if (better && kinds.length <= rhythm(before.motionLint!).length) {
       state.draftReview = { ...state.draftReview!, revisedScenes: failing.map((s) => s.id) };
       ctx.log(msg("log.motion.criticKept", { before: Math.round(was.share * 100), after: Math.round(now!.share * 100) }));
       return timeline;
     }
     Object.assign(state, before);
-    ctx.log(msg("log.motion.criticReverted", { before: Math.round(was.share * 100), after: now ? Math.round(now.share * 100) : 100 }));
+    const shares = { before: Math.round(was.share * 100), after: now ? Math.round(now.share * 100) : 100 };
+    // Kareler iyileşip ritim bulguları arttıysa öyle söylenir ("daha iyi değil … %20 → %0" kendisiyle çelişiyordu, 23 Kas).
+    ctx.log(better ? msg("log.motion.criticRhythm", { ...shares, kinds: [...new Set(kinds)].join(", ") }) : msg("log.motion.criticReverted", shares));
     return state.timeline!;
   }
 }

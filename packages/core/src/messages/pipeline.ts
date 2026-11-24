@@ -410,6 +410,7 @@ export const PIPELINE_MESSAGES = {
   "log.motion.reviseSkipped": { tr: "⚠ düzeltme yapılamadı, ilk film kalıyor: {error}", en: "⚠ revision failed, keeping the first film: {error}" },
   "log.motion.critic": { tr: "🎬 kare denetimi: {n} sahne barajın altında ({scenes}); yönetmen bulgularla bir kez düzeltiyor", en: "🎬 frame check: {n} scenes below the bar ({scenes}); the director revises once with the findings" },
   "log.motion.criticKept": { tr: "🎬 düzeltme tutuldu: geçemeyen kare %{before} → %{after}", en: "🎬 revision kept: failing frames {before}% → {after}%" },
+  "log.motion.criticRhythm": { tr: "🎬 düzeltme kareleri iyileştirdi (geçemeyen kare %{before} → %{after}) ama ritim bulguları arttı ({kinds}), önceki film kalıyor", en: "🎬 the revision improved the frames (failing frames {before}% → {after}%) but added rhythm findings ({kinds}), keeping the previous film" },
   "log.motion.criticReverted": { tr: "🎬 düzeltme daha iyi değil, önceki film kalıyor (geçemeyen kare %{before} → %{after})", en: "🎬 the revision is no better, keeping the previous film (failing frames {before}% → {after}%)" },
   "log.motion.fit": { tr: "🎬 zamanlama: {sec} sn (hedef {target} sn, en çok {max})", en: "🎬 timing: {sec} s (target {target} s, at most {max})" },
   "log.footage.plan": { tr: "✂ kurgu: {beats} vuruş, {segments} parça, {overlays} ekran yazısı", en: "✂ edit: {beats} beats, {segments} parts, {overlays} on-screen texts" },

@@ -23,6 +23,10 @@ export function Data(p: PartProps) {
   const head = titleSize * (rowsOf(d.title, titleW, titleSize * heading.em) * 1.1 + 0.8) + band;
   const chart = { x: box.x, y: box.y + head, w: box.w, h: box.h - head - small * 3.2 };
   const calloutAt = d.callout ? enters.at(-1)! : undefined;
+  // Sayaçta not sayının altındaki kendi bandındadır, sayı bandın üstündeki alana sığar: yükseklikle sınırlanan kısa sayı
+  // (16:9'da "40 s", "1,800") satır kutusuyla alanın ~%86'sına iniyor, %78'e oturan not rakamların altını kesiyordu
+  // (23 Kas, 16:9 film m12/m14, denetçi 1-2/10; dikeyde sayı genişlikle sınırlı kaldığından görülmemişti).
+  const counter = d.callout && d.chart === "count" ? { ...chart, h: chart.h - calloutSize * COUNT_BAND } : chart;
 
   return (
     <div style={{ position: "absolute", inset: 0, color: colors.fg }}>
@@ -31,7 +35,7 @@ export function Data(p: PartProps) {
       </div>
       {d.chart === "bars" && <Bars d={d} p={p} chart={chart} fmt={fmt} small={small} />}
       {d.chart === "line" && <Line d={d} p={p} chart={chart} fmt={fmt} small={small} />}
-      {d.chart === "count" && <Count d={d} p={p} chart={chart} size={titleSize} />}
+      {d.chart === "count" && <Count d={d} p={p} chart={counter} size={titleSize} />}
       {calloutAt !== undefined && (
         <Callout text={d.callout!} q={enterK(frame, calloutAt, fps)} at={calloutPoint(d, chart, d.callout!.length * calloutSize * body.em + calloutSize * 1.4, calloutSize)} colors={colors} font={body} size={calloutSize} />
       )}
@@ -45,6 +49,9 @@ export function Data(p: PartProps) {
 }
 
 type Box = { x: number; y: number; w: number; h: number };
+
+/** Sayacın not bandı, notun boyu cinsinden: notun kendisi (~1,9) ve sayıyla arasında pay. */
+export const COUNT_BAND = 2.4;
 
 /** Değer ekseni: sıfır her zaman tabanda (çubuklar sıfırdan başlar), üstte %12 pay. */
 function scaleOf(d: MotionData): { lo: number; hi: number } {
@@ -65,10 +72,11 @@ function pointAt(d: MotionData, chart: Box, i: number): { x: number; y: number }
 
 /**
  * Notun alt ortası: vurgulanan noktanın hizasında, notun kendi genişliğiyle grafiğin içinde (w: notun tahmini genişliği).
- * Çubuklarda grafiğin üstündeki bantta, çizgide noktanın üstünde (başlık satırına taşmaz).
+ * Çubuklarda grafiğin üstündeki bantta, çizgide noktanın üstünde (başlık satırına taşmaz), sayaçta grafiğin dibindeki
+ * bantta (COUNT_BAND).
  */
 export function calloutPoint(d: MotionData, chart: Box, w: number, size: number): { x: number; y: number } {
-  if (d.chart === "count") return { x: chart.x + chart.w / 2, y: chart.y + chart.h * 0.78 };
+  if (d.chart === "count") return { x: chart.x + chart.w / 2, y: chart.y + chart.h };
   const i = Math.min(d.highlight ?? d.points.length - 1, d.points.length - 1);
   const pt = pointAt(d, chart, i);
   const x = w >= chart.w ? chart.x + chart.w / 2 : Math.min(Math.max(pt.x, chart.x + w / 2), chart.x + chart.w - w / 2);
