@@ -2,6 +2,10 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.6.16 (2026-11-24)
+
+- Motion-graphics films: a highlighted word with a dotted or accented capital (İ, Ö, Ü, Ğ, Â) now sits fully inside its highlight box; the dot of "İ" could stick out of the top and blend into the background.
+
 ## v0.6.15 (2026-11-24)
 
 - Motion-graphics films: a counter with a note now keeps the note in its own space below the number; in 16:9 the note could cover the digits.
