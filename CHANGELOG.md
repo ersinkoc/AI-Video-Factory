@@ -2,6 +2,12 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.6.17 (2026-11-24)
+
+- Motion-graphics films: a line chart's note now sits above the highlighted point; at the top of the chart it could cover the point.
+- Figures written out in words in the brief ("one day", "iki yıl") count as given, so a card showing them no longer gets the "illustrative data" badge.
+- A montage's last card stays on screen long enough to read; a one-card montage could be cut after a second.
+
 ## v0.6.16 (2026-11-24)
 
 - Motion-graphics films: a highlighted word with a dotted or accented capital (İ, Ö, Ü, Ğ, Â) now sits fully inside its highlight box; the dot of "İ" could stick out of the top and blend into the background.
