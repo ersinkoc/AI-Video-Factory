@@ -52,9 +52,29 @@ function sceneNumbers(s: MotionScene): number[] {
   return out;
 }
 
+/**
+ * Brifte yazıyla geçen küçük sayılar (İngilizce ve Türkçe, tam kelime). Yönetmen bunları rakamla yazar: brifteki
+ * "installed in one day" kartta "1 day" oldu ve üç sahne yanlışlıkla "temsili veri" rozeti taşıdı (24 Kas, 9:16 film
+ * m6/m9/m10). Türkçe "bir" belirsizlik sözcüğü de olduğundan 1 her Türkçe brifte bilinir; 1 yanlış rozetin tek kaynağı
+ * olmaktan iyidir.
+ */
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, hundred: 100, thousand: 1000, dozen: 12, half: 0.5,
+  bir: 1, iki: 2, üç: 3, dört: 4, beş: 5, altı: 6, yedi: 7, sekiz: 8, dokuz: 9, on: 10, yirmi: 20, otuz: 30, kırk: 40,
+  elli: 50, yüz: 100, bin: 1000, yarım: 0.5, buçuk: 0.5,
+};
+
+/** Brifin bildiği sayılar: rakamla yazılanlar ve yazıyla geçen küçük sayılar (NUMBER_WORDS). */
+export function briefNumbers(brief: string): number[] {
+  // Türkçe küçültme "İKİ"yi, düz küçültme "THIRTY"yi doğru çevirir (Türkçe kural "I"yı "ı" yapar).
+  const words = Array.from(brief.matchAll(/\p{L}+/gu), ([w]) => NUMBER_WORDS[w.toLocaleLowerCase("tr")] ?? NUMBER_WORDS[w.toLowerCase()]).filter((n) => n !== undefined);
+  return [...numbersIn(brief), ...words];
+}
+
 /** Sayılarından biri brifte yoksa sahne temsilidir (rozet taşır). Negatif değer mutlak değeriyle aranır. */
 export function illustrative(scene: MotionScene, brief: string): boolean {
-  const known = numbersIn(brief);
+  const known = briefNumbers(brief);
   return sceneNumbers(scene).some((v) => !known.some((k) => Math.abs(k - Math.abs(v)) <= 1e-9 * Math.max(1, k)));
 }
 

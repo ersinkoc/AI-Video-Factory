@@ -658,7 +658,12 @@ anlatımsız (müzik + efekt, TTS seçilebilir); brif + logo/ekran + marka renkl
   15 karede 10. Yedinci yeni brif (16:9, Türkçe, iki marka rengi, bir şehrin bisiklet paylaşım ağı) bir kusur çıkardı,
   denetçi düşürdü: vurgu hapının üstü büyük harfin boyuna göre ayarlı olduğundan "İ"nin noktası hapın dışına taşıp
   zeminle birleşiyordu ("400 İstasyon"). Üstünde işaret olan büyük harfli hap (İ, Ö, Ü, Ğ, Â; Ç ve Ş değil) üstte
-  0,1 em uzar, satır da onunla büyür. Sahnenin ilk hali kopyada geri konunca 14 karede 10.
+  0,1 em uzar, satır da onunla büyür. Sahnenin ilk hali kopyada geri konunca 14 karede 10. Sekizinci yeni brif (9:16,
+  İngilizce, tek marka rengi, ev bataryası; gerçek filmde ilk çizgi grafik) üç kusur çıkardı: çizgi grafiğin notu tepe
+  noktasının üstüne biniyordu (denetçi 7/10; çizgide de not çubuklardaki gibi grafiğin üstündeki bantta, noktanın
+  halkasının üstünde biter), brifte yazıyla geçen "one day" kartta "1 day" olunca üç sahne yanlış "temsili veri" rozeti
+  taşıyordu (yazıyla küçük sayılar, İngilizce ve Türkçe, brifte bilinir) ve tek kartlı montaj 1 sn ekranda kalıyordu
+  (montajın son kartı sahne sonuna kadar kaldığından sahne onun okunacağı kadar uzar). Düzeltilmiş kopya 16 karede 10.
 
 ## 17. Pazar Haritası (Ekim 2026)
 

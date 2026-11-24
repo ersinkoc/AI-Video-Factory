@@ -234,8 +234,16 @@ describe("veri hikayesi", () => {
     expect(calloutPoint(d, chart, 300, 40)).toEqual({ x: 750, y: 236 });
     expect(calloutPoint({ ...d, highlight: 1 }, chart, 300, 40).x).toBe(500);
     expect(calloutPoint(d, chart, 900, 40).x).toBe(500);
-    // Çizgide noktanın üstünde, başlık payının altında.
-    expect(calloutPoint(line().data!, chart, 200, 40)).toEqual({ x: 800, y: 376 });
+    // Çizgide tepedeki nokta (W3; ölçeğin %12 payıyla y ~364) notun altında kalmaz: not halkasının (size × 1,27) üstünde
+    // biter (24 Kas, 9:16 film m4; eski sınır notu grafiğin içine, y 376'ya, noktanın üstüne itiyordu).
+    const peak = 300 + 600 * (1 - 1 / 1.12);
+    const top = calloutPoint(line().data!, chart, 200, 40);
+    expect(top.y).toBeLessThanOrEqual(peak - 40 * 1.5);
+    expect(top.y).toBeCloseTo(peak - 600 * 0.16);
+    // Uzun grafikte %16 bandın dışına taşardı: not bandın içinde kalır.
+    expect(calloutPoint(line().data!, { ...chart, h: 1600 }, 200, 40).y).toBe(300 - 40 * 1.6);
+    // Aşağıdaki nokta (W1, 6/24,64): grafiğin %16'sı kadar yukarıda.
+    expect(calloutPoint({ ...line().data!, highlight: 0 }, chart, 200, 40).y).toBeCloseTo(300 + 600 * (1 - 6 / (22 * 1.12)) - 600 * 0.16);
     clock.width = 1080;
     clock.height = 1920;
     const barTop = (over: Record<string, unknown>) => parseFloat((draw(bars({ data: { ...bars().data!, ...over } }), 200).querySelector('[data-bar="0"] > div') as HTMLElement).style.top);

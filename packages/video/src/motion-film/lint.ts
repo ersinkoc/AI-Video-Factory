@@ -88,7 +88,10 @@ export function neededFrames(scene: MotionScene, bpm: number, fps: number): numb
   const enters = enterFrames(scene, frames, bpm, fps, units);
   let need = frames;
   for (const t of textUnits(scene)) {
-    if (t.until !== undefined) continue;
+    // Montaj kartı bir sonrakine kadar görünür, onu tempo belirler; son kart ise sahnenin sonuna kadar kalır, sahne onun
+    // okunacağı kadar uzar (24 Kas, 9:16 film m9: tek kartlı montaj "Installed in One Day" 2 vuruşta 1 sn kaldı, denetim
+    // 1,5 sn istedi ama sahne uzamıyordu).
+    if (t.until !== undefined && t.until < units) continue;
     need = Math.max(need, Math.ceil(enters[t.unit]! + ((t.after ?? 0) + holdSec(t.words)) * fps));
   }
   return need;

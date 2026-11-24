@@ -18,8 +18,9 @@ export function Data(p: PartProps) {
   // grafiğin üstünde kendi bandındadır: vurgulanan kısa çubuğun üstüne konan not yandaki uzun çubuğa biniyordu (23 Kas,
   // film denetçisi m16: "turuncu not 'Before' çubuğunun kenarına değiyor").
   const calloutSize = Math.round(small * 1.5);
-  // Bant notun kendisi ve en uzun çubuğun değer etiketi kadar (not o etiketin üstünde durur, bkz. calloutPoint).
-  const band = d.callout && d.chart === "bars" ? calloutSize * 3.75 : 0;
+  // Bant notun kendisi ve en uzun çubuğun değer etiketi kadar (not o etiketin üstünde durur, bkz. calloutPoint). Çizgide
+  // de not, tepedeki noktanın halkasının üstünde bu banda çıkar.
+  const band = d.callout && (d.chart === "bars" || d.chart === "line") ? calloutSize * 3.75 : 0;
   const head = titleSize * (rowsOf(d.title, titleW, titleSize * heading.em) * 1.1 + 0.8) + band;
   const chart = { x: box.x, y: box.y + head, w: box.w, h: box.h - head - small * 3.2 };
   const calloutAt = d.callout ? enters.at(-1)! : undefined;
@@ -72,8 +73,8 @@ function pointAt(d: MotionData, chart: Box, i: number): { x: number; y: number }
 
 /**
  * Notun alt ortası: vurgulanan noktanın hizasında, notun kendi genişliğiyle grafiğin içinde (w: notun tahmini genişliği).
- * Çubuklarda grafiğin üstündeki bantta, çizgide noktanın üstünde (başlık satırına taşmaz), sayaçta grafiğin dibindeki
- * bantta (COUNT_BAND).
+ * Çubuklarda grafiğin üstündeki bantta, çizgide noktanın üstünde (gerekirse aynı banda çıkar), sayaçta grafiğin
+ * dibindeki bantta (COUNT_BAND).
  */
 export function calloutPoint(d: MotionData, chart: Box, w: number, size: number): { x: number; y: number } {
   if (d.chart === "count") return { x: chart.x + chart.w / 2, y: chart.y + chart.h };
@@ -82,7 +83,11 @@ export function calloutPoint(d: MotionData, chart: Box, w: number, size: number)
   const x = w >= chart.w ? chart.x + chart.w / 2 : Math.min(Math.max(pt.x, chart.x + w / 2), chart.x + chart.w - w / 2);
   // Çubuklarda en uzun çubuğun değer etiketi grafiğin %12'lik üst payına taşar (small × 1,9 = size × 1,27): not onun da
   // üstünde biter, vurgulanan çubuk en uzunsa etiketle arasında boşluk sıfıra iniyordu.
-  return { x, y: d.chart === "bars" ? chart.y - size * 1.6 : Math.max(chart.y + size * 1.9, pt.y - chart.h * 0.16) };
+  if (d.chart === "bars") return { x, y: chart.y - size * 1.6 };
+  // Çizgide not noktanın üstünde, grafiğin %16'sı kadar yukarıda, en çok üstteki bandın içine kadar; nokta tepedeyse
+  // halkasının (small × 1,9 = size × 1,27) üstünde kalır. Eski sınır notu grafiğin içine (chart.y + size × 1,9) itiyordu,
+  // tepedeki nokta notun altında kalıyordu (24 Kas, 9:16 film m4 "Peaks at 85% by noon", denetçi 7/10).
+  return { x, y: Math.min(pt.y - size * 1.5, Math.max(chart.y - size * 1.6, pt.y - chart.h * 0.16)) };
 }
 
 function Bars({ d, p, chart, fmt, small }: { d: MotionData; p: PartProps; chart: Box; fmt: (v: number) => string; small: number }) {

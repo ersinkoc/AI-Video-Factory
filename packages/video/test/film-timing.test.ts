@@ -176,8 +176,14 @@ describe("film denetimi", () => {
     expect(fitScene(long, 120, 30)).toBe(long);
     const huge = sc({ language: "kinetic", beats: 1, pace: "bar", kinetic: { lines: ["a b c d", "e f g h", "i j k l", "m n o p"], mode: "words" } });
     expect(fitScene(huge, 120, 30).beats).toBe(32);
-    // Montaj kartı kendi süresince okunur, sahneyi uzatmaz.
-    expect(neededFrames(grid("montage", { pace: "eighth" }), 120, 30)).toBe(Math.ceil((2 * 7.5) / 0.7));
+    // Montaj kartı bir sonrakine kadar kendi süresince okunur, sahneyi uzatmaz; son kart sahnenin sonuna kadar kalır, sahne
+    // onun okunacağı kadar uzar: üçüncü kart 15. karede girer, 4 kelime 1,5 sn = 60 kare.
+    expect(neededFrames(grid("montage", { pace: "eighth" }), 120, 30)).toBe(15 + 45);
+    expect(neededFrames(grid("montage", { pace: "eighth", grid: { mode: "montage", cards: [{ title: "Alerts on every deploy" }, { title: "Logs" }] } }), 120, 30)).toBe(Math.ceil(7.5 / 0.7));
+    // Tek kartlı montaj (24 Kas, 9:16 film m9 "Installed in One Day"): 2 vuruştan 3'e.
+    const one = grid("montage", { beats: 2, pace: "eighth", grid: { mode: "montage", cards: [{ title: "Installed in One Day", stat: "1 day" }] } });
+    expect(fitScene(one, 120, 30).beats).toBe(3);
+    expect(lintFilm(film([fitScene(one, 120, 30)]), 30).filter((i) => i.kind === "hold")).toEqual([]);
     expect(neededFrames(field({ field: { kind: "sparks" } }), 120, 30)).toBe(1);
     // Sayaç 15. karede girer, 0,9 sn sayar, son değeri 0,75 sn okunur: 65 kare = 5 vuruş (2 vuruşta kesmede yarım kalıyordu).
     expect(neededFrames(count({ beats: 2 }), 120, 30)).toBe(65);

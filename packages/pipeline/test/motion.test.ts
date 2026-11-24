@@ -2,7 +2,7 @@ import { MotionFilm, MotionScene } from "@ys/core";
 import { describe, expect, it } from "vitest";
 import { betterFilm, reviewShare } from "../src/motion-stages.ts";
 import { shortTimeline } from "../src/short.ts";
-import { clipSections, describeScene, filmOffsets, filmPosterMs, filmScript, filmShots, filmTimeline, fitSections, fitToVoice, fixPalette, illustrative, MOTION, normalizeFilm, numbersIn } from "../src/motion.ts";
+import { briefNumbers, clipSections, describeScene, filmOffsets, filmPosterMs, filmScript, filmShots, filmTimeline, fitSections, fitToVoice, fixPalette, illustrative, MOTION, normalizeFilm, numbersIn } from "../src/motion.ts";
 
 const PALETTE = { ground: "#f3efe6", ink: "#141414", accent: "#ff4f1f", alt: "#1e2a3a" };
 const sc = (over: Record<string, unknown>) => MotionScene.parse({ id: "m9", beats: 8, ...over });
@@ -15,6 +15,12 @@ describe("brifin sayıları ve temsili veri", () => {
   it("binlik ayırıcı ve ondalığı ikisi de dener", () => {
     expect(numbersIn("1,5 ve 1.000; 40% 2.3M 27")).toEqual([15, 1.5, 1000, 1, 40, 23, 2.3, 27]);
     expect(numbersIn("yok")).toEqual([]);
+    // Yazıyla geçen küçük sayılar brifte bilinir (24 Kas, 9:16 film: "installed in one day" kartta "1 day" oldu, üç sahne
+    // yanlış rozet taşıdı); tam kelime, iki dilde, büyük harfle de.
+    expect(briefNumbers("Installed in ONE day, İKİ yıl, THIRTY units, 12-year, bir buçuk, bonus, once")).toEqual([12, 1, 2, 30, 1, 0.5]);
+    const grid1 = sc({ language: "grid", grid: { cards: [{ title: "Installed in One Day", stat: "1 day" }] } });
+    expect(illustrative(grid1, "Installed in one day.")).toBe(false);
+    expect(illustrative(grid1, "Installed fast.")).toBe(true);
   });
 
   it("grafik, sayaç ve kart rakamı brifte yoksa sahne temsilidir; eksi değer mutlak değeriyle aranır", () => {
