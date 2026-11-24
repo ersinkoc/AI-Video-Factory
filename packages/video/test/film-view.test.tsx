@@ -22,7 +22,7 @@ vi.mock("../src/PixiParticles.tsx", () => ({ PixiParticles: (p: Record<string, u
 vi.mock("../src/Scene3D.tsx", () => ({ Scene3D: (p: { spec: Record<string, unknown> }) => (gl.three.push(p.spec), <canvas data-three={String(p.spec.preset)} />) }));
 
 const { FilmScene, ILLUSTRATIVE } = await import("../src/motion-film/Film.tsx");
-const { foldedIndex, markedWords, pillRoom } = await import("../src/motion-film/Kinetic.tsx");
+const { capMarked, foldedIndex, markedWords, PILL_LIFT, pillRoom } = await import("../src/motion-film/Kinetic.tsx");
 const { halves, labelSpot, layoutNodes } = await import("../src/motion-film/Diagram.tsx");
 const { gridShape } = await import("../src/motion-film/Grid.tsx");
 const { titleSizes } = await import("../src/motion-film/Ambient.tsx");
@@ -139,6 +139,22 @@ describe("kinetik yazı", () => {
       parseFloat(draw(kinetic(mode, { kinetic: { lines: [long], mode, highlight } }), 60).querySelector<HTMLElement>("[data-line]")!.style.fontSize);
     expect(sizeOf("rise", "sekiz saatte")).toBeLessThan(sizeOf("rise"));
     expect(sizeOf("chapter", "sekiz saatte")).toBeLessThan(sizeOf("chapter"));
+  });
+
+  it("üstünde işaret olan büyük harfli hap üstte uzar, satır onunla büyür (İ'nin noktası hapın dışına taşmaz)", () => {
+    expect([capMarked("İstasyon"), capMarked("Öz"), capMarked("ÇAĞ"), capMarked("Â")]).toEqual([true, true, true, true]);
+    // Alttaki çengel (Ç, Ş) ve küçük harfin noktası büyük harfin üstüne çıkmaz.
+    expect([capMarked("Çark"), capMarked("Şimdi"), capMarked("istasyon"), capMarked("ölçü"), capMarked("400")]).toEqual([false, false, false, false, false]);
+    const lift = (mode: "rise" | "slam", line: string, highlight: string) =>
+      draw(kinetic(mode, { kinetic: { lines: [line], mode, highlight } }), 120).querySelector<HTMLElement>("[data-pill]")!.style.paddingTop;
+    expect(lift("slam", "400 İstasyon", "400 İstasyon")).toBe(`${PILL_LIFT}em`);
+    expect(lift("rise", "daha temiz İzmir", "daha temiz İzmir")).toBe(`${PILL_LIFT}em`);
+    // Hap yalnız kendi metnine bakar: satırın başka yerindeki İ hapı uzatmaz.
+    expect(lift("slam", "400 İstasyon", "400")).toBe("0px");
+    // Kelime kipinde uzayan kelime taban çizgisinde kalır.
+    const words = draw(kinetic("words", { kinetic: { lines: ["Yeni Ölçü"], mode: "words", highlight: "Ölçü" } }), 200);
+    expect(words.querySelector<HTMLElement>("[data-pill]")!.style.paddingTop).toBe(`${PILL_LIFT}em`);
+    expect(words.querySelector<HTMLElement>("[data-word]")!.parentElement!.style.alignItems).toBe("baseline");
   });
 
   it("bölüm kartı: sayaç ve toplam, bölüm bilgisi yoksa 01/01", () => {

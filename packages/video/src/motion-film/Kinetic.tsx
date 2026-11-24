@@ -47,7 +47,9 @@ export function Kinetic(p: PartProps) {
           const words = wordsOf(line).map((w, j) => ({ w, at: enters[n++]!, hot: marks[j]! }));
           const done = words.at(-1)!.at;
           return (
-            <div key={i} style={{ ...font, display: "flex", flexWrap: "wrap", gap: `0 ${size * 0.26}px`, justifyContent: tall ? "flex-start" : "center" }}>
+            // Kelimeler taban çizgisine hizalanır: üst işaretli büyük harfli hap (PILL_LIFT) kelimesini uzatır, esnemede
+            // yazısı diğerlerinden aşağıda kalırdı.
+            <div key={i} style={{ ...font, display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: `0 ${size * 0.26}px`, justifyContent: tall ? "flex-start" : "center" }}>
               {words.map(({ w, at, hot }, j) => {
                 const q = enterK(frame, at, fps);
                 // Hap iki yana PILL_BLEED taşar; vurgusuz komşunun yanında o kadar boşluk eklenir, yoksa 0,26 em'lik kelime
@@ -124,6 +126,18 @@ function Line({ text, highlight, q, pill, colors, style }: { text: string; highl
 const PILL_BLEED = "0.2em";
 
 /**
+ * Üstünde işaret olan büyük harf (İ, Ö, Ü, Ğ, Â…) için hapın üstte uzaması. Hap büyük harfin üstüne göre ayarlıdır,
+ * "İ"nin noktası hapın üst kenarından ~0,02 em taşıyor, zeminle birleşip kesik görünüyordu (24 Kas, 16:9 Türkçe film m11
+ * "400 İstasyon", film denetçisi; m13 "daha temiz İzmir" sınırda). Pay dolgu olarak eklenir: satır da o kadar büyür,
+ * üstteki satıra yaklaşmaz, yükselen satırın maskesi noktayı kesmez.
+ */
+export const PILL_LIFT = 0.1;
+
+/** Metinde üstünde işaret olan büyük harf var mı (NFD'de büyük harf + U+0300–U+0315 arası üst birleşen işaret). */
+export const capMarked = (text: string) =>
+  Array.from(text.normalize("NFD")).some((c, j, all) => j > 0 && /\p{Lu}/u.test(all[j - 1]!) && c.codePointAt(0)! >= 0x300 && c.codePointAt(0)! <= 0x315);
+
+/**
  * Metnin içindeki vurgu sözcüğünü hapa alır (büyük/küçük harf duyarsız; yoksa metin olduğu gibi). Hap alt uzantıları da
  * kapsar (inset altı −0,16 em): büyük puntoda "Senaryo"nun y'si, "Çıktı"nın Ç çengeli hapın altından taşıyordu (23 Kas,
  * film denetçisi AI Video Factory m5/m7/m8).
@@ -143,7 +157,7 @@ export function Marked({ text, highlight, pill, colors }: { text: string; highli
   return (
     <>
       {before}
-      <span data-pill="" style={{ position: "relative", display: "inline-block", isolation: "isolate", marginLeft: before ? PILL_BLEED : 0, marginRight: after ? PILL_BLEED : 0, color: pill > 0.5 ? colors.onAccent : undefined }}>
+      <span data-pill="" style={{ position: "relative", display: "inline-block", isolation: "isolate", paddingTop: capMarked(mark) ? `${PILL_LIFT}em` : 0, marginLeft: before ? PILL_BLEED : 0, marginRight: after ? PILL_BLEED : 0, color: pill > 0.5 ? colors.onAccent : undefined }}>
         <span style={{ position: "absolute", inset: `0.04em -${PILL_BLEED} -0.16em`, borderRadius: "0.18em", background: colors.accent, transform: `scaleX(${pill})`, transformOrigin: "0 50%", zIndex: -1 }} />
         {mark}
       </span>

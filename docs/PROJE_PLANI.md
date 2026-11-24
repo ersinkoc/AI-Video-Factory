@@ -655,7 +655,10 @@ anlatımsız (müzik + efekt, TTS seçilebilir); brif + logo/ekran + marka renkl
   biniyordu (sayı artık notun bandının üstüne sığar) ve dört sütunlu şemada kısa bağların etiketleri düğümlerin altında
   kalıyordu (etiket düğümlerden uzaklaşır, üstte yer yoksa alta iner). Denetçinin düzeltmesi bu sahnelerde notları ve
   etiketleri düşürdüğü için geri alınmıştı; günlük artık bunu "ritim bulguları arttı" diye adıyla söyler. Orijinal plan
-  15 karede 10.
+  15 karede 10. Yedinci yeni brif (16:9, Türkçe, iki marka rengi, bir şehrin bisiklet paylaşım ağı) bir kusur çıkardı,
+  denetçi düşürdü: vurgu hapının üstü büyük harfin boyuna göre ayarlı olduğundan "İ"nin noktası hapın dışına taşıp
+  zeminle birleşiyordu ("400 İstasyon"). Üstünde işaret olan büyük harfli hap (İ, Ö, Ü, Ğ, Â; Ç ve Ş değil) üstte
+  0,1 em uzar, satır da onunla büyür. Sahnenin ilk hali kopyada geri konunca 14 karede 10.
 
 ## 17. Pazar Haritası (Ekim 2026)
 
