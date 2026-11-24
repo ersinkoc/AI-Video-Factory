@@ -664,6 +664,11 @@ anlatımsız (müzik + efekt, TTS seçilebilir); brif + logo/ekran + marka renkl
   halkasının üstünde biter), brifte yazıyla geçen "one day" kartta "1 day" olunca üç sahne yanlış "temsili veri" rozeti
   taşıyordu (yazıyla küçük sayılar, İngilizce ve Türkçe, brifte bilinir) ve tek kartlı montaj 1 sn ekranda kalıyordu
   (montajın son kartı sahne sonuna kadar kaldığından sahne onun okunacağı kadar uzar). Düzeltilmiş kopya 16 karede 10.
+  Dokuzuncu yeni brif (9:16, Türkçe, üç marka rengi, üç bölümlük kütüphane uygulaması) bir kusur çıkardı, denetçi
+  düşürdü: "1,2 milyon" haplı satır sayıdan sonra kayıyor, "1,2" tek başına kalıyor, hap sağı boş iki satırlık bir bloğa
+  dönüyordu. Dikey kinetik satırda sayı ardındaki kelimeye bölünmez boşlukla bağlanır: hapın içinde her kelimeye, dışında
+  yalnız büyüklük kelimesine (bin, milyon, milyar…); sığdırma bağlı ikiliyi tek kelime sayar. Her sayıyı bağlamak Lumen'in
+  "100,000 notes." satırını küçültüyordu, kural o yüzden dar. Düzeltilmiş kopya 18 karede 10.
 
 ## 17. Pazar Haritası (Ekim 2026)
 

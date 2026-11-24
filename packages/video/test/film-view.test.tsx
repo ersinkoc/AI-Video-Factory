@@ -22,11 +22,12 @@ vi.mock("../src/PixiParticles.tsx", () => ({ PixiParticles: (p: Record<string, u
 vi.mock("../src/Scene3D.tsx", () => ({ Scene3D: (p: { spec: Record<string, unknown> }) => (gl.three.push(p.spec), <canvas data-three={String(p.spec.preset)} />) }));
 
 const { FilmScene, ILLUSTRATIVE } = await import("../src/motion-film/Film.tsx");
-const { capMarked, foldedIndex, markedWords, PILL_LIFT, pillRoom } = await import("../src/motion-film/Kinetic.tsx");
+const { bindLine, capMarked, foldedIndex, markedWords, PILL_LIFT, pillRoom } = await import("../src/motion-film/Kinetic.tsx");
 const { halves, labelSpot, layoutNodes } = await import("../src/motion-film/Diagram.tsx");
 const { gridShape } = await import("../src/motion-film/Grid.tsx");
 const { titleSizes } = await import("../src/motion-film/Ambient.tsx");
-const { fileSrc, labelParts } = await import("../src/motion-film/context.ts");
+const { bindNumbers, fileSrc, labelParts, rowsOf } = await import("../src/motion-film/context.ts");
+const NBSP = String.fromCharCode(0xa0);
 const { calloutPoint } = await import("../src/motion-film/Data.tsx");
 const { Episode } = await import("../src/Episode.tsx");
 const { chunkKeys } = await import("../src/chunks.ts");
@@ -85,9 +86,10 @@ describe("film sahnesi çerçevesi", () => {
 describe("kinetik yazı", () => {
   it("slam ve rise: satırlar ve vurgu hapı (oturduktan sonra yazı rengi döner)", () => {
     const c = draw(kinetic("slam"), 120);
-    expect([...c.querySelectorAll("[data-slam]")].map((e) => e.textContent)).toEqual(["Ship faster now", "40 minutes"]);
+    // Sayı ardındaki kelimeye bölünmez boşlukla bağlıdır (bindNumbers).
+    expect([...c.querySelectorAll("[data-slam]")].map((e) => e.textContent)).toEqual(["Ship faster now", `40${NBSP}minutes`]);
     const pill = c.querySelector("[data-pill]") as HTMLElement;
-    expect(pill.textContent).toBe("40 minutes");
+    expect(pill.textContent).toBe(`40${NBSP}minutes`);
     expect(pill.style.color).not.toBe("");
     expect((draw(kinetic("slam"), 0).querySelector("[data-pill]") as HTMLElement).style.color).toBe("");
     expect(draw(kinetic("rise", { kinetic: { lines: ["Plain"], mode: "rise" } }), 60).querySelector("[data-pill]")).toBeNull();
@@ -139,6 +141,32 @@ describe("kinetik yazı", () => {
       parseFloat(draw(kinetic(mode, { kinetic: { lines: [long], mode, highlight } }), 60).querySelector<HTMLElement>("[data-line]")!.style.fontSize);
     expect(sizeOf("rise", "sekiz saatte")).toBeLessThan(sizeOf("rise"));
     expect(sizeOf("chapter", "sekiz saatte")).toBeLessThan(sizeOf("chapter"));
+  });
+
+  it("sayı ardındaki kelimeyle bir satırda kalır; sığdırma yalnız düz boşlukta kayar", () => {
+    // Büyüklük kelimesi her yerde bağlıdır (iki küçültme kuralıyla), başka kelime yalnız hapın içinde (any).
+    expect(bindNumbers("1,2 milyon kitap, 3 BILLION, 4 Bin")).toBe(`1,2${NBSP}milyon kitap, 3${NBSP}BILLION, 4${NBSP}Bin`);
+    expect(bindNumbers("%38 daha fazla")).toBe("%38 daha fazla");
+    expect(bindNumbers("%38 daha fazla", true)).toBe(`%38${NBSP}daha fazla`);
+    expect(bindNumbers("Yıl 2026 bitti 3 - son", true)).toBe(`Yıl 2026${NBSP}bitti 3 - son`);
+    expect(bindLine("Kurye 48 saat. 100,000 notes", "48 saat")).toBe(`Kurye 48${NBSP}saat. 100,000 notes`);
+    expect(bindLine("100,000 notes.", "100,000")).toBe("100,000 notes.");
+    expect(bindLine("2 milyon kitap")).toBe(`2${NBSP}milyon kitap`);
+    expect(rowsOf(`1,2${NBSP}milyon`, 250, 30)).toBe(1);
+    expect(rowsOf("1,2 milyon", 250, 30)).toBe(2);
+    // 24 Kas, 9:16 film m8: "1,2 milyon" iki satıra bölünüyor, hap sağı boş bir bloğa dönüyordu; şimdi sayı ve birim tek
+    // satırda, hap tek satır, yazı ona göre küçülür.
+    clock.width = 1080;
+    clock.height = 1920;
+    const slam = (first: string) => draw(kinetic("slam", { kinetic: { lines: [first, "kitap"], mode: "slam", highlight: first } }), 120);
+    expect(slam("1,2 milyon").querySelector("[data-pill]")!.textContent).toBe(`1,2${NBSP}milyon`);
+    // Aynı uzunlukta sayısız satır iki satıra kayabildiği için daha büyük kalır; bağlı satır tek satıra sığacak kadar küçülür.
+    const sizeOf = (first: string) => parseFloat(slam(first).querySelector<HTMLElement>("[data-slam]")!.style.fontSize);
+    expect(sizeOf("1,2 milyon")).toBeLessThan(sizeOf("bir milyon"));
+    // Hap yalnız sayıyı sarıyorsa ardındaki ad kayabilir, satır büyük kalır (Lumen "100,000 notes.").
+    const lumen = (highlight: string) =>
+      parseFloat(draw(kinetic("slam", { kinetic: { lines: ["100,000 notes."], mode: "slam", highlight } }), 120).querySelector<HTMLElement>("[data-slam]")!.style.fontSize);
+    expect(lumen("100,000")).toBeGreaterThan(lumen("100,000 notes"));
   });
 
   it("üstünde işaret olan büyük harfli hap üstte uzar, satır onunla büyür (İ'nin noktası hapın dışına taşmaz)", () => {
