@@ -143,6 +143,9 @@ backdrop box, texts clear of each other and of the subtitles and readable, scale
 narrated action, anatomy judged against the art style, anything else broken), first writing what it saw in that frame, and the code scores the frame
 (10, minus 3 for each major and 1 for each minor failure). An answer without real evidence is rejected and the
 frame asked again. A scene passes only when every frame was checked and scored 8 or more.
+On-screen titles, cards and labels are short summaries, so a text that shortens the narration is not a failure,
+and a nod, a head shake or a walk, which a still frame cannot show, passes when the person stands where the shot
+puts them and faces the right way.
 
 Every scene below that is re-planned by the director looking at its draft frames and findings, and reviewed
 again; a re-plan that leaves a larger share of failing frames, or the same share with a lower average, is

@@ -341,6 +341,7 @@ Every agent above can run on Claude or on an ACP agent, chosen per agent on the 
 | Explore styles, animation and production behavior | [Production features](docs/FEATURES.md) |
 | Find editing, source and quality-review tools | [Documentation index](docs/README.md) |
 | Work on the codebase or releases | [Development](docs/DEVELOPMENT.md) |
+| Add 3D, WebGL or shader work, or install the optional 3D skills for coding sessions | [3D references](docs/3D_REFERENCES.md) |
 
 Architecture decisions and planned work are in the [project plan](docs/PROJE_PLANI.md) (Turkish). Release history is in the [changelog](CHANGELOG.md).
 

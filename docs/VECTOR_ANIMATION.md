@@ -9,8 +9,10 @@ and the HyperFrames development fixture, see [Scene motion and rendering engines
 
 Characters are puppets on a rig, moved entirely in code: things on the floor never float, walk steps follow
 the distance travelled, held objects stay in the hand, and a character appears only once per shot. Gestures
-have anticipation and overshoot; pointing aims at its target, and when the object is within reach the elbow
-bends so the fingertip stops at its edge instead of covering it, eyes follow the listener, and explaining uses
+have anticipation and overshoot; pointing aims at its target: a person whose straight arm would not reach it
+walks closer first (in close-ups too; not while holding something), and when the object is within reach the
+elbow bends so the fingertip stops at the edge where the arm meets it, its side or, for a laptop on a desk below
+the shoulder, its top, instead of covering it or ending in mid-air; eyes follow the listener, and explaining uses
 one dominant hand. Mouths speak the narration: every sound gets its own mouth shape (lips closed on m, b and
 p, wide on a, round on o, pursed on u, teeth on the lip for f and v), drawn in code where each drawing's mouth
 was measured.
@@ -122,6 +124,13 @@ When two shots in a row show the same people in the same room at the same size, 
 (wide, medium, close) so the cut does not look like a jump. Confetti, sparks and dust fall behind the
 characters; fog thickens with distance, hazing the room behind the people while only a thin ground mist drifts
 in front of them; nothing covers the on-screen text.
+
+A 3D illustration (an atom, a network, orbital rings) is moved off faces, bodies and the objects in front of it,
+kept inside the frame at both ends of a camera move and above the subtitles, and made larger when it would be
+tiny on screen; the info card and the magnifier inset keep clear of it. Its colour is checked against the room
+drawn behind it and darkened or lightened when it would vanish there. Sparks, energy rings, speed lines and
+starfields start at the shot's subject (the illustration, the narrated object or the close-up's subject) and
+stop short of faces instead of bursting from the centre of the frame over people.
 
 ## Crowds and physical actions
 

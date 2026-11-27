@@ -14,7 +14,7 @@ design decisions.
 | `packages/media-gateway` | Every paid generation call: cost and quality router, cache, budget cap, fallback |
 | `packages/agents` | Claude Agent SDK agents with JSON-schema output |
 | `packages/pipeline` | Episode state machine and stages, references, map and flag generation, estimates |
-| `packages/video` | Remotion compositions, including the vector scene renderer, PixiJS (WebGL) particle atmospheres, a three.js 3D globe for planet-scale maps, paper.js-measured draw-on reveals, GSAP kinetic text, Manim formula/graph boards, synthesized background music and frame-locked sound effects |
+| `packages/video` | Remotion compositions, including the vector scene renderer, PixiJS (WebGL) particle atmospheres, a three.js 3D globe for planet-scale maps, procedural three.js illustrations placed and coloured against the staged scene, paper.js-measured draw-on reveals, GSAP kinetic text, Manim formula/graph boards, synthesized background music and frame-locked sound effects |
 | `packages/storage`, `packages/db` | Local or S3 asset store; Postgres cost ledger |
 | `apps/studio` | Next.js Studio |
 | `apps/cli` | `pnpm ys` |
@@ -36,6 +36,7 @@ outside those locations.
 | `pnpm studio` / `studio:build` / `studio:start` | Studio in development or production mode |
 | `pnpm ys …` | CLI |
 | `pnpm ys doctor [--json] [--check-local]` | [Local environment diagnostics](DOCTOR.md), without generation or paid calls |
+| `pnpm ys skills [list|install [tool…]]` | Lists or installs the optional three.js skills and MCP server for coding sessions ([3D references](3D_REFERENCES.md)); also Studio → Developer tools |
 | `pnpm typecheck` | TypeScript 7 check |
 | `pnpm test` | Unit tests (Vitest) |
 | `pnpm test:coverage` | Unit tests with coverage; fails below 100% lines/branches/functions/statements |

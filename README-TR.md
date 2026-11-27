@@ -343,6 +343,7 @@ Ayrıntılı rehberler İngilizce tutulur; proje planı Türkçedir.
 | Stilleri, animasyonu ve üretim davranışını incelemek | [Üretim özellikleri](docs/FEATURES.md) |
 | Düzenleme, kaynak ve kalite denetimi araçlarını bulmak | [Doküman dizini](docs/README.md) |
 | Kod tabanı veya sürümler üzerinde çalışmak | [Geliştirme](docs/DEVELOPMENT.md) |
+| 3D, WebGL ya da shader işi eklemek, kodlama oturumları için isteğe bağlı 3D skill'lerini kurmak | [3D referansları](docs/3D_REFERENCES.md) (İngilizce) |
 
 Mimari kararlar ve planlanan işler [proje planında](docs/PROJE_PLANI.md), sürüm geçmişi [değişiklik günlüğünde](CHANGELOG.md) yer alır.
 
