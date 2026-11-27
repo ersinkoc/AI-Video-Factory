@@ -128,7 +128,7 @@ describe("senaryo ajanları", () => {
   it("senarist ve doktor kelime bütçesini dilin konuşma hızından hesaplar, dersleri ekler", async () => {
     const a = await capture((d) => screenwriter({ ...brief, lessons: ["Kısa yaz"] }, story, d));
     expect(a.system).toContain("Total narration ≈ 230 words (115 wpm");
-    expect(a.system).toContain("Lessons from previous episodes (follow them, but they never override the channel's art style and palette, and never forbid the code's own camera devices: depth of field, motion blur, the round magnifier inset and medium or close framing that leaves the legs below the frame, and never ask for a name label in every shot: code tags each person where they first appear):\n- Kısa yaz");
+    expect(a.system).toContain("Lessons from previous episodes (follow them, but they never override the channel's art style and palette, and never forbid the code's own camera devices: depth of field, motion blur, the round magnifier inset and medium or close framing that leaves the legs below the frame, never ask for a name label in every shot: code tags each person where they first appear, and never require on-screen text to copy the narration word for word: titles, cards, labels and signs are short summaries of a few words):\n- Kısa yaz");
     expect(a.prompt).toBe(`Story:\n${JSON.stringify(story, null, 2)}`);
     const b = await capture((d) => scriptDoctor({ ...brief, lang: "en", wordsPerMinute: 100 }, story, script, d));
     expect(b.system).toContain("keep total narration ≈ 200 words");
@@ -210,6 +210,8 @@ describe("görsel denetçiler", () => {
     expect(a.system).toContain("give no lesson asking for feet in frame");
     // İsim etiketi ilk görünüşte bir kez (8 Kas, IPv4: 30 çekimin 10'unda "Cerf'in isim etiketi yok"; 26 bölümde 90 not).
     expect(a.system).toContain("do not report missing name labels and give no lesson asking for them");
+    expect(a.system).toContain("do not report that a text shortens, paraphrases or does not copy the narration word for word");
+    expect(JSON.stringify(a)).toContain("A still frame cannot show a nod, a head shake or the movement of a walk");
     expect(a.images).toEqual(["Aw==", "BA=="]);
     expect(a.prompt).toBe("Image 1 = sh1: atlı\nImage 2 = sh2: çöl\nAnswer all 14 checks for each of the 2 image(s).");
     // Kontrol listesi (12 Kas): her madde komutta, önce kanıt sonra karar; puanı denetçi değil kod verir.

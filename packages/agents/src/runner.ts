@@ -99,9 +99,12 @@ export function toOutputSchema(schema: z.ZodType): Record<string, unknown> {
 /** Önceki bölümlerden öğrenilen kurallar talimatın sonuna eklenir (boşsa hiçbir şey). */
 export function lessonsBlock(lessons: readonly string[] | undefined): string {
   // Dersler bütün paketlerden birikir: "parlak doygun renk kullan" gibi bir ders sepya ya da tek renkli paketin paletini
-  // ezmesin (4 Kas: defterdeki iki ders griyi, sepyayı, kahverengiyi yasaklıyordu).
+  // ezmesin (4 Kas: defterdeki iki ders griyi, sepyayı, kahverengiyi yasaklıyordu). Ekran yazısı anlatımın kopyası olmaz
+  // (27 Kas: 17 kez pekişmiş bir ders her başlığın, kartın ve etiketin anlatım cümlesinden kelimesi kelimesine
+  // kopyalanmasını istiyordu; kısa yazı kuralıyla çelişiyor, eleştirmen son 9 bölümde 66 karede kısaltılmış etiketleri bu
+  // yüzden düşürdü).
   return lessons?.length
-    ? `\nLessons from previous episodes (follow them, but they never override the channel's art style and palette, and never forbid the code's own camera devices: depth of field, motion blur, the round magnifier inset and medium or close framing that leaves the legs below the frame, and never ask for a name label in every shot: code tags each person where they first appear):\n${lessons.map((l) => `- ${l}`).join("\n")}`
+    ? `\nLessons from previous episodes (follow them, but they never override the channel's art style and palette, and never forbid the code's own camera devices: depth of field, motion blur, the round magnifier inset and medium or close framing that leaves the legs below the frame, never ask for a name label in every shot: code tags each person where they first appear, and never require on-screen text to copy the narration word for word: titles, cards, labels and signs are short summaries of a few words):\n${lessons.map((l) => `- ${l}`).join("\n")}`
     : "";
 }
 
