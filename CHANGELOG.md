@@ -2,6 +2,14 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.6.20 (2026-11-27)
+
+- 3D illustrations no longer sit on faces, bodies or props, or get cut at the frame edge: a bad spot moves to the nearest clear one, also in the vertical Short. Their colour is darkened or lightened when it would vanish into the room behind them.
+- Sparks, energy rings, speed lines and other screen effects start at the shot's subject and stop short of faces instead of bursting from the frame centre over people.
+- A pointing person walks close enough for the arm to reach the target, close-ups included, and the fingertip stops at the target's edge, including a laptop on a desk below the shoulder; the hand no longer ends in mid-air short of what is named.
+- The frame check no longer fails a shot because an on-screen title shortens the narration, or because a still frame cannot show a nod, a head shake or a walk.
+- Studio → Developer tools (and `pnpm ys skills`) installs a chosen set of three.js skills and the three.js devtools MCP for coding sessions; it does not affect video production.
+
 ## v0.6.19 (2026-11-25)
 
 - Motion-graphics films: a highlight box no longer runs into the line below it; with a tight two-line title the box could cover the tall letters of the next line and, on an accent background, blend with them.
