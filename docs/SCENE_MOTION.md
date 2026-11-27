@@ -17,7 +17,7 @@ The vector director now plans motion across most shots, targeting at least two t
 | `orbital_rings` | Independently rotating gyroscope rings |
 | `wave_grid` | Oscillating surface of 225 instanced spheres |
 
-Each item has stage-space `x`, `y`, `size`, `color`, `accent`, `speed`, `wireframe` and a `camera` (`static`, `orbit`, `push_in`). Stage coordinates are always 1920 × 1080. Illustrations share the scene camera and appear behind character/prop layers. They are schematic visuals; geography still uses the existing factual map/globe pipeline, numerical data the math board.
+Each item has stage-space `x`, `y`, `size`, `color`, `accent`, `speed`, `wireframe` and a `camera` (`static`, `orbit`, `push_in`). The director picks the spot without seeing the staged scene, so code checks it (`threeSpot.ts`, `placeThree` in `shotModel`): the drawn part (`THREE_SPOT.content` of the box) must not touch a person's face (padded), sit more than `body` under people or `cover` under props drawn in front, leave the frame at either camera end, or sit below the caption line; a box smaller than `minSide` of the frame height on screen grows. A bad spot moves to the nearest good one (shrinking to `shrink` if needed; the caption rule is dropped only when nothing else fits); with no good spot it stays. In a vertical frame the search stays inside the visible strip and the vertical stage fit counts the illustration. The info card and the callout inset avoid the illustration like a key prop. Its `color` is then checked against the room drawn behind it (`threeContrast.ts`): the room is sampled with each shape's outline and opacity, and a main colour readable (3:1) on less than 80% of that area becomes its 60% mix toward black or white when that is readable there; on mixed ground it stays. The accent stays too, since it also colours the rim light. Stage coordinates are always 1920 × 1080. Illustrations share the scene camera and appear behind character/prop layers. They are schematic visuals; geography still uses the existing factual map/globe pipeline, numerical data the math board.
 
 `VectorShot.effects` accepts at most three screen-space accents:
 
@@ -26,7 +26,7 @@ Each item has stage-space `x`, `y`, `size`, `color`, `accent`, `speed`, `wirefra
 | PixiJS | `sparks`, `fireflies`, `bubbles`, `starfield`, `speed_lines`, `energy_rings` |
 | CSS compositing | `light_sweep`, `scanlines`, `letterbox`, `vignette` |
 
-Effects expose `intensity`, `color` and `speed`. Both arrays use `start`/`end` as fractions of the shot, with soft fades and local time. Effects appear below callouts, text and captions. Existing rain, snow, fog, dust, embers, flicker, rays and confetti remain available through ambience.
+Effects expose `intensity`, `color` and `speed`. Particle effects start at the shot's focus (`effectLayout` in `Vector.tsx`): an open 3D illustration, else the narrated prop (`key`), else the close-up subject, else the frame centre; rings and sparks stop `EFFECT_SPACE.margin` short of the nearest face (at least `minReach`), and dots and streaks are not drawn over faces. Both arrays use `start`/`end` as fractions of the shot, with soft fades and local time. Effects appear below callouts, text and captions. Existing rain, snow, fog, dust, embers, flicker, rays and confetti remain available through ambience.
 
 ```json
 {
@@ -35,7 +35,7 @@ Effects expose `intensity`, `color` and `speed`. Both arrays use `start`/`end` a
 }
 ```
 
-All rendering uses absolute frame time. Neither engine advances a wall-clock ticker. Models reuse geometry/materials, the wave grid uses instancing, and GPU resources are disposed on unmount. A failed required 3D illustration stops the render with an explicit error rather than silently removing the narrated subject.
+External three.js, shader and cinematography references, and how they fit this contract, are in [3D_REFERENCES.md](3D_REFERENCES.md). All rendering uses absolute frame time. Neither engine advances a wall-clock ticker. Models reuse geometry/materials, the wave grid uses instancing, and GPU resources are disposed on unmount. A failed required 3D illustration stops the render with an explicit error rather than silently removing the narrated subject.
 
 ## Local visual fixtures
 

@@ -124,6 +124,10 @@ describe("SceneEffects", () => {
     expect(layers[0]!.style.opacity).toBe("0.5");
     expect(pixi.props).toHaveLength(1);
     expect(pixi.props[0]).toMatchObject({ kind: "sparks", seed: "s1-sh2-fx-0", tint: 0xff8800, size: [1920, 1080] });
+    expect(pixi.props[0]!.layout).toBeUndefined();
+    const layout = { origin: [300, 200] as const, reach: 180, avoid: [] };
+    render(<SceneEffects spec={shot} p={0.5} durationSec={10} seed="s1-sh2" layout={layout} />);
+    expect(pixi.props.at(-1)!.layout).toBe(layout);
     expect(layers[1]!.querySelector("[data-pixi]")).toBeNull();
     expect((layers[1]!.firstElementChild as HTMLElement).style.background).toContain("radial-gradient");
 

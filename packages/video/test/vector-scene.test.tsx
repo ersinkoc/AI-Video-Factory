@@ -5,6 +5,7 @@ import { random } from "remotion";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { visualVector } from "../src/entrance.ts";
 import { PUPIL } from "../src/rigGeometry.ts";
+import { contentBox, THREE_SPOT } from "../src/threeSpot.ts";
 
 // Remotion bağlamı yerine kare ve video ayarı testten verilir; geri kalan (Easing, interpolate, random) gerçek.
 const clock = vi.hoisted(() => ({ frame: 0, fps: 30, width: 1920, height: 1080 }));
@@ -43,7 +44,7 @@ const { BURST } = await import("../src/staging.ts");
 const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, MOOD_REST, MOOD_POSE, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, STARTLE, exclaimOf, opensMouth, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt, screenView, faceCorners } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, MOOD_REST, MOOD_POSE, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, verticalStrip, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, STARTLE, exclaimOf, opensMouth, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt, screenView, faceCorners, EFFECT_SPACE } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -1400,6 +1401,26 @@ describe("vektör sahne: dikkat (işaret ve bakış)", () => {
     const behindLeft = withOthers({ anims: [{ type: "point", target: 1 }] }, [{ asset: "box", x: 930, y: 300, height: 100 }]);
     expect(behindLeft("arm-r").rotate).toBeLessThan(-140);
     expect(Math.abs(behindLeft("arm-l").rotate)).toBeLessThan(20);
+  });
+
+  it("kol alçaktaki hedefe üstünden giriyorsa parmak ucu yan kenarda değil üst kenarın önünde durur", () => {
+    // Fincan (0,3 m) omzun aşağısında, kişinin hemen yanında: ışın kutuya üstten girer. Yalnız yan kenara bakılınca el en kısa
+    // erime (POINT.min) çekilip nesnenin üstünde havada kalıyordu.
+    const fingers = faceFor(ASSETS.hero).fingers.r;
+    const shoulder = RIG.pivots["arm-r"];
+    const rigY = (y: number) => (y - 370) / 0.85;
+    const aimed = { anims: [{ type: "point", target: 1 }] };
+    const cup = (y: number) => [{ asset: "cup", x: 1080, y }];
+    const m = shotModel(VectorShot.parse({ layers: [{ asset: "hero", x: 960, depth: 0, ...aimed }, ...cup(830)] }), ASSETS, "outline", 1920, 1080, false, 5);
+    const high = m.placed.find((p) => p.index === 1)!.height;
+    const g = withOthers(aimed, cup(830));
+    const [hx, hy] = tip(shoulder, ARM.upper, ARM.reach, g("arm-r").rotate, g("forearm-r").rotate);
+    expect(hy).toBeCloseTo(rigY(830 - high) - fingers - POINT.gap, 1);
+    expect(Math.hypot(hx - shoulder[0], hy - shoulder[1])).toBeGreaterThan((ARM.upper + ARM.reach) * POINT.min + 10);
+    // Hedef omzun yukarısındaysa (kol alttan girer) parmak ucu alt kenarın önünde durur.
+    const up = withOthers(aimed, cup(480));
+    const [, uy] = tip(shoulder, ARM.upper, ARM.reach, up("arm-r").rotate, up("forearm-r").rotate);
+    expect(uy).toBeCloseTo(rigY(480) + fingers + POINT.gap, 1);
   });
 
   it("kişisel alan: yanındakini işaret eden, anlatan, omuz silken ve irkilen el iki kişinin orta çizgisini geçmez", () => {
@@ -3789,4 +3810,133 @@ it("keeps Paper Poster flat, ungraded and free of dimensional title shadows", ()
  view.rerender(<VectorScene visual={visual} assets={ASSETS} palette={["#F3F0E6", "#111410", "#68725F", "#D5FA73"]} texture="paper" />);
  expect(view.container.innerHTML).not.toContain("blur(28px)");
  expect(view.container.innerHTML).not.toContain("linear-gradient");
+});
+
+describe("3D illüstrasyonun yeri (threeSpot)", () => {
+  const blob = asset("blob", "prop", '<svg><rect width="10" height="10" fill="#ff0000"/></svg>', 100, 100, { realHeight: 0.4, grounded: true });
+  const assets = { ...ASSETS, blob };
+  const net = { preset: "network", x: 960, y: 420, size: 520 };
+  const box = (t: { x: number; y: number; size: number }) => contentBox(t);
+  const overlaps = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+  it("kişinin yüzünün arkasındaki illüstrasyon en yakın boş yere kayar; ölçülemeyen çizimin kutusu da örter", () => {
+    const shot = VectorShot.parse({ background: "room", layers: [{ asset: "hero", x: 960, depth: 0.3 }, { asset: "blob", x: 400, depth: 0.2 }, { asset: "box", x: 1500, y: 500, height: 200 }], three: [net] });
+    const m = shotModel(shot, assets, "outline", 1920, 1080, false, 5);
+    const moved = m.spec.three![0]!;
+    expect([moved.x, moved.y]).not.toEqual([960, 420]);
+    const hero = m.placed.find((pl) => pl.index === 0)!;
+    const blobAt = m.placed.find((pl) => pl.index === 1)!;
+    const body = { x: hero.x - hero.width * 0.3, y: hero.y - hero.height, w: hero.width * 0.6, h: hero.height };
+    const c = box(moved);
+    const under = Math.max(0, Math.min(c.x + c.w, body.x + body.w) - Math.max(c.x, body.x)) * Math.max(0, Math.min(c.y + c.h, body.y + body.h) - Math.max(c.y, body.y));
+    expect(under / (c.w * c.h)).toBeLessThanOrEqual(THREE_SPOT.body);
+    expect(overlaps(box(moved), { x: blobAt.x - blobAt.width / 2, y: blobAt.y - blobAt.height, w: blobAt.width, h: blobAt.height })).toBe(false);
+  });
+
+  it("dikey kadrajda görünen şeridin içine yerleşir; dikey sahne ölçeği onu da sayar", () => {
+    expect(verticalStrip(1920, 1080)).toEqual([0, 1]);
+    const [lo, hi] = verticalStrip(1080, 1920);
+    expect(lo).toBeCloseTo((1 - 1080 / (1920 * stageFit(1080, 1920))) / 2);
+    expect(hi).toBeCloseTo(1 - lo);
+    // Kenardaki illüstrasyon: yatayda yerinde kalır, dikey yakın çekimde şeridin içine kayar.
+    const edge = { preset: "atom", x: 1450, y: 380, size: 420 };
+    const shot = (camera: object) => VectorShot.parse({ background: "room", three: [edge], camera });
+    const close = { zoomFrom: 1.25, zoomTo: 1.25, panX: 0, focusX: 960, focusY: 540 };
+    expect(shotModel(shot(close), assets, "outline", 1920, 1080, false, 5).spec.three![0]).toMatchObject({ x: 1450, y: 380 });
+    const tall = shotModel(shot(close), assets, "outline", 1080, 1920, false, 5);
+    const c = box(tall.spec.three![0]!);
+    for (const k of [0, 1]) {
+      const v = viewAt(tall.cam, k, tall.centre);
+      // En çok frame payı dışarıda kalabilir.
+      const slack = c.w * (1 - THREE_SPOT.frame);
+      expect(c.x).toBeGreaterThanOrEqual(v.x0 + v.w * lo - slack);
+      expect(c.x + c.w).toBeLessThanOrEqual(v.x0 + v.w * hi + slack);
+    }
+    // Geniş dikey çekimde de illüstrasyon ekranda görünür (sahne ölçeği onu da sayar).
+    const wide = shotModel(VectorShot.parse({ background: "room", layers: [{ asset: "hero", x: 960, depth: 0.3 }], three: [{ preset: "atom", x: 1650, y: 360, size: 360 }], camera: { zoomFrom: 1, zoomTo: 1, panX: 0 } }), assets, "outline", 1080, 1920, false, 5);
+    const w = box(wide.spec.three![0]!);
+    const offset = (1080 - 1920 * wide.fit) / 2;
+    for (const x of [w.x, w.x + w.w]) {
+      const sx = offset + cameraPoint(wide.cam, 0, wide.centre, [x, w.y])[0] * wide.fit;
+      expect(sx).toBeGreaterThanOrEqual(-w.w * (1 - THREE_SPOT.frame));
+      expect(sx).toBeLessThanOrEqual(1080 + w.w * (1 - THREE_SPOT.frame));
+    }
+  });
+
+  it("haritada (gerçek veri) yerinde kalır; illüstrasyonsuz çekim olduğu gibi", () => {
+    const onMap = shotModel(VectorShot.parse({ background: "map", layers: [{ asset: "hero", x: 960, depth: 0.3 }], three: [net] }), assets, "outline", 1920, 1080, false, 5);
+    expect(onMap.spec.three![0]).toMatchObject({ x: 960, y: 420, size: 520 });
+    // Arka plansız çekimde yer düzelir, renk olduğu gibi kalır (zemin bilinmez).
+    const bare = shotModel(VectorShot.parse({ layers: [{ asset: "hero", x: 960, depth: 0.3 }], three: [net] }), assets, "outline", 1920, 1080, false, 5);
+    expect(bare.spec.three![0]).toMatchObject({ color: "#70d6ff", accent: "#ffd84d" });
+    // Odanın açık gri duvarında varsayılan açık mavi okunmaz, koyulaşır.
+    const inRoom = shotModel(VectorShot.parse({ background: "room", layers: [{ asset: "hero", x: 960, depth: 0.3 }], three: [net] }), assets, "outline", 1920, 1080, false, 5);
+    expect(inRoom.spec.three![0]!.color).not.toBe("#70d6ff");
+    const none = VectorShot.parse({ background: "room", layers: [{ asset: "hero", x: 960 }] });
+    expect(shotModel(none, assets, "outline", 1920, 1080, false, 5).spec.three).toEqual(none.three);
+  });
+
+  it("bilgi kartı illüstrasyonu örtmez: sol üstteki 3D'den kaçıp sağ üste geçer", () => {
+    const shot = (three: object[]) =>
+      VectorShot.parse({
+        background: "room",
+        layers: [{ asset: "hero", x: 1300, depth: 0.3 }, { asset: "blob", x: 1700, depth: 0.3 }],
+        three,
+        texts: [{ text: "1970 yılında başladı", style: "title", x: 0, y: 0 }],
+        camera: { zoomFrom: 1, zoomTo: 1, panX: 0 },
+      });
+    const card = (three: object[]) => {
+      const m = shotModel(shot(three), assets, "outline", 1920, 1080, false, 5);
+      return shotFrame(m, { shotId: "s1", frame: 75, fps: 30, durationInFrames: 150, width: 1920, height: 1080, insets: false, overlay: false }).texts[0]!;
+    };
+    expect(card([])).not.toHaveProperty("right");
+    expect(card([{ preset: "atom", x: 330, y: 300, size: 520 }])).toMatchObject({ right: true });
+  });
+});
+
+describe("ekran efektinin yerleşimi (effectLayout)", () => {
+  const frameOf = (shot: object) => {
+    const m = shotModel(VectorShot.parse(shot), ASSETS, "outline", 1920, 1080, false, 5);
+    return { m, f: shotFrame(m, { shotId: "s1", frame: 75, fps: 30, durationInFrames: 150, width: 1920, height: 1080, insets: false, overlay: false }) };
+  };
+  const rings = [{ kind: "energy_rings" }];
+  const camera = { zoomFrom: 1, zoomTo: 1, panX: 0 };
+
+  it("parçacık efekti yoksa yerleşim de yok", () => {
+    expect(frameOf({ layers: [{ asset: "hero", x: 960 }], effects: [{ kind: "vignette" }], camera }).f.fxLayout).toBeUndefined();
+  });
+
+  it("odaksız çekimde karenin ortası; erişim en yakın yüze varmaz, yüz kutusu kaçınılır", () => {
+    const { m, f } = frameOf({ layers: [{ asset: "hero", x: 600, depth: 0.3 }], effects: rings, camera });
+    const layout = f.fxLayout!;
+    expect(layout.origin).toBeUndefined();
+    expect(layout.avoid).toHaveLength(1);
+    const face = faceBox(m, f.motions, f.k, m.placed[0]!);
+    expect(layout.avoid![0]!.w).toBeGreaterThan(face.w);
+    expect(layout.reach).toBeGreaterThanOrEqual(EFFECT_SPACE.minReach);
+    expect(layout.reach).toBeLessThan(1920 * 0.48);
+  });
+
+  it("açık 3D illüstrasyondan, yoksa anlatılan nesneden çıkar; kişi yoksa erişim kareye göre", () => {
+    const lit = frameOf({ layers: [{ asset: "box", x: 1500, y: 700, height: 200 }], three: [{ preset: "atom", x: 500, y: 400, size: 400 }], effects: rings, camera, key: 0 });
+    const t = lit.m.spec.three![0]!;
+    expect(lit.f.fxLayout!.origin).toEqual(cameraPoint(lit.m.cam, lit.f.k, lit.m.centre, [t.x, t.y]));
+    expect(lit.f.fxLayout!.reach).toBeCloseTo(1920 * 0.48);
+    // 3D çekimin ikinci yarısında açılıyor: o an odak anlatılan nesne.
+    const keyed = frameOf({ layers: [{ asset: "box", x: 1500, y: 700, height: 200 }], three: [{ preset: "atom", x: 500, y: 400, size: 400, start: 0.8, end: 1 }], effects: rings, camera, key: 0 }).f.fxLayout!;
+    // Kamera nesneye yaklaşabilir: odak ekranda nesnenin olduğu sağ yarıda.
+    expect(keyed.origin![0]).toBeGreaterThan(960);
+    // Anlatılan nesne çizilmemişse (yok) odak yok.
+    expect(frameOf({ layers: [{ asset: "box", x: 1500, y: 700, height: 200 }], effects: rings, camera, key: 3 }).f.fxLayout!.origin).toBeUndefined();
+  });
+
+  it("odak yüzün dibindeyse erişim en az minReach", () => {
+    // Önce yüzün yeri, sonra anlatılan küçük nesne tam yüzün önünde.
+    const bare = frameOf({ layers: [{ asset: "hero", x: 960, depth: 0.3 }], effects: rings, camera });
+    const face = faceBox(bare.m, bare.f.motions, bare.f.k, bare.m.placed[0]!);
+    const ball = { asset: "ball", x: face.x + face.w / 2, y: face.y + face.h / 2 + 20, height: 40 };
+    const { f } = frameOf({ layers: [{ asset: "hero", x: 960, depth: 0.3 }, ball], effects: rings, camera, key: 1 });
+    expect(f.fxLayout!.reach).toBe(EFFECT_SPACE.minReach);
+  });
 });

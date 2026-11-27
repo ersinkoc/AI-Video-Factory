@@ -401,33 +401,49 @@ function toWork(spec: VectorShot, assets: Record<string, VectorAsset>, list: Pla
 }
 
 /**
- * İşaret erimi (boy kesri): hedefin yakın kenarı (kutunun ortasından edge × genişlik; Vector.tsx POINT.edge ile aynı)
- * kişinin ortasından far'dan uzaksa kişi kenarı to kadar uzakta kalana dek ona yürür, en çok walk metre. Düz kol omuzdan
- * parmak ucuna boyun ~%37'si kadar uzanır.
+ * İşaret erimi (boy kesri). Omuz, iskeletin arm pivotu: ortadan shoulder[0] yana, ayaktan shoulder[1] yukarıda (RIG
+ * 400 × 800'de [260, 300]); düz kol omuzdan parmak ucuna arm kadar uzanır (üst kol 100, ön kol 112, parmaklar ~30 iskelet
+ * px'i). Hedefin yakın noktası (kutunun ortasından edge × genişlik yanda, dikeyde kutunun omza en yakın yeri; Vector.tsx
+ * POINT.edge ile aynı; omzun yukarısındaki hedefte yalnız yatay uzaklık) omuzdan arm × fit'ten uzaksa kişi oraya uzanabileceği yere kadar yürür (en çok walk metre; hedefin
+ * yanına close'dan çok yaklaşmaz). 27 Kas: kural eskiden yalnız yatay uzaklığa bakıyordu (boyun yarısından uzaksa
+ * 0,4'üne kadar yürü); kol 0,3'e yetişirken hedef çoğu zaman da aşağıdaydı (masadaki dizüstü, yerdeki monitör) ve yakın
+ * çekimde hiç yürünmüyordu. İnceleme karesinde hedefine boyun 0,06'sından yakın el 456 işaretin 251'inden 310'una çıktı;
+ * "el boşlukta" notu alan 57 işaretin 16'sı artık varıyor, 28'inde uzaklık yarıdan aza indi; lint değişmedi.
  */
-export const POINT_REACH = { far: 0.5, to: 0.4, edge: 0.4, walk: 2.5, note: "işaret ettiği şeyden uzaktı, yanına geçti" } as const;
+export const POINT_REACH = { arm: 0.3, fit: 0.95, shoulder: [0.075, 0.625], close: 0.08, edge: 0.4, walk: 2.5, note: "işaret ettiği şeyden uzaktı, yanına geçti" } as const;
 
 /**
  * İşaret eden kişi gösterdiği şeyin yanına geçer (8 Kas, Linux taslak incelemesi: "Linus's arm points at the bookshelf
  * beside the board", "the pointer stops in empty space well short of the empty chair"; düz kol hedefe yetişmeyince el
  * boşlukta ya da aradaki başka bir eşyanın önünde kalıyor, izleyici onu gösterilen sanıyordu). Ölçüm: incelenen 403
  * işaretin hedefi boyun yarısından yakınken %11'inde, uzakken %22'sinde "boşluğu / başka şeyi gösteriyor" notu vardı.
- * Yalnız geniş çekimde, Manim tahtası yokken; ayakta duran, girmeyen, iş başında olmayan kişi; hedef bir kişi değil ve
+ * Manim tahtası yokken (yakın çekimde de: 27 Kas, "el boşlukta" notu alan işaretlerin çoğu yakın çekimde masadaki şeyi
+ * gösteriyordu; kamera yerleşimden sonra kurulur); ayakta duran, girmeyen, iş başında olmayan kişi; hedef bir kişi değil ve
  * elde değil (birini göstermek için yanına yürünmez). Aynı derinlikteki kişiyi ve gövde yüksekliğinde duran yerdeki eşyayı
  * aşmaz, onun kenarında durur (aradaki dekor eşyası böylece o çekimden çıkar: yerleşimi değiştiren eşya konmaz).
  */
 function toPoint(spec: VectorShot, assets: Record<string, VectorAsset>, list: PlacedLayer[], moved: (p: PlacedLayer, note: string) => void): void {
-  if (Math.max(spec.camera.zoomFrom, spec.camera.zoomTo) >= CONVERSE.zoom || spec.math) return;
+  if (spec.math) return;
   const layer = (p: PlacedLayer) => spec.layers[p.index]!;
   const person = (p: PlacedLayer) => assets[layer(p).asset]!.kind === "character";
   for (const p of list) {
-    if (!person(p) || p.sitting || p.heldBy !== undefined || entering(layer(p)) || layer(p).anims.some(working)) continue;
+    // Elinde bir şey tutan yürümez: gösteren el tuttuğunu da kaldırır, hedefe yaklaşınca yüzünün önüne getiriyordu
+    // (Android s25-sh1: robot tuttuğu tarifi yüzüne kapattı).
+    if (!person(p) || p.sitting || p.heldBy !== undefined || entering(layer(p)) || layer(p).anims.some(working) || list.some((o) => o.heldBy === p.index)) continue;
     const aim = layer(p).anims.find((a) => a.type === "point" && a.target !== undefined)?.target;
     const t = list.find((o) => o.index === aim && o !== p);
     if (!t || person(t) || t.heldBy !== undefined) continue;
     const side = Math.sign(t.x - p.x) || 1;
     const gap = (t.x - side * t.width * POINT_REACH.edge - p.x) * side;
-    if (gap <= POINT_REACH.far * p.height) continue;
+    // Omuzdan hedefin en yakın noktasına: yatayda omuzdan kenara, dikeyde kutunun omza en yakın yeri. Omzun yukarısındaki
+    // hedefe yalnız yatayda yaklaşılır: altına geçen kişi kolunu dik kaldırıyordu (Android s25-sh1: 0,6 m robot duvardaki
+    // belgenin altına yürüdü, sağ eli tuttuğu tarifi yüzünün önüne kaldırdı).
+    const [sx, sy] = [POINT_REACH.shoulder[0] * p.height, p.y - POINT_REACH.shoulder[1] * p.height];
+    const dy = Math.max(0, clamp(sy, t.y - t.height, t.y) - sy);
+    const arm = POINT_REACH.arm * POINT_REACH.fit * p.height;
+    if (Math.hypot(Math.max(0, gap - sx), dy) <= arm) continue;
+    // Kolun yetişeceği yatay uzaklık (hedef çok aşağıdaysa yanına close kadar yaklaşılır).
+    const want = sx + Math.max(POINT_REACH.close * p.height, Math.sqrt(Math.max(0, arm * arm - dy * dy)));
     const top = p.y - p.height * 0.95;
     const bottom = p.y - p.height * 0.2;
     const stops = list.flatMap((o) => {
@@ -435,7 +451,7 @@ function toPoint(spec: VectorShot, assets: Record<string, VectorAsset>, list: Pl
       if (person(o)) return o.sitting ? [] : [(o.x - p.x) * side - (p.width + o.width) * 0.32];
       return o.grounded && o.on === undefined && o.y - o.height < bottom && o.y > top ? [(o.x - p.x) * side - o.width / 2 - p.width * CONVERSE.body] : [];
     });
-    const step = Math.min(gap - POINT_REACH.to * p.height, POINT_REACH.walk * STAGE.pxPerMeter * p.scale, ...stops);
+    const step = Math.min(gap - want, POINT_REACH.walk * STAGE.pxPerMeter * p.scale, ...stops);
     const x = clamp(p.x + side * step, p.width / 2 + 20, STAGE.width - p.width / 2 - 20);
     if ((x - p.x) * side < 1) continue;
     p.x = x;

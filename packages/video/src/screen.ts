@@ -42,17 +42,31 @@ export interface Shape extends Bounds {
   fill?: string;
   rx: number;
   named: boolean;
+  /** withItems ile: şeklin kendisi (viewBox koordinatında; içinde mi sorusu kutudan değil sınırından). */
+  item?: paper.PathItem;
+  /** Dolgunun örtücülüğü: şeklin ve gruplarının opacity × fill-opacity değeri (0–1). */
+  alpha: number;
+}
+
+/** Öğenin kendi örtücülüğü: opacity × fill-opacity (öznitelik ya da style). */
+function alphaOf(a: Record<string, string>): number {
+  const style = (key: string) => new RegExp(String.raw`(?:^|;)\s*${key}\s*:\s*([\d.]+)`).exec(a.style ?? "")?.[1];
+  const value = (key: string) => {
+    const v = Number(a[key] ?? style(key) ?? 1);
+    return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+  };
+  return value("opacity") * value("fill-opacity");
 }
 
 /** Düz renk dolgusu (gradyan ya da desen değil). */
 export const plainFill = (fill: string | undefined): fill is string => fill !== undefined && PLAIN.test(fill);
 
 /** Çizimin şekilleri çizim sırasıyla (tanımlar, maskeler, kırpmalar hariç); viewBox'ı okunamazsa undefined. */
-export function shapesOf(svg: string): { vb: [number, number, number, number]; shapes: Shape[] } | undefined {
+export function shapesOf(svg: string, withItems = false): { vb: [number, number, number, number]; shapes: Shape[] } | undefined {
   const vb = (/viewBox="([^"]*)"/.exec(svg)?.[1] ?? "").split(/[\s,]+/).map(Number);
   if (vb.length !== 4 || !(vb[2]! > 0 && vb[3]! > 0)) return undefined;
   const g = geometry();
-  const stack: { matrix: paper.Matrix; fill?: string; named: boolean }[] = [{ matrix: new g.Matrix(), named: false }];
+  const stack: { matrix: paper.Matrix; fill?: string; named: boolean; alpha: number }[] = [{ matrix: new g.Matrix(), named: false, alpha: 1 }];
   const shapes: Shape[] = [];
   let skip = 0;
   for (const [, close, name, raw, self] of svg.matchAll(/<(\/?)([a-zA-Z][\w:-]*)([^>]*?)(\/?)>/g)) {
@@ -71,7 +85,7 @@ export function shapesOf(svg: string): { vb: [number, number, number, number]; s
     const fill = (a.fill ?? /(?:^|;)\s*fill\s*:\s*([^;]+)/.exec(a.style ?? "")?.[1])?.trim() ?? top.fill;
     const named = top.named || SCREEN_ID.test(a.id ?? "");
     if (name === "g" || name === "svg") {
-      if (!self) stack.push({ matrix: name === "svg" ? top.matrix : top.matrix.appended(transformOf(a.transform)), fill, named });
+      if (!self) stack.push({ matrix: name === "svg" ? top.matrix : top.matrix.appended(transformOf(a.transform)), fill, named, alpha: top.alpha * alphaOf(a) });
       continue;
     }
     if (!SHAPE.test(name!)) continue;
@@ -92,7 +106,7 @@ export function shapesOf(svg: string): { vb: [number, number, number, number]; s
     }
     const b = item.bounds;
     if (!(b.width > 0 && b.height > 0)) continue;
-    shapes.push({ i: shapes.length, x: b.x, y: b.y, w: b.width, h: b.height, area: Math.abs(item.area), fill, rx: num(a.rx), named });
+    shapes.push({ i: shapes.length, x: b.x, y: b.y, w: b.width, h: b.height, area: Math.abs(item.area), fill, rx: num(a.rx), named, alpha: top.alpha * alphaOf(a), ...(withItems ? { item } : {}) });
   }
   return { vb: vb as [number, number, number, number], shapes };
 }

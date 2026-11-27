@@ -24,7 +24,9 @@ import {
   workTopOf,
   type LineStyle,
   type PlacedLayer,
+  PARTICLE_EFFECTS,
   type RigPart,
+  type SceneThree,
   type Timeline,
   type VectorAnim,
   type VectorAnimType,
@@ -59,6 +61,10 @@ import { Figure3D } from "./Figure3D.tsx";
 import { clapClosed, GESTURE_RHYTHM, penDown, typingTaps } from "./gesture-timing.ts";
 import { Globe3D } from "./Globe3D.tsx";
 import { SceneEffects, SceneIllustrations } from "./SceneEffects.tsx";
+import { effectAt } from "./effects.ts";
+import type { EffectLayout } from "./particles.ts";
+import { contrastThree } from "./threeContrast.ts";
+import { contentBox, placeThree } from "./threeSpot.ts";
 import { anatomical, flexion, STRETCH, type Strain } from "./anatomy.ts";
 import { splitBrows, type BrowPart, type SplitBrows } from "./browShape.ts";
 import { bend, reach, type Reach } from "./ik.ts";
@@ -258,6 +264,8 @@ interface Attention {
   aim?: readonly [number, number];
   /** Hedef bir katmansa onun bu kişiye bakan dikey kenarı (iskelet x): parmak ucu bunun önünde durur. */
   edge?: number;
+  /** Hedef katmanın üst ve alt kenarı (iskelet y): kol hedefe üstten ya da alttan giriyorsa parmak ucu o kenarın önünde durur. */
+  span?: readonly [number, number];
   /** Sahnedeki en yakın diğer karakterin yönü: −1 sol, 1 sağ. */
   lookDir?: number;
   /** give alıcısının göğsü (iskelet tuvali); yoksa undefined. */
@@ -859,7 +867,14 @@ function rigPose(
         const stops = [attention.edge, attention.space].filter((x): x is number => x !== undefined && (x - sx) * toward > 0);
         const edge = stops.length ? (toward > 0 ? Math.min(...stops) : Math.max(...stops)) : attention.edge;
         const fingers = (attention.face ?? NO_FACE).fingers[hand];
-        const along = edge !== undefined && dx * toward > 0 ? ((edge - toward * (fingers + POINT.gap) - sx) / dx) * len : Infinity;
+        // Kol hedefin kutusuna yan kenardan değil üstünden (ya da altından) giriyorsa parmak ucu o kenarın önünde durur
+        // (ışın–kutu kesişimi: iki girişin geç olanı). Yalnız yan kenara bakılınca alçaktaki hedefte (masadaki dizüstü)
+        // parmak, ışının kenar hizasını kestiği yerde, hedefin üstünde havada kalıyordu (27 Kas; incelemede "the arm ends in
+        // mid-air short of the laptop"). Yan kenar omzun gerisindeyse (kişi nesnenin önünde) düz kol kalır.
+        const span = edge === attention.edge ? attention.span : undefined;
+        const lid = span && (dy > 0 ? sy < span[0] && span[0] - fingers - POINT.gap : dy < 0 && sy > span[1] && span[1] + fingers + POINT.gap);
+        const side = edge !== undefined && dx * toward > 0 ? ((edge - toward * (fingers + POINT.gap) - sx) / dx) * len : Infinity;
+        const along = side > 0 && lid ? Math.max(side, ((lid - sy) / dy) * len) : side;
         const full = ARM.upper + ARM.reach;
         // Yanındaki kişi durma sınırıysa kol biraz daha bükülebilir (en kısa erişim SPACE.min): yakındaki kişiyi gösteren el
         // POINT.min yüzünden yine onun alanına giriyordu.
@@ -1407,6 +1422,8 @@ export interface Focus {
   aim?: readonly [number, number];
   /** Hedef katmanın kişiye bakan dikey kenarı (tuval x); hedef yazıysa yok. */
   aimEdge?: number;
+  /** Hedef katmanın üst ve alt kenarı (tuval y); hedef yazıysa yok. */
+  aimSpan?: readonly [number, number];
   lookX?: number;
   /** Elinde bir şey tutuyor (nesne sağ eli izler). */
   holding?: boolean;
@@ -1468,7 +1485,7 @@ export function focusOf(
     ...(mate ? { space: (self.x + mate.x) / 2 } : {}),
     aim,
     // Çizim kutusunun kenarında genelde boşluk var: yarı genişliğin POINT.edge'i.
-    ...(at ? { aimEdge: at.x - Math.sign(at.x - self.x || 1) * at.width * POINT.edge } : {}),
+    ...(at ? { aimEdge: at.x - Math.sign(at.x - self.x || 1) * at.width * POINT.edge, aimSpan: [at.y - at.height, at.y] as const } : {}),
     lookX: near(people)?.x,
     holding: placed.some((pl) => pl.heldBy === index),
     ...(receiver ? { receiver: [receiver.x, receiver.y - receiver.height * 0.6] as const } : {}),
@@ -2105,6 +2122,7 @@ function motionOf(
   const attention: Attention = {
     aim: focus.aim ? [toRigX(focus.aim[0]), (focus.aim[1] - tr.y - (placed.y - placed.height)) / k] : undefined,
     ...(focus.aimEdge === undefined ? {} : { edge: toRigX(focus.aimEdge) }),
+    ...(focus.aimSpan ? { span: focus.aimSpan.map((y) => (y - tr.y - (placed.y - placed.height)) / k) as [number, number] } : {}),
     lookDir: focus.lookX === undefined ? undefined : Math.sign(toRigX(focus.lookX) - RIG.width / 2),
     holding: focus.holding,
     receiver: focus.receiver ? [toRigX(focus.receiver[0]), (focus.receiver[1] - tr.y - (placed.y - placed.height)) / k] : undefined,
@@ -3268,18 +3286,63 @@ export function shotModel(
     const joint = jointSafe(framed.cam, framed.centre, people, keyed ? [...keep, key!] : keep, headTop);
     return { cam: faceSafe(joint, framed.centre, faces, false, bodies, props), centre: framed.centre, ...(keyed ? { subject: key!.index } : {}) };
   })();
+  // 3D illüstrasyon kişilerin yüzünden, önündeki nesnelerden ve kadraj kenarından uzak, okunur boyda (threeSpot).
+  const three = spec.three?.length && !bg?.meta.exact ? threeSpots(spec, safe, placed, cam, centre, verticalStrip(width, height), bg) : undefined;
   // Dikey kadraj: geniş çekimde kenara düşen kişi/nesne kesilmesin diye sahne gerektiği kadar küçülür (contentFit).
-  // Yakın çekim bilerek kırpar; harita tuvalin tamamıdır; tahta ekrana sabittir, sahneyle aynı ölçekte kalmalı.
+  // Yakın çekim bilerek kırpar; harita tuvalin tamamıdır; tahta ekrana sabittir, sahneyle aynı ölçekte kalmalı. 3D de
+  // sayılır (27 Kas: yana taşınan 3D dikey Short'ta 52 çekimin 31'inde şeridin dışında kalıyordu, plandakinde 23).
   const fit = (() => {
     const base = stageFit(width, height);
     if (height <= width || overlay || bg?.meta.exact || Math.max(cam.zoomFrom, cam.zoomTo) >= CLOSE_UP.zoom) return base;
-    const xs = keep.flatMap((pl) => [0, 1].flatMap((q) => [pl.x - pl.width / 2, pl.x + pl.width / 2].map((x) => cameraPoint(cam, q, centre, [x, pl.y])[0])));
+    const edges = [...keep.map((pl) => [pl.x - pl.width / 2, pl.x + pl.width / 2, pl.y]), ...(three ?? []).map((t) => [contentBox(t).x, contentBox(t).x + contentBox(t).w, t.y])];
+    const xs = edges.flatMap(([l, r, y]) => [0, 1].flatMap((q) => [l!, r!].map((x) => cameraPoint(cam, q, centre, [x, y!])[0])));
     return contentFit(width, base, xs);
   })();
   // Haritada ve Manim tahtalı çekimde makro yok.
   const kindOf = (i: number) => safe[spec.layers[i]!.asset]!.kind;
   const macro = bg?.meta.exact || overlay ? undefined : macroOf(spec, placed, cam, centre, subject, (i) => kindOf(i) === "prop", (i) => kindOf(i) === "character");
-  return { spec, safe, placed, framing, ...(bg ? { bg } : {}), keep, cam, centre, ...(subject === undefined ? {} : { subject }), fit, problems, ...(crowd ? { crowd } : {}), ...(macro === undefined ? {} : { macro }) };
+  const staged = three ? { ...spec, three } : spec;
+  return { spec: staged, safe, placed, framing, ...(bg ? { bg } : {}), keep, cam, centre, ...(subject === undefined ? {} : { subject }), fit, problems, ...(crowd ? { crowd } : {}), ...(macro === undefined ? {} : { macro }) };
+}
+
+/**
+ * Dikey kadrajda tuvalin ekranda görünen yatay şeridi (tuval genişliğinin payı olarak), sahne ölçeği stageFit iken;
+ * geniş çekimde contentFit sahneyi yalnız küçültür, şerit genişler. Öteki oranlarda bütün tuval. 3D yerleşimi dikeyde
+ * buna göre arar (27 Kas: yana taşınan 3D, dikey Short'un yakın çekimlerinde şeridin dışında kalıyordu).
+ */
+export function verticalStrip(width: number, height: number): [number, number] {
+  if (height <= width) return [0, 1];
+  const shown = width / (W * stageFit(width, height));
+  return [(1 - shown) / 2, (1 + shown) / 2];
+}
+
+/**
+ * Çekimdeki 3D illüstrasyonların yeri (placeThree): kişiler ve nesneler durdukları yerde (sahneye kayarak ya da yürüyerek
+ * giren de çekimin çoğunda orada durur; Antik Mısır s7-sh4'te kayarak giren firavun sayılmadığı için halkalar boynundan
+ * geçiyordu), kamera uçlarının görüşüyle.
+ */
+function threeSpots(spec: VectorShot, safe: Assets, still: PlacedLayer[], cam: VectorShot["camera"], centre: boolean, strip: readonly [number, number], bg: VectorAsset | undefined): SceneThree[] {
+  const isPerson = (pl: PlacedLayer) => safe[spec.layers[pl.index]!.asset]!.kind === "character";
+  const rest = (pl: PlacedLayer): Motion => ({ tr: { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 }, flip: spec.layers[pl.index]!.flip, squash: 1 });
+  const people = still.filter(isPerson);
+  const faces = people.map((pl) => boxOf(faceCorners(safe[spec.layers[pl.index]!.asset]!).map((c) => rigToCanvas(pl, spec.layers[pl.index]!, rest(pl), c))));
+  const bodies = people.map((pl) => ({ x: pl.x - pl.width * 0.3, y: pl.y - pl.height, w: pl.width * 0.6, h: pl.height }));
+  const covers = still
+    .filter((pl) => !isPerson(pl))
+    .map((pl) => {
+      const box = { x: pl.x - pl.width / 2, y: pl.y - pl.height, w: pl.width, h: pl.height };
+      const grid = gridFor(safe[spec.layers[pl.index]!.asset]!);
+      // Ölçülemeyen çizimde kutusu sayılır.
+      return grid ? (r: Box) => coverIn(grid, box, spec.layers[pl.index]!.flip, r) : (r: Box) => (Math.max(0, Math.min(r.x + r.w, box.x + box.w) - Math.max(r.x, box.x)) * Math.max(0, Math.min(r.y + r.h, box.y + box.h) - Math.max(r.y, box.y))) / (r.w * r.h);
+    });
+  const views = [0, 1].map((k) => {
+    const v = viewAt(cam, k, centre);
+    return { x: v.x0 + v.w * strip[0], y: v.y0, w: v.w * (strip[1] - strip[0]), h: v.h };
+  });
+  const scale = Math.min(cameraAt(cam, 0, centre).scale, cameraAt(cam, 1, centre).scale);
+  const items = placeThree(spec.three!, { faces, bodies, covers, views, scale, height: H }).items;
+  // Renk, yerleştiği bölgenin arka planına karşı okunur (threeContrast).
+  return bg ? items.map((t) => contrastThree(t, bg, contentBox(t))) : items;
 }
 
 /** Çekimin bir karesi: katmanların hareketi, ekrandaki yazılar, elde tutulanların yeri ve büyütme balonu. */
@@ -3300,6 +3363,47 @@ export interface ShotFrame {
   macroView?: { asset: VectorAsset; box: Box; q: number; screen?: VectorScreen; person?: ScreenPerson; surface?: { asset: VectorAsset; box: Box; clip: Box } };
   /** Bu karede açık konuşma/düşünce balonları (ekran px; bubble.ts). */
   bubbles: BubbleView[];
+  /** Parçacıklı ekran efektinin yerleşimi (effectLayout); parçacık efekti yoksa yok. */
+  fxLayout?: EffectLayout;
+}
+
+/**
+ * Ekran efektlerinin (halka, kıvılcım, hız çizgisi, yıldız alanı) yerleşimi (27 Kas; kullanıcı: "daha tutarlı videolar").
+ * Efektler hep karenin ortasından çıkıyordu; kişiler de çoğu zaman ortada durur: 64 bölümde 82 halkalı, 101 kıvılcımlı ve
+ * 28 hız çizgili çekimde ortadaki kişinin yüzünden geçiyorlardı, inceleme "halka Stallman'ın başından geçiyor", "halkalar,
+ * küreler ve çizgiler iki sunucuyla yarışıyor" diyordu. Efekt çekimin odağından çıkar: açık 3D illüstrasyon, yoksa anlatılan
+ * nesne (key), yoksa yakın çekimin öznesi; yoksa karenin ortası. Halkaların ve kıvılcımların erişimi en yakın yüze
+ * (her yandan pad × yüksekliği kadar genişletilmiş) margin px kala biter, en az minReach; noktalar ve çizgiler o yüz
+ * kutularının üstüne çizilmez.
+ */
+export const EFFECT_SPACE = { pad: 0.25, margin: 30, minReach: 160 } as const;
+
+function effectLayout(model: ShotModel, motions: Map<number, Motion>, drawnAt: Map<number, PlacedLayer>, k: number, p: number, dur: number): EffectLayout {
+  const { spec, safe, placed, cam, centre } = model;
+  const avoid = placed
+    .filter((pl) => safe[spec.layers[pl.index]!.asset]!.kind === "character")
+    .map((pl) => {
+      const f = faceBox(model, motions, k, pl);
+      const pad = f.h * EFFECT_SPACE.pad;
+      return { x: f.x - pad, y: f.y - pad, w: f.w + 2 * pad, h: f.h + 2 * pad };
+    });
+  const centreOf = (i: number): [number, number] | undefined => {
+    const at = drawnAt.get(i);
+    if (!at) return undefined;
+    const tr = motions.get(i)!.tr;
+    return cameraPoint(cam, k, centre, [at.x + tr.x, at.y + tr.y - (at.height * tr.scale) / 2]);
+  };
+  const three = (spec.three ?? []).find((t) => effectAt(t, p, dur).active);
+  const origin = three ? cameraPoint(cam, k, centre, [three.x, three.y]) : [spec.key, model.subject].flatMap((i) => (i === undefined ? [] : [centreOf(i)])).find(Boolean);
+  const [ox, oy] = origin ?? [W / 2, H / 2];
+  // Halka elips (ry = 0,55 rx): yüz kutusunun en yakın noktasının o elipsteki "yarıçapı".
+  const reachOf = (b: Box) => {
+    const dx = Math.max(b.x - ox, 0, ox - (b.x + b.w));
+    const dy = Math.max(b.y - oy, 0, oy - (b.y + b.h));
+    return Math.hypot(dx, dy / 0.55);
+  };
+  const near = Math.min(W * 0.48, ...avoid.map((b) => reachOf(b) - EFFECT_SPACE.margin));
+  return { ...(origin ? { origin } : {}), reach: Math.max(EFFECT_SPACE.minReach, near), avoid };
 }
 
 /** Bir anın katman hareketleri (karenin çizimi; bilgi kartının yeri için örnek anlarda da). */
@@ -3411,7 +3515,7 @@ function cardAvoid(model: ShotModel, shotId: string, dur: number, fps: number, w
       const s = tagSpot(text, at, bounds);
       faces.push({ x: s.x - s.half - TEXT_GAP, y: s.y - s.height / 2, w: 2 * (s.half + TEXT_GAP), h: s.height });
     }
-    faces.push(...screensAt(model, motions, k), ...keyPropsAt(model, motions, k));
+    faces.push(...screensAt(model, motions, k), ...keyPropsAt(model, motions, k), ...threeAt(model, k));
   }
   const avoid = { faces, bodies };
   avoided.set(model, avoid);
@@ -3454,6 +3558,20 @@ export const CARD_PROPS = { wide: 0.6 } as const;
  * nesnenin %10'undan fazlasını örtüyordu, 11'inde not düşülmüş: Netflix s2-sh1 "kart zarfı, anahtar nesneyi örtüyor",
  * Vue s3-sh5 "soru kartı Evan'ın tuttuğu kutunun üstünü kapatıyor"). Yerde ya da masada duran öteki eşyalar odadır.
  */
+/**
+ * 3D illüstrasyonların çizildiği bölgenin ekran kutusu (threeSpot contentBox). Kart onları da yüz gibi örtmez (27 Kas:
+ * yerleşim 3D'yi yüzlerden uzağa, boş üst köşeye taşıyınca Avrupa Birliği s1-sh4'te ve Linux s14-sh1'de sağ üstteki kart
+ * ağın üstüne oturdu).
+ */
+function threeAt(model: ShotModel, k: number): Box[] {
+  return (model.spec.three ?? []).map((t) => {
+    const b = contentBox(t);
+    const [x0, y0] = cameraPoint(model.cam, k, model.centre, [b.x, b.y]);
+    const [x1, y1] = cameraPoint(model.cam, k, model.centre, [b.x + b.w, b.y + b.h]);
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  });
+}
+
 function keyPropsAt(model: ShotModel, motions: Map<number, Motion>, k: number): Box[] {
   const { spec, safe, cam, centre, subject } = model;
   return [...drawnAtOf(model, motions).values()].flatMap((at) => {
@@ -3564,6 +3682,9 @@ function insetScene(model: ShotModel, k: number, motions: Map<number, Motion>, d
     ...texts.map(textBoxOf),
     ...bubbles.map((b) => b.box),
     ...otherProps(model, k, motions, drawnAt, index),
+    // 3D illüstrasyon da bir nesne gibi örtülmez (27 Kas, GitHub s7-sh2: yerleşimden sonra ağ sağ üstteydi, balon tam
+    // üstüne açılıp onu tümüyle gizledi).
+    ...threeAt(model, k),
   ];
   return { target, avoid, faces, bodies, prop };
 }
@@ -3722,7 +3843,9 @@ export function shotFrame(
     const target = leaderTip(spot, point, screenAt(model, motions, k, drawnAt.get(index)!));
     return { asset: safe[layer.asset]!, target, at: [spot[0], spot[1]] as [number, number], ...(layer.screen ? { screen: layer.screen } : {}), ...(person ? { person } : {}), ...(entered ? { from: entered } : {}) };
   })();
-  return { p, t, k, dur, motions, texts, drawnAt, ...(inset ? { inset } : {}), ...(close ? { macroView: close } : {}), bubbles };
+  const particles = (spec.effects ?? []).some((e) => (PARTICLE_EFFECTS as readonly string[]).includes(e.kind));
+  const fxLayout = particles ? effectLayout(model, motions, drawnAt, k, p, dur) : undefined;
+  return { p, t, k, dur, motions, texts, drawnAt, ...(inset ? { inset } : {}), ...(close ? { macroView: close } : {}), bubbles, ...(fxLayout ? { fxLayout } : {}) };
 }
 
 /** Çekimin bir karesinin çizimi (shotModel + shotFrame'in sonucu). */
@@ -3745,6 +3868,7 @@ function ShotStage({
   inset,
   macroView,
   bubbles,
+  fxLayout,
   lineStyle,
   ambience,
   grain,
@@ -3898,7 +4022,7 @@ function ShotStage({
       )}
       {!flat && <AbsoluteFill style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.32) 100%)" }} />}
       {!BEHIND.has(ambience) && <Ambience kind={ambience} seed={visual.shotId} size={[W, H]} {...(DEPTH.has(ambience) ? { part: "near" as const } : {})} />}
-      <SceneEffects spec={spec} p={p} durationSec={dur} seed={visual.shotId} />
+      <SceneEffects spec={spec} p={p} durationSec={dur} seed={visual.shotId} layout={fxLayout} />
       {inset && <Callout {...inset} p={p} prefix={`${visual.shotId}-co-`} accent={readable(accent) ?? "#ffd84d"} paper={paper} />}
       {macroView && macroView.q > 0 && <Macro {...macroView} prefix={`${visual.shotId}-mc-`} paper={paper} light={light} />}
       {/* Konuşma balonları kameranın dışında (yazı karede hep aynı boyda); konuşanın yüzünün yanında. */}

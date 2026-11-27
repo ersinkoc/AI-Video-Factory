@@ -1,14 +1,14 @@
 import { Application, Graphics } from "pixi.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { continueRender, delayRender, useCurrentFrame, useVideoConfig } from "remotion";
-import { drawShapes, particleFrame, type ParticleKind, type Pen } from "./particles.ts";
+import { drawShapes, particleFrame, type EffectLayout, type ParticleKind, type Pen } from "./particles.ts";
 
 /**
  * Parçacıklı atmosferi PixiJS (WebGL) ile çizer. Pixi'nin kendi saati kapalıdır: her Remotion karesinde sahne
  * `particleFrame`'den yeniden çizilir ve elle render edilir, kare yalnız zamana bağlıdır. Pixi hazırlanana kadar render
  * bekletilir; WebGL açılamazsa katman boş kalır (atmosfer yüzünden bölüm render'ı düşmesin).
  */
-export function PixiParticles({ kind, seed, size, time, tint }: { kind: ParticleKind; seed: string; size?: readonly [number, number]; time?: number; tint?: number }) {
+export function PixiParticles({ kind, seed, size, time, tint, layout }: { kind: ParticleKind; seed: string; size?: readonly [number, number]; time?: number; tint?: number; layout?: EffectLayout }) {
   const frame = useCurrentFrame();
   const config = useVideoConfig();
   const { fps } = config;
@@ -56,12 +56,12 @@ export function PixiParticles({ kind, seed, size, time, tint }: { kind: Particle
 
   useLayoutEffect(() => {
     if (!ready) return;
-    const f = particleFrame(kind, seed, time ?? frame / fps, width, height, tint);
+    const f = particleFrame(kind, seed, time ?? frame / fps, width, height, tint, layout);
     ready.pen.blendMode = f.blend;
     drawShapes(ready.pen as unknown as Pen, f.shapes);
     ready.app.render();
     continueRender(handle);
-  }, [ready, kind, seed, frame, fps, width, height, handle, time, tint]);
+  }, [ready, kind, seed, frame, fps, width, height, handle, time, tint, layout]);
 
   return <canvas ref={canvas} width={width} height={height} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />;
 }

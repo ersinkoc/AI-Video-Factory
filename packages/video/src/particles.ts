@@ -17,6 +17,18 @@ export interface ParticleFrame {
   blend: "normal" | "add";
 }
 
+/**
+ * Ekran efektinin yerleşimi (1920 × 1080 sahne px'i): çıkış noktası (yoksa karenin ortası), halkaların ve kıvılcımların
+ * erişimi (yoksa kareye göre) ve üstüne çizilmeyecek kutular (yüzler). Atmosferde (yağmur, kar…) yok.
+ */
+export interface EffectLayout {
+  origin?: readonly [number, number];
+  reach?: number;
+  avoid?: readonly { x: number; y: number; w: number; h: number }[];
+}
+
+const inside = (x: number, y: number, boxes: NonNullable<EffectLayout["avoid"]>) => boxes.some((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
+
 /** 0..1 aralığında sarmalayan konum. */
 const wrap = (v: number) => ((v % 1) + 1) % 1;
 
@@ -62,7 +74,7 @@ function seeds(seed: string, n: number): number[][] {
  * render sekmeleri ve tekrar render aynı kareyi verir. Eski SVG sürümü 90–140 parçacıkla sınırlıydı ve bulanıklık
  * filtresi yavaştı; WebGL'de derinlik katmanlı yüzlerce parçacık ve yere çarpan damla sıçramaları çizilir.
  */
-export function particleFrame(kind: ParticleKind, seed: string, t: number, width: number, height: number, tint = 0x70d6ff): ParticleFrame {
+export function particleFrame(kind: ParticleKind, seed: string, t: number, width: number, height: number, tint = 0x70d6ff, layout: EffectLayout = {}): ParticleFrame {
   const shapes: Shape[] = [];
   switch (kind) {
     case "sparks":
@@ -72,25 +84,29 @@ export function particleFrame(kind: ParticleKind, seed: string, t: number, width
     case "speed_lines":
     case "energy_rings": {
       const count = kind === "energy_rings" ? 8 : kind === "speed_lines" ? 64 : 120;
+      // Efekt çekimin odağından çıkar (yoksa karenin ortasından); halka ve kıvılcım erişimi en yakın yüze varmaz.
+      const [ox, oy] = layout.origin ?? [width / 2, height / 2];
+      const reach = layout.reach ?? width * 0.48;
       for (const [i, [rx, ry, rs, rz, rp]] of (seeds(`${seed}-${kind}`, count) as [number, number, number, number, number][]).entries()) {
         const phase = rp * Math.PI * 2;
         if (kind === "energy_rings") {
           const age = wrap(t * 0.35 + rx);
-          const r = age * width * 0.48;
-          shapes.push({ shape: "ring", x: width / 2, y: height / 2, rx: r, ry: r * 0.55, width: 2 + rs * 3, color: tint, alpha: Math.sin(age * Math.PI) * 0.65 });
+          const r = age * reach;
+          shapes.push({ shape: "ring", x: ox, y: oy, rx: r, ry: r * 0.55, width: 2 + rs * 3, color: tint, alpha: Math.sin(age * Math.PI) * 0.65 });
         } else if (kind === "speed_lines" || kind === "starfield") {
           const depth = wrap(rz + t * (kind === "speed_lines" ? 0.7 : 0.08) * (0.5 + rs));
           const radius = 0.08 + depth * 0.75;
-          const x = width / 2 + Math.cos(phase) * width * radius;
-          const y = height / 2 + Math.sin(phase) * height * radius;
+          const x = ox + Math.cos(phase) * width * radius;
+          const y = oy + Math.sin(phase) * height * radius;
           if (kind === "starfield") shapes.push({ shape: "dot", x, y, r: 0.8 + depth * 3, color: tint, alpha: Math.sin(depth * Math.PI), glow: depth > 0.7 });
           else shapes.push({ shape: "streak", x, y, x2: x + Math.cos(phase) * (20 + depth * 160), y2: y + Math.sin(phase) * (12 + depth * 90), width: 1 + rs * 2, color: tint, alpha: Math.sin(depth * Math.PI) * 0.7 });
         } else if (kind === "sparks") {
           const age = wrap(t * 0.65 + ry);
-          const vx = (rx - 0.5) * width * 0.8;
-          const vy = -(0.3 + rs * 0.6) * height;
-          const x = width / 2 + vx * age;
-          const y = height * 0.65 + vy * age + height * age * age * 0.6;
+          const spread = reach / (width * 0.48);
+          const vx = (rx - 0.5) * width * 0.8 * spread;
+          const vy = -(0.3 + rs * 0.6) * height * spread;
+          const x = ox + vx * age;
+          const y = (layout.origin ? oy : height * 0.65) + vy * age + height * age * age * 0.6 * spread;
           shapes.push({ shape: "streak", x, y, x2: x - vx * 0.018, y2: y - (vy + height * age * 1.2) * 0.018, width: 1 + rz * 3, color: tint, alpha: (1 - age) * 0.95 });
         } else if (kind === "bubbles") {
           const y = (1 - wrap(ry + t * (0.035 + rs * 0.05))) * height;
@@ -101,7 +117,11 @@ export function particleFrame(kind: ParticleKind, seed: string, t: number, width
           shapes.push({ shape: "dot", x, y, r: 1.5 + rz * 3, color: tint, alpha: 0.15 + 0.7 * (0.5 + 0.5 * Math.sin(t * 2 + i)), glow: true });
         }
       }
-      return { shapes, blend: kind === "bubbles" ? "normal" : "add" };
+      // Noktalar, çizgiler ve küçük halkalar yüzlerin üstüne çizilmez (27 Kas: halkalar, kıvılcımlar ve hız çizgileri hep
+      // karenin ortasından çıkıp ortada duran kişinin yüzünden geçiyordu; Avrupa Birliği s1-sh4, İnternet s13-sh3).
+      const avoid = layout.avoid;
+      const kept = avoid ? shapes.filter((s) => (s.shape === "ring" && kind === "energy_rings") || !(inside(s.x, s.y, avoid) || (s.shape === "streak" && inside(s.x2, s.y2, avoid)))) : shapes;
+      return { shapes: kept, blend: kind === "bubbles" ? "normal" : "add" };
     }
     case "rain": {
       const slant = 0.18;

@@ -112,3 +112,38 @@ describe("parçacık atmosferi (PixiJS kareleri)", () => {
     expect(pts.map((v) => Math.round(v))).toEqual([103, 95, 103, 105, 97, 105, 97, 95]);
   });
 });
+
+describe("ekran efektinin yerleşimi (EffectLayout)", () => {
+  const face = { x: 1300, y: 300, w: 200, h: 200 };
+  it("yerleşimsiz efekt karenin ortasından çıkar; halkalar kareye göre büyür", () => {
+    const rings = of(particleFrame("energy_rings", "s", 2, W, H).shapes, "ring");
+    expect(rings.every((r) => r.x === W / 2 && r.y === H / 2)).toBe(true);
+    expect(Math.max(...rings.map((r) => r.rx))).toBeGreaterThan(400);
+  });
+  it("halkalar odaktan çıkar ve erişimde kalır; yüz kutusundaki halka atılmaz (erişim zaten ona varmaz)", () => {
+    const rings = of(particleFrame("energy_rings", "s", 2, W, H, 0xffffff, { origin: [400, 500], reach: 200, avoid: [{ x: 380, y: 480, w: 40, h: 40 }] }).shapes, "ring");
+    expect(rings.length).toBe(8);
+    expect(rings.every((r) => r.x === 400 && r.y === 500 && r.rx <= 200)).toBe(true);
+  });
+  it("kıvılcım, hız çizgisi ve yıldızlar odaktan çıkar; yüz kutusunun üstündekiler çizilmez", () => {
+    for (const kind of ["sparks", "speed_lines", "starfield", "fireflies", "bubbles"] as const) {
+      const free = particleFrame(kind, "s", 1.3, W, H, 0xffffff, { origin: [1400, 400] }).shapes;
+      const kept = particleFrame(kind, "s", 1.3, W, H, 0xffffff, { origin: [1400, 400], avoid: [face] }).shapes;
+      const inFace = (x: number, y: number) => x >= face.x && x <= face.x + face.w && y >= face.y && y <= face.y + face.h;
+      expect(kept.length).toBeLessThanOrEqual(free.length);
+      for (const sh of kept) {
+        expect(inFace(sh.x, sh.y)).toBe(false);
+        if (sh.shape === "streak") expect(inFace(sh.x2, sh.y2)).toBe(false);
+      }
+    }
+    // Kıvılcımlar odaktan çıkar; erişim küçükse yayılım da küçülür.
+    const spread = (layout: object) => {
+      const xs = of(particleFrame("sparks", "s", 1.3, W, H, 0xffffff, layout).shapes, "streak").map((sh) => sh.x);
+      return { mean: xs.reduce((n, x) => n + x, 0) / xs.length, far: Math.max(...xs.map((x) => Math.abs(x - 300))) };
+    };
+    const wide = spread({ origin: [300, 200] });
+    const tight = spread({ origin: [300, 200], reach: 160 });
+    expect(Math.abs(wide.mean - 300)).toBeLessThan(150);
+    expect(tight.far).toBeLessThan(wide.far / 2);
+  });
+});
