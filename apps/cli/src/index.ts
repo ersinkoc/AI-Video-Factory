@@ -21,6 +21,7 @@ import { samplesCommand } from "./styles.ts";
 import { episodeCommand, positive, renderDemo } from "./episode.ts";
 import { surviveBrokenPipe } from "./pipes.ts";
 import { doctorCommand } from "./doctor.ts";
+import { skillsCommand } from "./skills.ts";
 
 const LEDGER_FILE = ".data/ledger.jsonl";
 const WORK_DIR = ".data/episodes";
@@ -32,6 +33,8 @@ Kullanım: pnpm ys <komut> [seçenekler]
 Komutlar:
   providers                         Etkin ve atlanan sağlayıcıları listeler
   doctor [--json] [--check-local]    Yerel araçları ve ayarları inceler; üretim yapmaz
+  skills [list]                     Kodlama oturumları için 3D skill'leri ve MCP sunucusunun durumu
+  skills install [araç...]          Eksikleri ~/.claude'a kurar (tüm projeler; Claude Code, ücretsiz). Ayrıntı: docs/3D_REFERENCES.md
   plan   --cap <yetenek>            Para harcamadan router sıralamasını gösterir
   image  --prompt "..." [--ref yol]...
   video  --image yol --prompt "..." [--last yol] [--duration 5]
@@ -199,6 +202,11 @@ async function main(): Promise<void> {
 
   if (command === "doctor") {
     process.exitCode = await doctorCommand({ json: values.json, checkLocal: values["check-local"] });
+    return;
+  }
+
+  if (command === "skills") {
+    process.exitCode = await skillsCommand(positionals[1], positionals.slice(2));
     return;
   }
 

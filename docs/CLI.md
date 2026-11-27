@@ -188,6 +188,19 @@ These commands inspect existing tools or media. See [Environment diagnostics](DO
 audit](RENDER_AUDIT.md), [Voice stem audit](VOICE_AUDIT.md) and [Measured reference
 direction](REFERENCE_STYLE.md) for prerequisites and evidence boundaries.
 
+## 3D tools for coding sessions
+
+```sh
+pnpm ys skills
+pnpm ys skills install
+pnpm ys skills install threejs-skills threejs-devtools-mcp
+```
+
+`skills` lists the selected 3D skills and the MCP server for Claude Code sessions that work on this code, and
+whether each is installed. `skills install` installs the missing ones (or the named ones) for the user account in
+every project (`~/.claude`), skipping what is already there; it downloads from GitHub and npm and costs nothing.
+Video production does not use them. See [External 3D references](3D_REFERENCES.md).
+
 ## Local render demo
 
 `pnpm ys render-demo` creates a synthetic episode without paid generation. It pauses at preview approval;

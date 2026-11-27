@@ -187,6 +187,9 @@ other corner or into the gap between them, and it keeps that place for the whole
 - **Lessons:** the learned rule book.
 - **Rules:** the Studio rules, read from the same constants the code uses.
 - **Models:** the model for each agent.
+- **Developer tools:** installs the selected 3D skills and MCP server for Claude Code sessions that work on this
+  code, one by one or all missing at once (`pnpm ys skills install` as a job). See
+  [External 3D references](3D_REFERENCES.md).
 
 Heavy work runs in a separate CLI process, not in the Studio server, so CLI runs also appear live in the
 Studio.

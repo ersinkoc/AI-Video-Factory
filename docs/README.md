@@ -20,6 +20,7 @@ Start with **[Getting started](GETTING_STARTED.md)**, then follow the **[Studio 
 | --- | --- |
 | [Vector animation](VECTOR_ANIMATION.md) | Rigging, gestures, lip sync, staging, cameras and physical checks |
 | [Scene motion and rendering engines](SCENE_MOTION.md) | Three.js/PixiJS contract, motion previews and the HyperFrames development fixture |
+| [External 3D references](3D_REFERENCES.md) | Optional three.js, shader and cinematography skills and MCP servers, and the project rules that override them |
 | [Style craft](STYLE_CRAFT.md) | Style-specific motion, texture and preview fixtures |
 | [Character gallery](CHARACTER_GALLERY.md) | Presenter/cast selection, filters and pagination |
 | [Episode typography](TYPOGRAPHY.md) | Font pairs, Turkish glyph coverage and editable specimens |

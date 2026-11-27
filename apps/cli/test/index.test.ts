@@ -93,6 +93,8 @@ const episodeMod = vi.hoisted(() => ({ episodeCommand: vi.fn(async () => {}), re
 vi.mock("../src/episode.ts", async (orig) => ({ ...(await orig<object>()), ...episodeMod }));
 const doctorMod = vi.hoisted(() => ({ doctorCommand: vi.fn(async (_options: unknown) => 0) }));
 vi.mock("../src/doctor.ts", () => doctorMod);
+const skillsMod = vi.hoisted(() => ({ skillsCommand: vi.fn(async (_sub?: string, _ids?: string[]) => 0) }));
+vi.mock("../src/skills.ts", () => skillsMod);
 
 const cwd = process.cwd();
 let dir = "";
@@ -109,6 +111,7 @@ beforeEach(() => {
   episodeMod.episodeCommand.mockReset();
   episodeMod.renderDemo.mockReset();
   doctorMod.doctorCommand.mockClear();
+  skillsMod.skillsCommand.mockClear();
 });
 afterEach(() => {
   process.chdir(cwd);
@@ -160,6 +163,14 @@ describe("yardım, sürüm ve listeler", () => {
     expect((await cli("doctor", "--json", "--check-local")).code).toBe(0);
     expect(doctorMod.doctorCommand).toHaveBeenCalledWith({ json: true, checkLocal: true });
     expect(fake.state.dbUrls).toEqual([]); expect(fake.state.gateways).toEqual([]); expect(fake.state.pipelines).toEqual([]);
+  });
+  it("skills sağlayıcı ya da defter kurmadan alt komutu ve araçları aktarır, çıkış kodunu korur", async () => {
+    skillsMod.skillsCommand.mockResolvedValueOnce(1);
+    expect((await cli("skills", "install", "threejs-skills", "cinematic-3d-video")).code).toBe(1);
+    expect(skillsMod.skillsCommand).toHaveBeenCalledWith("install", ["threejs-skills", "cinematic-3d-video"]);
+    expect((await cli("skills")).code).toBe(0);
+    expect(skillsMod.skillsCommand).toHaveBeenLastCalledWith(undefined, []);
+    expect(fake.state.gateways).toEqual([]); expect(fake.state.pipelines).toEqual([]);
   });
   it("komutsuz ya da --help yardım basar ve 0 ile çıkar", async () => {
     for (const args of [[], ["--help"], ["providers", "-h"]]) {

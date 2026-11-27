@@ -95,6 +95,18 @@ vi.mock("../../src/app/characters/character-bank", () => ({
     <div data-bank={initial.map((c) => c.name).join("|")} data-series={series.join("|")} data-job={JSON.stringify(initialJob)} />
   ),
 }));
+// Geliştirici araçları sayfası kullanıcının gerçek ~/.claude'una değil, boş bir geçici dizine bakar.
+vi.mock("node:os", async (orig) => {
+  const os = await orig<typeof import("node:os")>();
+  const { mkdtempSync } = await import("node:fs");
+  const empty = mkdtempSync(`${os.tmpdir()}/ys-pages-home-`);
+  return { ...os, homedir: () => empty };
+});
+vi.mock("../../src/app/dev-tools/dev-tools-panel", () => ({
+  DevToolsPanel: ({ tools, initial, initialJob }: { tools: { id: string }[]; initial: { id: string }[]; initialJob: unknown }) => (
+    <div data-tools={tools.map((t) => t.id).join("|")} data-status={initial.map((s) => s.id).join("|")} data-job={JSON.stringify(initialJob)} />
+  ),
+}));
 vi.mock("../../src/app/models/models-form", () => ({ ModelsForm: ({ initial }: { initial: object }) => <div data-models={JSON.stringify(initial)} /> }));
 vi.mock("../../src/app/locale-provider", () => ({
   LocaleProvider: ({ locale, children }: { locale: string; children: ReactNode }) => <div data-locale={locale}>{children}</div>,
@@ -108,6 +120,7 @@ const LessonsPage = (await import("../../src/app/lessons/page.tsx")).default;
 const RulesPage = (await import("../../src/app/rules/page.tsx")).default;
 const ModelsPage = (await import("../../src/app/models/page.tsx")).default;
 const CharactersPage = (await import("../../src/app/characters/page.tsx")).default;
+const DevToolsPage = (await import("../../src/app/dev-tools/page.tsx")).default;
 const EpisodePage = (await import("../../src/app/episodes/[id]/page.tsx")).default;
 const NewEpisodePage = (await import("../../src/app/episodes/new/page.tsx")).default;
 const layout = await import("../../src/app/layout.tsx");
@@ -484,6 +497,20 @@ describe("Modeller sayfası", () => {
     const h = await html(ModelsPage());
     expect(h).toContain(`data-models="{&quot;screenwriter&quot;:&quot;claude-haiku-5-5&quot;}"`);
     expect(text(h)).toContain(translator("tr")("models.title"));
+  });
+});
+
+describe("Geliştirici araçları sayfası", () => {
+  it("katalogu, her aracın durumunu ve kurulum işini bileşene verir", async () => {
+    const ids = "threejs-skills|webgl-animation-skills|cinematic-3d-video|threejs-devtools-mcp";
+    fake.job = { status: "running", log: [] };
+    const h = await html(DevToolsPage());
+    expect(h).toContain(`data-tools="${ids}"`);
+    expect(h).toContain(`data-status="${ids}"`);
+    expect(h).toContain("&quot;running&quot;");
+    expect(text(h)).toContain(translator("tr")("devTools.title"));
+    fake.job = undefined;
+    expect(await html(DevToolsPage())).toContain('data-job="null"');
   });
 });
 

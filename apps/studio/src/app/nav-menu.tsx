@@ -14,6 +14,7 @@ const ITEMS: { href: string; label: MessageKey }[] = [
   { href: "/rules", label: "nav.rules" },
   { href: "/characters", label: "nav.characters" },
   { href: "/models", label: "nav.models" },
+  { href: "/dev-tools", label: "nav.devTools" },
 ];
 
 export const NEW_EPISODE = "/episodes/new";
