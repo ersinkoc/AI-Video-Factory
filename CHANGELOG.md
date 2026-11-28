@@ -2,6 +2,11 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.6.22 (2026-11-28)
+
+- Typing hands show on the keys: a laptop or keyboard in front of the typist no longer hides their hands, which are now drawn over it (clipped at the desk top), and a laptop left beside the typist on the desk slides in front of them.
+- A laptop the designer gave a surface height no longer counts as a desk, so the hands go to its keyboard instead of the middle of its screen.
+
 ## v0.6.21 (2026-11-28)
 
 - Things put on a desk, table, counter or lectern stand on its top, and typing hands go there: many furniture drawings had their top height recorded from the wrong end, so a laptop, a map or a terminal stood in front of the drawers. The top is now measured from the drawing when the recorded height points into the body; chairs and sofas someone sits on keep their seat height.
