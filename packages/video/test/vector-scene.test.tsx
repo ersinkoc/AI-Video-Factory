@@ -44,7 +44,7 @@ const { BURST } = await import("../src/staging.ts");
 const { CALLOUT, overlap } = await import("../src/callout.ts");
 const { CROWD, figureAt } = await import("../src/crowd.tsx");
 const { LENS } = await import("../src/lens.ts");
-const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, MOOD_REST, MOOD_POSE, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, verticalStrip, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, STARTLE, exclaimOf, opensMouth, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt, screenView, faceCorners, EFFECT_SPACE } = await import("../src/Vector.tsx");
+const { VectorScene, layoutTexts, closeUpCamera, frameWide, cameraTransform, cameraPoint, faceOnScreen, HOLD_POSE, ARM, fitFace, faceFor, heldFraming, fillWide, jointSafe, closeJointSafe, wrapTorso, stageFit, tagBounds, contentFit, stanceAt, STANCE, restPoseOf, MOOD_REST, MOOD_POSE, THINK, armInFront, thinkPoseOf, SCRATCH, POINT, CHEER, CLAP, cheerPhase, DESK_WORK, shotModel, shotFrame, verticalStrip, QUIZZICAL, browsFor, FACING, facingOf, keyCamera, KEY, keepInSpace, SPACE, STARTLE, exclaimOf, opensMouth, focusOf, screenPersonOf, macroOf, MACRO, CARD, faceBox, textBoxOf, neckBehind, handRoll, HAND_ROLL, baseShare, COUNTER, paperedFor, viewAt, screenView, faceCorners, EFFECT_SPACE, keysOver, KEYS_OVER } = await import("../src/Vector.tsx");
 /** Yerleşmiş katman örneği (kamera testleri). */
 const PL = { index: 0, x: 0, y: 0, height: 0, width: 0, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] as string[] };
 
@@ -3939,5 +3939,49 @@ describe("ekran efektinin yerleşimi (effectLayout)", () => {
     const ball = { asset: "ball", x: face.x + face.w / 2, y: face.y + face.h / 2 + 20, height: 40 };
     const { f } = frameOf({ layers: [{ asset: "hero", x: 960, depth: 0.3 }, ball], effects: rings, camera, key: 1 });
     expect(f.fxLayout!.reach).toBe(EFFECT_SPACE.minReach);
+  });
+});
+
+describe("vektör sahne: klavyedeki eller", () => {
+  // Dizüstü: kapak (ekran) ve altta klavye bandı.
+  const laptop = asset("laptop", "prop", '<svg viewBox="0 0 100 70"><rect id="lid" width="100" height="60" fill="#333333"/><rect y="60" width="100" height="10" fill="#999999"/></svg>', 100, 70, { realHeight: 0.25 });
+  const shot = (anims: object[], at = 1100) => ({ layers: [{ asset: "hero", x: 960, depth: 0.3, anims }, { asset: "desk", x: 960, depth: 0.3 }, { asset: "laptop", x: at, on: 1 }] });
+
+  it("yazanın önündeki dizüstü: ön kollar dizüstünden hemen sonra yeniden çizilir, masanın üstünden aşağısı kırpılır; asıldakiler gizlenir", () => {
+    const m = shotModel(VectorShot.parse(shot([{ type: "typing" }])), { ...ASSETS, laptop }, "outline", 1920, 1080, false, 10);
+    const [hero, desk, lap] = [0, 1, 2].map((i) => m.placed.find((p) => p.index === i)!);
+    // Yerleşim dizüstüyü yazanın önüne aldı (core toKeys).
+    expect(lap!.x).toBeCloseTo(hero!.x, 6);
+    expect(m.keys!.get(0)).toEqual({ device: 2, top: desk!.y - desk!.height });
+    const c = scene(shot([{ type: "typing" }]), { frame: 150, assets: { laptop } });
+    const html = c.innerHTML;
+    const css = [...c.querySelectorAll("style")].map((s) => s.textContent).join("");
+    cleanup();
+    expect(html.indexOf('id="s1-0-k-forearm-l"')).toBeGreaterThan(html.indexOf('id="s1-2-lid"'));
+    expect(css).toContain("#s1-0-forearm-l,#s1-0-forearm-r,#s1-0-hand-l,#s1-0-hand-r{visibility:hidden}");
+    expect(css).toContain("#s1-0-k-forearm-l,#s1-0-k-forearm-r,#s1-0-k-hand-l,#s1-0-k-hand-r{visibility:visible}");
+    const c2 = scene(shot([{ type: "typing" }]), { frame: 150, assets: { laptop } });
+    const box = layerBox(c2, "k-forearm-l");
+    cleanup();
+    expect(box.style.visibility).toBe("hidden");
+    expect(box.style.clipPath).toMatch(/^inset\(0(px)? 0(px)? [\d.]+px 0(px)?\)$/);
+  });
+
+  it("yazmaya başlamadan, 3D figürde, uzaktaki ya da arkadaki cihazda ve klavyesiz nesnede yok", () => {
+    const c = scene(shot([{ type: "typing", start: 0.6, end: 1 }]), { frame: 0, assets: { laptop } });
+    const html = c.innerHTML;
+    cleanup();
+    expect(html).not.toContain("s1-0-k-");
+    const spec = VectorShot.parse({ layers: [{ asset: "hero", x: 960, anims: [{ type: "typing" }] }, { asset: "toy", x: 400, anims: [{ type: "typing" }] }, { asset: "box", x: 960 }, { asset: "laptop", x: 960, on: 2 }, { asset: "laptop", x: 400, on: 2 }] });
+    const pl = (index: number, x: number, z: number, on?: number) => ({ index, x, y: 900, width: 200, height: 400, scale: 1, z, sitting: false, grounded: true, fixes: [], ...(on === undefined ? {} : { on }) });
+    const safe = { ...ASSETS, laptop };
+    // Masası iş yüzeyi olmayan (kutunun üstündeki) dizüstü: kırpma çizgisi dizüstünün tabanı.
+    expect(keysOver(spec, [pl(0, 960, 0), pl(1, 400, 0), pl(2, 960, -5), pl(3, 960, 5, 2), pl(4, 400, 5, 2)], safe).get(0)).toEqual({ device: 3, top: 900 });
+    // İki cihaz: ellere en yakını.
+    expect(keysOver(spec, [pl(0, 960, 0), pl(2, 960, -5), pl(3, 1000, 5, 2), pl(4, 970, 5, 2)], safe).get(0)!.device).toBe(4);
+    // 3D figür (toy) almaz; arkadaki ya da elin yanından uzak cihaz sayılmaz.
+    expect(keysOver(spec, [pl(1, 400, 0), pl(2, 960, -5), pl(4, 400, 5, 2)], safe).size).toBe(0);
+    expect(keysOver(spec, [pl(0, 960, 0), pl(2, 960, -5), pl(3, 960, -1, 2)], safe).size).toBe(0);
+    expect(keysOver(spec, [pl(0, 960, 0), pl(2, 960, -5), pl(3, 960 + 100 + 200 * KEYS_OVER.hands + 1, 5, 2)], safe).size).toBe(0);
   });
 });

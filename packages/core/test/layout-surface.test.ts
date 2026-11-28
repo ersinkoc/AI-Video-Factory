@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FURNITURE, resolveLayout, STAGE, SURFACE_TOP, TALL_ON, tableTop, VectorShot, workTopOf, type VectorAsset } from "../src/index.ts";
+import { FURNITURE, KEYBOARD_NAME, KEYS, resolveLayout, STAGE, SURFACE_TOP, TALL_ON, tableTop, VectorShot, workTopOf, type VectorAsset } from "../src/index.ts";
 
 const asset = (id: string, kind: VectorAsset["kind"], meta: VectorAsset["meta"] = {}, w = 400, h = 400): VectorAsset => ({ id, kind, svg: "<svg/>", width: w, height: h, meta });
 
@@ -103,3 +103,75 @@ describe("masaya konan zemin makinesi (TALL_ON)", () => {
     expect(by(place([{ asset: "cart", x: 960, depth: 0.3 }, { asset: "terminal", x: 960, on: 0 }]), 1).fixes).toContain(TALL_ON.note);
   });
 });
+
+describe("klavye başında (toKeys)", () => {
+  const keys = {
+    ...assets,
+    hero: asset("hero", "character", { realHeight: 1.7 }, 400, 800),
+    ada: asset("ada", "character", { realHeight: 1.7 }, 400, 800),
+    laptop: asset("laptop", "prop", { realHeight: 0.25 }, 100, 70),
+    // Dizüstüye yüzey vermiş tasarımcı: iş yüzeyi sayılmaz.
+    notebook: asset("notebook", "prop", { realHeight: 0.25, surface: 0.65 }, 100, 70),
+    // Kişinin yüzüne kadar uzanan klavyeli makine.
+    typewriter: asset("typewriter", "prop", { realHeight: 0.9 }, 200, 300),
+  };
+  const at = (layers: unknown[]) => resolveLayout(VectorShot.parse({ layers }), keys);
+  const typing = [{ type: "typing" }];
+
+  it("yazanın masasındaki dizüstü önüne, yüzeyde kalarak kayar; zaten öndeyse dokunulmaz", () => {
+    const placed = at([{ asset: "plain", x: 960, depth: 0.3 }, { asset: "hero", x: 960, depth: 0.35, anims: typing }, { asset: "laptop", x: 1150, on: 0 }]);
+    expect(by(placed, 2).x).toBeCloseTo(by(placed, 1).x, 6);
+    expect(by(placed, 2).fixes).toContain(KEYS.note);
+    const ready = at([{ asset: "plain", x: 960, depth: 0.3 }, { asset: "hero", x: 960, depth: 0.35, anims: typing }, { asset: "laptop", x: 960, on: 0 }]);
+    expect(by(ready, 2).fixes).not.toContain(KEYS.note);
+  });
+
+  it("kayınca yüzü örtecek cihaz, yazmayan, giren ya da masası olmayan kişi, elde ya da hareket eden cihaz yerinde kalır", () => {
+    const stays = (layers: unknown[], i: number) => expect(by(at(layers), i).fixes).not.toContain(KEYS.note);
+    stays([{ asset: "plain", x: 960, depth: 0.3 }, { asset: "hero", x: 960, depth: 0.35, anims: typing }, { asset: "typewriter", x: 1150, on: 0 }], 2);
+    stays([{ asset: "plain", x: 960, depth: 0.3 }, { asset: "hero", x: 960, depth: 0.35 }, { asset: "laptop", x: 1150, on: 0 }], 2);
+    stays([{ asset: "plain", x: 960, depth: 0.3 }, { asset: "hero", x: 600, depth: 0.35, anims: [{ type: "typing" }, { type: "walk", toX: 960 }] }, { asset: "laptop", x: 1150, on: 0 }], 2);
+    stays([{ asset: "hero", x: 960, depth: 0.35, anims: typing }, { asset: "cup", x: 1150, y: 700 }], 1);
+    stays([{ asset: "plain", x: 960, depth: 0.3 }, { asset: "hero", x: 960, depth: 0.35, anims: typing }, { asset: "laptop", x: 1150, on: 0, anims: [{ type: "move", toX: 1200 }] }], 2);
+    // Masada klavyeli cihaz yok: yalnız bardak.
+    stays([{ asset: "plain", x: 960, depth: 0.3 }, { asset: "hero", x: 960, depth: 0.35, anims: typing }, { asset: "cup", x: 1150, on: 0 }], 2);
+  });
+
+  it("oturanın yüz bandı gövdesinin inişi kadar aşağıda sayılır: çenesine uzanacak dizüstü yerinde kalır", () => {
+    const seated = { ...keys, chair: asset("chair", "prop", { realHeight: 0.9, surface: 0.5, grounded: true }, 400, 600) };
+    const placed = resolveLayout(
+      VectorShot.parse({ layers: [{ asset: "plain", x: 960, depth: 0.3 }, { asset: "chair", x: 960, depth: 0.2 }, { asset: "hero", x: 960, on: 1, anims: typing }, { asset: "laptop", x: 1150, on: 0 }] }),
+      seated,
+    );
+    const [hero, laptop] = [by(placed, 2), by(placed, 3)];
+    expect(hero.sitting).toBe(true);
+    expect(laptop.y - laptop.height).toBeLessThan(hero.y - hero.height * 0.65 + hero.height * 0.09);
+    expect(laptop.fixes).not.toContain(KEYS.note);
+  });
+
+  it("iki yazan bir dizüstüyü paylaşmaz: en yakını alır", () => {
+    const placed = at([
+      { asset: "plain", x: 960, depth: 0.3 },
+      { asset: "hero", x: 860, depth: 0.35, anims: typing },
+      { asset: "ada", x: 1300, depth: 0.35, anims: typing },
+      { asset: "laptop", x: 1100, on: 0 },
+    ]);
+    const laptop = by(placed, 3);
+    const nearest = [by(placed, 1), by(placed, 2)].sort((a, b) => Math.abs(a.x - 1100) - Math.abs(b.x - 1100))[0]!;
+    expect(laptop.x).toBeCloseTo(clampTo(nearest.x, by(placed, 0), laptop.width), 6);
+  });
+
+  it("klavyeli cihaz iş yüzeyi değildir (tasarımcı ona yüzey verse de)", () => {
+    const pl = { index: 0, x: 0, y: 900, width: 400, height: 200, scale: 1, z: 0, sitting: false, grounded: true, fixes: [] };
+    expect(KEYBOARD_NAME.test("p-macbook")).toBe(true);
+    expect(workTopOf(pl, keys.notebook)).toBeUndefined();
+    // Yerde duran "daktilo masası" iş yüzeyidir.
+    expect(workTopOf(pl, asset("typewriter-desk", "prop", { realHeight: 0.75, surface: 1, grounded: true }, 400, 200))).toBe(700);
+  });
+});
+
+/** Yüzeyde kalarak gidebileceği en yakın x (surfaceRoom). */
+function clampTo(x: number, base: { x: number; width: number }, width: number): number {
+  const room = Math.max(0, Math.min((base.width / 2) * 0.8, (base.width / 2) * 0.9 - width / 2));
+  return Math.min(base.x + room, Math.max(base.x - room, x));
+}

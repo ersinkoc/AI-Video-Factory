@@ -148,7 +148,8 @@ shout or smile, who stand (some with hands on hips), listen (some with arms cros
 They are heard too: applause, cheers, a murmur, chants as the fists go up and footsteps in step with the
 march. A person typing or writing stands behind their desk (a chair beside the desk slides behind it with its
 sitter), and their hands go to its real height: up onto a high counter, onto the desktop when sitting, down to
-a low table. Someone writing on a whiteboard, blackboard or flip chart stands at its edge rather than in front
+a low table. A laptop or keyboard on that desk slides in front of the typist, and the hands on its keys are
+drawn over it instead of disappearing behind it. Someone writing on a whiteboard, blackboard or flip chart stands at its edge rather than in front
 of the writing, and the pen moves along a line inside the board while the head turns to it.
 
 ## Joint limits and pre-render checks

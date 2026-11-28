@@ -10,6 +10,7 @@ import {
   floorYOf,
   FURNITURE,
   isWritable,
+  KEYBOARD_NAME,
   namesMatch,
   prefixSvgIds,
   resolveLayout,
@@ -2332,9 +2333,15 @@ function Layer({
   paper,
   craft,
   progress = 1,
+  hands,
 }: {
   craft?: StyleCraft;
   progress?: number;
+  /**
+   * Klavyedeki eller (keysOver): "behind" asıl çizimin ön kollarını gizler; { top } yalnız ön kolları ve elleri çizer,
+   * tuvalde top'un (masanın üstü) aşağısı kırpılır.
+   */
+  hands?: "behind" | { top: number };
   layer: VectorLayer;
   asset: VectorAsset;
   placed: PlacedLayer;
@@ -2391,6 +2398,8 @@ function Layer({
   const mouthTx = motion.pose?.mouth?.tx ?? 0;
   const shift = mouthTx ? `;transform:translateX(${mouthTx.toFixed(2)}px)` : "";
   const speakCss = mouths && motion.speak ? `#${ids.mouth}{visibility:hidden}#${ids.shape(motion.speak)}{display:inline${shift}}` : "";
+  // Eller çoğu çizimde ön kolun içinde; içinde olmayanlar da (76 çizimin 3'ü) seçilir.
+  const handsCss = hands ? `${["forearm-l", "forearm-r", "hand-l", "hand-r"].map((part) => `#${prefix}${part}`).join(",")}{visibility:${hands === "behind" ? "hidden" : "visible"}}` : "";
 
   // İskeletli karakterde parça dönüşleri kimlik seçicisiyle uygulanır (dönme noktaları RIG'de sabit).
   const rigCss = pose
@@ -2434,6 +2443,8 @@ function Layer({
     transformOrigin: "50% 100%",
     filter: [sketch ? "url(#ys-sketch)" : "", trail ? `url(#${prefix}mb)` : "", soft ? `blur(${soft.toFixed(2)}px)` : ""].filter(Boolean).join(" ") || undefined,
   };
+  // Yalnız ön kollar (klavyedeki eller): katmanın geri kalanı gizli, masanın üstünden aşağısı kırpılır.
+  if (hands && hands !== "behind") Object.assign(style, { visibility: "hidden", clipPath: `inset(0 0 ${Math.max(0, (placed.y + tr.y - hands.top) / tr.scale).toFixed(2)}px 0)` });
   const glow = face && screenGlow(asset, layer.screen?.kind, face.box.w, face.box.h);
   const plates = useMemo(() => craft?.material === "ink" && asset.kind === "prop" && !asset.meta.exact && !layer.screen && !drawing ? inkPlates(svg, prefix + "ink-") : undefined, [craft, asset.kind, asset.meta.exact, layer.screen, drawing, svg, prefix]);
   const drawn = plates ? <div data-material="ink" style={{ width: "100%", height: "100%", isolation: "isolate" }}>
@@ -2448,7 +2459,7 @@ function Layer({
           </filter>
         </svg>
       )}
-      {rigCss && <style>{rigCss + speakCss}</style>}
+      {rigCss && <style>{rigCss + speakCss + handsCss}</style>}
       {plan && <style>{drawCss(plan, draw!)}</style>}
       {figure ? (
         <>
@@ -3083,6 +3094,34 @@ export interface ShotModel {
   macro?: number;
   /** Set eşyası olmayan katmanlar (shotModel dressing): jestler hedefini, yüzeyini ve panosunu bunlardan seçer. */
   framing: PlacedLayer[];
+  /** Klavye başında yazan kişi → önündeki klavyeli cihaz ve masanın üstü (keysOver): eller cihazın önünde çizilir. */
+  keys?: Map<number, { device: number; top: number }>;
+}
+
+/**
+ * Klavyedeki eller (28 Kas; inceleme: "both hands are hidden behind the laptop", "no hands on the keys"; inceleme
+ * karesinde yazan 71 kişinin 33'ünün elleri önlerindeki bir şeyin ardındaydı, 12'sinde dizüstünün: kişi masanın ardında,
+ * dizüstü masanın üstünde ondan önde çizilir, eller klavye bandında ama cihazın arkasında; şimdi 21). Yazan kişinin (iskeletli SVG; 3D figür değil) önünde çizilen,
+ * bir yüzeyde duran klavyeli cihaz (KEYBOARD_NAME) ellerinin önündeyse (cihazın yarı genişliği
+ * artı kişinin genişliğinin hands'i kadar yanda): yazarken ön kolları ve elleri cihazdan hemen sonra yeniden çizilir,
+ * masanın üstünden aşağısı kırpılır (kollar masanın önüne taşmaz); asıl çizimdeki ön kollar o sırada gizlenir (iki kez
+ * çizilmez, girişte saydamlık katlanmaz).
+ */
+export const KEYS_OVER = { hands: 0.15 } as const;
+export function keysOver(spec: VectorShot, placed: PlacedLayer[], safe: Assets): Map<number, { device: number; top: number }> {
+  const out = new Map<number, { device: number; top: number }>();
+  const asset = (i: number) => safe[spec.layers[i]!.asset]!;
+  for (const p of placed) {
+    const a = asset(p.index);
+    if (a.kind !== "character" || a.meta.figure || !spec.layers[p.index]!.anims.some((x) => x.type === "typing")) continue;
+    const device = placed
+      .filter((o) => o.z > p.z && o.on !== undefined && KEYBOARD_NAME.test(spec.layers[o.index]!.asset) && Math.abs(o.x - p.x) <= o.width / 2 + p.width * KEYS_OVER.hands)
+      .sort((x, y) => Math.abs(x.x - p.x) - Math.abs(y.x - p.x))[0];
+    if (!device) continue;
+    const base = placed.find((o) => o.index === device.on)!;
+    out.set(p.index, { device: device.index, top: workTopOf(base, asset(base.index)) ?? device.y });
+  }
+  return out;
 }
 
 /**
@@ -3305,7 +3344,8 @@ export function shotModel(
   const kindOf = (i: number) => safe[spec.layers[i]!.asset]!.kind;
   const macro = bg?.meta.exact || overlay ? undefined : macroOf(spec, placed, cam, centre, subject, (i) => kindOf(i) === "prop", (i) => kindOf(i) === "character");
   const staged = three ? { ...spec, three } : spec;
-  return { spec: staged, safe, placed, framing, ...(bg ? { bg } : {}), keep, cam, centre, ...(subject === undefined ? {} : { subject }), fit, problems, ...(crowd ? { crowd } : {}), ...(macro === undefined ? {} : { macro }) };
+  const keys = keysOver(spec, placed, safe);
+  return { spec: staged, safe, placed, framing, ...(bg ? { bg } : {}), keep, cam, centre, ...(subject === undefined ? {} : { subject }), fit, problems, ...(crowd ? { crowd } : {}), ...(macro === undefined ? {} : { macro }), ...(keys.size ? { keys } : {}) };
 }
 
 /**
@@ -3857,6 +3897,7 @@ function ShotStage({
   spec,
   safe,
   placed,
+  keys,
   bg,
   cam,
   centre,
@@ -3984,26 +4025,33 @@ function ShotStage({
               crowd && pl.z >= crowd.z && (n === 0 || placed[n - 1]!.z < crowd.z)
                 ? [crowdOf(<Crowd key="crowd" crowd={spec.crowd!} figures={crowd.figures} p={p} t={t} prefix={`${visual.shotId}-cr-`} lineStyle={lineStyle} floorY={crowd.floorY} />)]
                 : [];
+            const props = (i: number) => {
+              const l = spec.layers[i]!;
+              const a = safe[l.asset]!;
+              return {
+                layer: l,
+                asset: a,
+                placed: drawnAt.get(i)!,
+                motion: motions.get(i)!,
+                sketch: lineStyle === "sketch",
+                draw: drawOf(l.anims, p),
+                zoom: Math.max(cam.zoomFrom, cam.zoomTo),
+                person: screenPersonOf(safe, l.screen?.person),
+                blur: local(dof?.layers.get(i) ?? 0),
+                // Kişiler hareket bulanıklığı almaz: bacakları kendi adımıyla oynar, bütün gövdenin izi yüzü siliyordu.
+                streak: a.kind === "character" ? undefined : motionBlur(motions.get(i)!.shift, placed.find((o) => o.index === i)!.height, lensScale(cam, k)),
+                paper,
+                craft,
+                progress: printProgress(l.anims, p),
+              };
+            };
+            // Klavyedeki eller (keysOver): yazarken ön kollar cihazdan hemen sonra çizilir.
+            const typing = (i: number) => !motions.get(i)!.side && spec.layers[i]!.anims.some((a) => a.type === "typing" && gestureWeight(p, a, dur) > 0);
+            const over = [...(keys ?? [])].filter(([i, kb]) => kb.device === pl.index && typing(i));
             return [
               ...extras,
-              <Layer
-                key={pl.index}
-                layer={layer}
-                asset={asset}
-                placed={drawnAt.get(pl.index)!}
-                motion={motions.get(pl.index)!}
-                prefix={`${visual.shotId}-${pl.index}-`}
-                sketch={lineStyle === "sketch"}
-                draw={drawOf(layer.anims, p)}
-                zoom={Math.max(cam.zoomFrom, cam.zoomTo)}
-                person={screenPersonOf(safe, layer.screen?.person)}
-                blur={local(dof?.layers.get(pl.index) ?? 0)}
-                // Kişiler hareket bulanıklığı almaz: bacakları kendi adımıyla oynar, bütün gövdenin izi yüzü siliyordu.
-                streak={asset.kind === "character" ? undefined : motionBlur(motions.get(pl.index)!.shift, pl.height, lensScale(cam, k))}
-                paper={paper}
-                craft={craft}
-                progress={printProgress(layer.anims, p)}
-              />,
+              <Layer key={pl.index} {...props(pl.index)} prefix={`${visual.shotId}-${pl.index}-`} {...(keys?.has(pl.index) && typing(pl.index) ? { hands: "behind" as const } : {})} />,
+              ...over.map(([i, kb]) => <Layer key={`${i}-k`} {...props(i)} prefix={`${visual.shotId}-${i}-k-`} hands={{ top: kb.top }} />),
             ];
           })}
           {crowd &&

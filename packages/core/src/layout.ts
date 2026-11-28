@@ -277,9 +277,17 @@ export function tableTop(meta: VectorAsset["meta"]): number | undefined {
   return meta.top !== undefined && meta.top > s + SURFACE_TOP.raise ? meta.top : s;
 }
 
-/** Eşyanın iş yüzeyi (masa, tezgâh): üstü olan mobilyanın (tableTop) üst yüzeyinin y'si; kişi ve elde tutulan değil. */
+/** Klavyeli cihaz (adından): yazanın elleri onun klavyesine gider (toKeys, video keysOver); iş yüzeyi değildir. */
+export const KEYBOARD_NAME = /laptop|notebook|macbook|keyboard|klavye|typewriter|daktilo|teletype/i;
+
+/**
+ * Eşyanın iş yüzeyi (masa, tezgâh): üstü olan mobilyanın (tableTop) üst yüzeyinin y'si; kişi, elde tutulan ve yerde
+ * durmayan klavyeli cihaz (KEYBOARD_NAME) değil (28 Kas, GTA s4-sh3: tasarımcı dizüstüye de yüzey vermişti, 0,65; masadaki
+ * dizüstü iş yüzeyi sayılınca yazanın elleri ekranının ortasına gidiyordu). Yerde duran ("daktilo masası") iş yüzeyidir.
+ */
 export function workTopOf(o: PlacedLayer, asset: VectorAsset | undefined): number | undefined {
-  const top = asset && asset.kind !== "character" && o.heldBy === undefined ? tableTop(asset.meta) : undefined;
+  const device = asset !== undefined && KEYBOARD_NAME.test(asset.id) && !asset.meta.grounded;
+  const top = asset && asset.kind !== "character" && o.heldBy === undefined && !device ? tableTop(asset.meta) : undefined;
   return top === undefined ? undefined : o.y - o.height * top;
 }
 
@@ -413,6 +421,47 @@ function toWork(spec: VectorShot, assets: Record<string, VectorAsset>, list: Pla
     p.x = x;
     p.z = Math.min(p.z, at.pl.z - 0.1);
     moved(p, WORK.note);
+  }
+}
+
+/**
+ * Klavye başında (28 Kas): yazan kişinin masasındaki dizüstü ya da klavye çoğu zaman kişinin yanındaydı (yönetmen yerini
+ * kişiden bağımsız seçer); eller gövdenin önünde boş masaya yazıyordu ("hands rest at the desk edge with no keyboard under
+ * them", "the keyboard sits at the far left edge"; bütün zaman çizelgelerinde yazan 71 kişinin 10'unda eller dizüstünün
+ * ya da klavyenin dışında, boş masadaydı; 3'ü kayar, 6'sında cihaz kısa robotun çenesine uzanacağı için yerinde kalır,
+ * biri aynı dizüstüyü paylaşan ikinci yazan). Kişinin iş yüzeyindeki klavyeli cihaz (adı KEYBOARD_NAME; o yüzeyin üstünde duran, elde
+ * değil, hareket etmiyor) kişinin önüne, yüzeyde kalarak kayar; kayınca kişinin yüzünü örtecekse (monitörlü kasa) yerinde
+ * kalır. Birden çok yazan aynı cihazı paylaşmaz: en yakını alır.
+ */
+export const KEYS = { note: "yazanın klavyesiydi, önüne alındı" } as const;
+function toKeys(spec: VectorShot, assets: Record<string, VectorAsset>, list: PlacedLayer[], moved: (p: PlacedLayer, note: string) => void): void {
+  const layer = (p: PlacedLayer) => spec.layers[p.index]!;
+  const surfaces = list.flatMap((o) => {
+    const top = workTopOf(o, assets[layer(o).asset]);
+    return top === undefined ? [] : [{ pl: o, top }];
+  });
+  const typists = list.filter((p) => assets[layer(p).asset]!.kind === "character" && p.heldBy === undefined && !entering(layer(p)) && layer(p).anims.some((a) => a.type === "typing"));
+  // Yazan–cihaz çiftleri yakından uzağa: her yazan ve her cihaz bir kez.
+  const pairs = typists
+    .flatMap((p) => {
+      const at = workSurface(p, surfaces);
+      if (!at) return [];
+      return list
+        .filter((o) => o.on === at.pl.index && o.heldBy === undefined && !entering(layer(o)) && KEYBOARD_NAME.test(layer(o).asset))
+        .map((device) => ({ p, at, device, d: Math.abs(device.x - p.x) }));
+    })
+    .sort((a, b) => a.d - b.d);
+  const done = new Set<PlacedLayer>();
+  for (const { p, at, device } of pairs) {
+    if (done.has(p) || done.has(device)) continue;
+    done.add(p).add(device);
+    const room = surfaceRoom(at.pl.width / 2, device.width);
+    const x = clamp(p.x, at.pl.x - room, at.pl.x + room);
+    // Yüz bandının altı (oturan render'da boyunun ~%9'u kadar iner): cihazın üstü bunun altında kalmalı.
+    const chin = p.y - p.height * 0.65 + (p.sitting ? p.height * 0.09 : 0);
+    if (Math.abs(x - device.x) < 1 || device.y - device.height < chin) continue;
+    device.x = x;
+    moved(device, KEYS.note);
   }
 }
 
@@ -716,6 +765,7 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
   }
 
   toWork(spec, assets, list, note);
+  toKeys(spec, assets, list, note);
   toPoint(spec, assets, list, note);
   converse(spec, assets, list, (p) => note(p, CONVERSE.note));
   arc(spec, assets, list, floorY, (p) => note(p, ARC.note));
