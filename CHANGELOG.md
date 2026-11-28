@@ -2,6 +2,12 @@
 
 Releases are cut with `pnpm release`. The Studio shows an update banner when a newer GitHub release exists.
 
+## v0.6.21 (2026-11-28)
+
+- Things put on a desk, table, counter or lectern stand on its top, and typing hands go there: many furniture drawings had their top height recorded from the wrong end, so a laptop, a map or a terminal stood in front of the drawers. The top is now measured from the drawing when the recorded height points into the body; chairs and sofas someone sits on keep their seat height.
+- A floor-standing machine the plan put on a desk (a pedestal teletype, an analog computer) stands beside the desk on its own feet instead of towering on top of it and hiding the person at the desk.
+- The designer and the physics agent are told that a surface height is measured from the bottom.
+
 ## v0.6.20 (2026-11-27)
 
 - 3D illustrations no longer sit on faces, bodies or props, or get cut at the frame edge: a bad spot moves to the nearest clear one, also in the vertical Short. Their colour is darkened or lightened when it would vanish into the room behind them.
