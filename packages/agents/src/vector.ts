@@ -20,7 +20,7 @@ export const VectorAssetOut = z.object({
     .min(0)
     .max(1)
     .optional()
-    .describe("For furniture you can put things on or sit on: height of that top surface as a fraction of the drawing height (desk ~0.95, chair seat ~0.5)"),
+    .describe("For furniture you can put things on or sit on: height of that top surface above the floor as a fraction of the drawing height, measured from the bottom (0 = floor, 1 = top edge of the viewBox; desk ~0.95, chair seat ~0.5)"),
   writable: z.boolean().optional().describe("Props only: true for a flat board people write or draw on while standing (whiteboard, blackboard, chalkboard, flip chart, easel pad)"),
   floorY: z
     .number()
@@ -416,7 +416,7 @@ Narration: ${annotated}${input.previousShot ? `\nPrevious scene final shot (cont
 export const PropPhysicsOut = z.object({
   realHeight: z.number().positive().describe("Real height of the object in metres (a desk ~0.75, a horse ~1.6, a letter ~0.28)"),
   grounded: z.boolean().describe("true if it stands on the floor/ground (furniture, animals, vehicles); false if it is held or hangs"),
-  surface: z.number().min(0).max(1).nullable().describe("For furniture with a top that things stand on: that surface height as a fraction of the object height; else null"),
+  surface: z.number().min(0).max(1).nullable().describe("For furniture with a top that things stand on: that surface height above the floor as a fraction of the object height, measured from the bottom (0 = floor, 1 = the top of the object; desk ~0.95, chair seat ~0.5); else null"),
   writable: z.boolean().optional().describe("Props only: true for a flat board people write or draw on while standing (whiteboard, blackboard, chalkboard, flip chart, easel pad)"),
 });
 export type PropPhysicsOut = z.infer<typeof PropPhysicsOut>;

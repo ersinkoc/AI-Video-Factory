@@ -49,7 +49,7 @@ import { AbsoluteFill, Easing, Img, interpolate, random, useCurrentFrame, useVid
 import { inkPlates, plateOpacity, printProgress } from "./style-material.ts";
 import { drawCss, drawPlan } from "./drawOn.ts";
 import { PAPER, paperOf, translucentShare, withPaper } from "./paperBase.ts";
-import { coverIn, drawnBottom, gridFor, hollowBacked, luminance as lightness, screenBox, screenFor, screenSvg, type ScreenPerson } from "./screen.ts";
+import { coverIn, drawnBottom, gridFor, hollowBacked, luminance as lightness, screenBox, screenFor, screenSvg, tableTopOf, type ScreenPerson } from "./screen.ts";
 import { cameraDrift, depthOfField, lensScale, motionBlur, screenGlow } from "./lens.ts";
 import { keyLight, lightOf } from "./light.ts";
 import { isMaterialEntrance, visualVector } from "./entrance.ts";
@@ -3214,7 +3214,10 @@ export function shotModel(
       // Arka plan da dahil bütün varlıklar aynı çizgi stiline getirilir; gerçek veriden üretilenler (harita, bayrak) hariç.
       // Bozuk tek varlık bütün vektör çekimlerini düşürmesin: o varlık atlanır.
       try {
-        return [[id, { ...a, svg: a.meta.exact ? sanitizeSvg(a.svg) : applyLineStyle(sanitizeSvg(a.svg), lineStyle) }]];
+        const svg = a.meta.exact ? sanitizeSvg(a.svg) : applyLineStyle(sanitizeSvg(a.svg), lineStyle);
+        // Mobilyanın tablası çizimden ölçülür (layout tableTop: verilen yüzey çoğu kez tablanın altındaydı).
+        const meta = a.kind === "prop" && a.meta.surface !== undefined ? { ...a.meta, top: tableTopOf(a) } : a.meta;
+        return [[id, { ...a, svg, meta }]];
       } catch {
         return [];
       }

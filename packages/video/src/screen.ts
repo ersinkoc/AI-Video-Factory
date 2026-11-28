@@ -183,6 +183,34 @@ export function gridFor(asset: VectorAsset): CoverGrid | undefined {
 }
 
 /**
+ * Mobilya çiziminin üst yüzeyi (alttan oran; layout `tableTop`, meta.top). Verilen yüzey (meta.surface) çizimde bir
+ * kenara denk geliyorsa, yani altındaki ve üstündeki `band` kalınlığındaki satırların ortalama doluluğu en geniş satırın
+ * en az `edge`'i kadar ayrışıyorsa (tablanın üstü; perspektif çizilmiş masada tablanın ön kenarı, 28 Kas: Android'in
+ * masası 0,4 ile doğruydu, ilk geniş satır tablanın arka kenarı; danışma tezgâhının 0,5'i tezgâhın üstü, ilk geniş satır
+ * tabelası) undefined: verilen kalır; ancak boyun `low`'undan alçak yüzey kenar sayılmaz (ayakların, gölgenin kenarı:
+ * Osmanlı masası 0,14, vitrin dolabı 0,02 üstten ölçülmüştü). Değilse (gövdenin, çekmecelerin ya da bacakların ortası)
+ * üstten ilk, dolu hücresi en geniş satırın en az `wide`'ı olan satır: masada tabla (üstüne çizilmiş kâğıt, kalemlik
+ * daha dar). Ölçülemeyen çizimde undefined.
+ */
+export const TABLE_TOP = { wide: 0.8, band: 0.05, edge: 0.25, low: 0.3 } as const;
+export function tableTopOf(asset: VectorAsset): number | undefined {
+  const g = gridFor(asset);
+  const s = asset.meta.surface;
+  if (!g || s === undefined) return undefined;
+  const rows = Array.from({ length: g.n }, (_, r) => g.cells.subarray(r * g.n, (r + 1) * g.n).reduce((a, c) => a + c, 0));
+  const widest = Math.max(...rows);
+  if (!widest) return undefined;
+  const at = Math.round((1 - s) * g.n);
+  const k = Math.round(TABLE_TOP.band * g.n);
+  const mean = (from: number, to: number) => {
+    const part = rows.slice(Math.max(0, from), Math.min(g.n, to));
+    return part.length ? part.reduce((a, c) => a + c, 0) / part.length : 0;
+  };
+  if (s >= TABLE_TOP.low && Math.abs(mean(at, at + k) - mean(at - k, at)) >= widest * TABLE_TOP.edge) return undefined;
+  return 1 - rows.findIndex((c) => c >= widest * TABLE_TOP.wide) / g.n;
+}
+
+/**
  * İçi boş çizim (6 Kas, Elon s2-sh4 ve s6-sh5: makrodaki çek "yarı saydam, hayalet bir katman"; tasarımcı çeki dolgusuz,
  * kesik çizgili bir çerçeve ve içindeki çizgilerle çizmişti, büyütülünce arkadaki bulanık oda içinden görünüyordu; 86 makro
  * çekimde 3'ü, oyun kartları ve çek). Dolgulu hücreleri çizimin cover'ından azsa ve çizimin en az frame'ini kaplayan dolgusuz,

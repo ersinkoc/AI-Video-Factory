@@ -181,7 +181,9 @@ export const GESTURE_TRAVEL: Partial<Record<VectorAnim["type"], number>> = {
   hands_on_hips: 75,
   explain: 90,
   shrug: 85,
-  typing: 60,
+  // Oturan kişi yüksek masada (28 Kas, masanın tablası doğru okununca İnternet s18-sh1): sol ön kol kucaktaki +55°'den
+  // klavyedeki −57°'ye döner; 60° sayılınca bir karede 26° döndü.
+  typing: 115,
   writing: 65,
 };
 /**

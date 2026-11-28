@@ -110,7 +110,10 @@ them; an object the director placed half outside the picture (a horse, a cannon,
 back in, with whatever stands on it; someone standing right behind a low table steps beside it, since with the
 feet hidden they looked as if standing on it; someone short behind a counter rises so their head and shoulders
 show above it, clear of the sign's pole; a monitor on a desk slides along it so it does not hide the face of
-the person behind.
+the person behind. Things put on a desk, and the hands of someone typing at it, go to its top as drawn (measured
+from the drawing when the recorded height points into the drawers), while a chair or sofa someone sits on keeps its
+seat height; a floor-standing machine taller than the desk it was put on (a pedestal teletype) stands beside it on its
+own feet instead.
 
 The camera never cuts a standing person at the ankles, shins or knees, in close-ups too: either the feet are
 in frame or the cut is at mid-thigh or higher; if moving the frame is not enough, it zooms a little in or out.

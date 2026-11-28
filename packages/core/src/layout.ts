@@ -261,10 +261,26 @@ export function workZone(p: Pick<PlacedLayer, "x" | "y" | "width" | "height">): 
   return { l: p.x - p.width * WORK.half, r: p.x + p.width * WORK.half, t: p.y - p.height * WORK.high, b: p.y - p.height * WORK.low };
 }
 
-/** Eşyanın iş yüzeyi (masa, tezgâh): üstü olan mobilyanın (meta.surface) üst yüzeyinin y'si; kişi ve elde tutulan değil. */
+/**
+ * Masa olarak kullanılan mobilyanın üstü (alttan oran; 28 Kas). meta.surface'i tasarımcı ya da fizik ajanı verir;
+ * istemde yön yazmadığı için çoğu kez üstten ya da gelişigüzel yazmıştı (GitHub s4-sh3: dizüstü çekmecenin önünde
+ * duruyordu; Osmanlı masası 0,14, internet terminal masası 0,1, GitHub masası 0,3 iken tablaları 0,75–0,93'te). Render
+ * çizimden ölçer (meta.top, video `tableTopOf`: verilen değer çizimde bir kenara denk gelmiyorsa üstten ilk geniş
+ * satır); ölçülen verilenden `raise` fazla yüksekse o kullanılır. Yalnız yükseltir: alçak ölçüm (sandalyenin yayılan
+ * ayak tabanı, monitörlü masa) güvenilmez. Oturak rolünde (üstünde oturan) her zaman verilen değer: sandalyede
+ * ölçülen üst arkalıktır. Üstünde eşya duran 103 tabanın 25'i yükseldi (770 yerleşimin 131'i).
+ */
+export const SURFACE_TOP = { raise: 0.15 } as const;
+export function tableTop(meta: VectorAsset["meta"]): number | undefined {
+  const s = meta.surface;
+  if (s === undefined) return undefined;
+  return meta.top !== undefined && meta.top > s + SURFACE_TOP.raise ? meta.top : s;
+}
+
+/** Eşyanın iş yüzeyi (masa, tezgâh): üstü olan mobilyanın (tableTop) üst yüzeyinin y'si; kişi ve elde tutulan değil. */
 export function workTopOf(o: PlacedLayer, asset: VectorAsset | undefined): number | undefined {
-  if (!asset || asset.kind === "character" || asset.meta.surface === undefined || o.heldBy !== undefined) return undefined;
-  return o.y - o.height * asset.meta.surface;
+  const top = asset && asset.kind !== "character" && o.heldBy === undefined ? tableTop(asset.meta) : undefined;
+  return top === undefined ? undefined : o.y - o.height * top;
 }
 
 export interface WorkSurface {
@@ -539,6 +555,17 @@ function passBy(spec: VectorShot, assets: Record<string, VectorAsset>, floorY: n
  */
 export const ON_SURFACE = { center: 0.8, edge: 0.9 } as const;
 
+/**
+ * Masaya konan zemin makinesi (28 Kas): yönetmen 1,1 m'lik ayaklı teletype'ı, 1,6 m'lik analog bilgisayarı, 1,9 m'lik
+ * IMP dolabını bir masanın, tezgâhın "üstüne" koyuyordu (bütün zaman çizelgelerinde 12 eşya, 30 çekimde 33
+ * yerleşim); masanın üstünde insan boyunda duruyor, arkadaki kişinin yüzünü örtüyordu. Gerçek boyu en az `min` m ve tabanınınkinden uzun eşya,
+ * tabanı yerde duran, üstü olan bir mobilyaysa (meta.surface), masanın yanına zemine iner: yönetmenin koyduğu yanda,
+ * aynı derinlikte, kenarları değerek; o yanda sahneye sığmazsa öbür yanda, ikisinde de sığmazsa masanın hemen
+ * arkasında. Önce arkasına indiriliyordu: çoğu çekimin konusu olan makinenin yalnız %0–19'u masanın üstünden
+ * görünüyordu. Haritanın üstündeki gemi simgesi gibi mobilya olmayan tabana dokunmaz.
+ */
+export const TALL_ON = { min: 1, note: "masanın üstünde duramayacak kadar uzundu, yanına zemine indi" } as const;
+
 /** Yüzeydeki nesnenin ortasının yüzeyin ortasından en çok bu kadar (px) sapabileceği. */
 export const surfaceRoom = (halfBase: number, width: number): number => Math.max(0, Math.min(halfBase * ON_SURFACE.center, halfBase * ON_SURFACE.edge - width / 2));
 
@@ -580,9 +607,18 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
       if (asset.kind === "character") {
         // Sandalyede/bankta oturur: ayaklar yerde, oturağın önünde.
         out = { index: i, x: base.x, y: base.y + 2, height: h, scale: base.scale, z: base.z + 0.5, sitting: true, grounded: true, on: base.index, fixes };
+      } else if (base.grounded && baseAsset.meta.surface !== undefined && real >= TALL_ON.min && real > (baseAsset.meta.realHeight ?? DEFAULT_REAL_HEIGHT[baseAsset.kind])) {
+        const half = (h * aspect) / 2;
+        const side = layer.x < base.x ? -1 : 1;
+        const fits = (x: number) => x - half >= 0 && x + half <= STAGE.width;
+        const x = [side, -side].map((s) => base.x + s * (base.width / 2 + half)).find(fits);
+        fixes.push(TALL_ON.note);
+        out = { index: i, x: x ?? base.x, y: base.y, height: h, scale: base.scale, z: x === undefined ? base.z - 0.05 : base.z, sitting: false, grounded: true, fixes };
       } else {
-        // Yüzeyin üstünde: yüzey yüksekliği tabanın boyundan; yüzeyden taşmasın.
-        const surfaceY = base.y - base.height * (baseAsset.meta.surface ?? (baseAsset.kind === "character" ? 0.5 : 1));
+        // Yüzeyin üstünde: yüzey yüksekliği tabanın boyundan; yüzeyden taşmasın. Üstünde biri oturuyorsa oturak
+        // (verilen değer), yoksa masa (tableTop).
+        const seat = spec.layers.some((l) => l.on === base.index && assets[l.asset]?.kind === "character");
+        const surfaceY = base.y - base.height * ((seat ? baseAsset.meta.surface : tableTop(baseAsset.meta)) ?? (baseAsset.kind === "character" ? 0.5 : 1));
         const room = surfaceRoom(base.width / 2, h * aspect);
         const x = clamp(layer.x, base.x - room, base.x + room);
         if (x !== layer.x) fixes.push("yüzeyin dışına taşıyordu, içeri alındı");
@@ -755,7 +791,7 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
   const furniture = list.filter((o) => o.grounded && o.on === undefined && o.heldBy === undefined && assets[spec.layers[o.index]!.asset]!.kind !== "character");
   // Kişinin tezgâhın ardında yükselmesi gereken px (0: tezgâh değil, kişiyi baştan sona örtmüyor ya da gereken çok fazla).
   const counterLift = (o: PlacedLayer, q: PlacedLayer) => {
-    const surface = assets[spec.layers[o.index]!.asset]!.meta.surface;
+    const surface = tableTop(assets[spec.layers[o.index]!.asset]!.meta);
     if (surface === undefined || Math.abs(o.x - q.x) + q.width * 0.3 > o.width / 2) return 0;
     const lift = q.y - q.height * FURNITURE.chest - (o.y - o.height * surface);
     return lift > 0 && lift <= q.height * FURNITURE.lift ? lift : 0;
@@ -790,7 +826,7 @@ export function resolveLayout(spec: VectorShot, assets: Record<string, VectorAss
       // Yüz bandının altı (oturan render'da boyunun ~%9'u kadar iner).
       const h = o.y - (q.y - q.height * 0.65 + q.height * 0.09);
       if (h < o.height * (1 - FURNITURE.lower)) continue;
-      const shift = (o.height - h) * (assets[spec.layers[o.index]!.asset]!.meta.surface ?? 1);
+      const shift = (o.height - h) * (tableTop(assets[spec.layers[o.index]!.asset]!.meta) ?? 1);
       o.width *= h / o.height;
       o.height = h;
       for (const c of list) if (c.on === o.index && !c.sitting) c.y += shift;

@@ -1866,7 +1866,8 @@ describe("vektör sahne: tezgâhın ardında", () => {
   });
 
   it("tezgâh boyunca açık yer yoksa (bütün bant dolu) ya da kişi kadrajın kenarındaysa yerinde kalır", () => {
-    expect(hero(model('<rect y="50" width="600" height="80" fill="#355070"/>')).fixes).not.toContain(COUNTER.note);
+    // Bant tezgâhın üstünden ayrık (arada boşluk): verilen yüzey tezgâhın üstü kalır (tableTopOf).
+    expect(hero(model('<rect y="50" width="600" height="60" fill="#355070"/>')).fixes).not.toContain(COUNTER.note);
     // Kenardaki kişi: kadrajdan taşacak adaylar sayılmaz, içeri doğru kayar.
     const edge = hero(model('<rect x="0" y="50" width="70" height="80" fill="#355070"/>', 150));
     expect(edge.x).toBeGreaterThanOrEqual(edge.width / 2);

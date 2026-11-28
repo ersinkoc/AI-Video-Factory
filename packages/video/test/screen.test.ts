@@ -1,6 +1,6 @@
 import { VectorAsset, VectorScreen } from "@ys/core";
 import { describe, expect, it } from "vitest";
-import { coverGrid, coverOf, drawnBottom, hollowBacked, hollowFrame, luminance, SCREEN_LINES, SCREEN_READ, screenBox, screenFor, screenOf, screenSvg } from "../src/screen.ts";
+import { coverGrid, coverOf, drawnBottom, hollowBacked, hollowFrame, luminance, SCREEN_LINES, SCREEN_READ, screenBox, screenFor, screenOf, screenSvg, TABLE_TOP, tableTopOf } from "../src/screen.ts";
 
 // Monitör: kasa (dış dikdörtgen), ekran (içinde, koyu), altta ayak.
 const MONITOR = `<svg viewBox="0 0 200 180"><rect x="0" y="0" width="200" height="140" rx="10" fill="#ddd"/><rect x="20" y="15" width="160" height="105" rx="6" fill="#1b2430"/><rect x="40" y="30" width="20" height="10" fill="#fff"/><rect x="80" y="140" width="40" height="40" fill="#999"/></svg>`;
@@ -219,5 +219,31 @@ describe("içi boş çizim", () => {
       expect(hollowFrame(a)).toBeUndefined();
       expect(hollowBacked(a, "#fff")).toBe(a);
     }
+  });
+});
+
+describe("mobilyanın tablası (tableTopOf)", () => {
+  // Önden masa: üstte tam genişlik tabla (y 40–60), solda çekmeceli gövde (y 60–360), sağda bacak (y 60–400).
+  const DESK = '<svg viewBox="0 0 400 400"><rect x="0" y="40" width="400" height="20" fill="#a52"/><rect x="0" y="60" width="150" height="300" fill="#831"/><rect x="380" y="60" width="20" height="340" fill="#831"/></svg>';
+  const desk = (surface?: number, svg = DESK) => VectorAsset.parse({ id: "p-desk", kind: "prop", svg, width: 400, height: 400, meta: surface === undefined ? {} : { surface } });
+
+  it("verilen yüzey gövdenin ortasındaysa üstten ilk geniş satır: tablanın üstü", () => {
+    expect(tableTopOf(desk(0.3))).toBeCloseTo(1 - Math.floor((40 / 400) * 96) / 96, 6);
+    // Yüzey 1 (çizimin üst kenarı): üstünde satır yok, altı boş; kenar sayılmaz, tabla kullanılır.
+    expect(tableTopOf(desk(1))).toBeCloseTo(0.9, 1);
+  });
+
+  it("verilen yüzey bir kenara denk geliyorsa undefined (verilen kalır); boyun low'undan alçaksa kenar sayılmaz", () => {
+    // Tablanın alt kenarı: üstü tam dolu, altı gövde ve bacak.
+    expect(tableTopOf(desk(0.85))).toBeUndefined();
+    // Çekmecelerin altı da bir kenar ama low'dan alçak: ayak, gölge kenarı; tabla kullanılır.
+    expect(TABLE_TOP.low).toBeGreaterThan(0.1);
+    expect(tableTopOf(desk(0.1))).toBeCloseTo(0.9, 1);
+  });
+
+  it("yüzeyi verilmemiş, viewBox'ı okunamayan ya da dolgusuz çizimde undefined", () => {
+    expect(tableTopOf(desk())).toBeUndefined();
+    expect(tableTopOf(desk(0.3, "<svg><rect width=\"10\" height=\"10\"/></svg>"))).toBeUndefined();
+    expect(tableTopOf(desk(0.3, '<svg viewBox="0 0 400 400"><rect width="400" height="20" fill="none" stroke="#000"/></svg>'))).toBeUndefined();
   });
 });

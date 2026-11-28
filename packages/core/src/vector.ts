@@ -152,8 +152,13 @@ export type AssetCheck = z.infer<typeof AssetCheck>;
 export const VectorAssetMeta = z.object({
   /** Gerçek yükseklik (metre): insan ~1,7, masa ~0,75, sandalye ~0,9, kitap ~0,25. */
   realHeight: z.number().positive().optional(),
-  /** Üstüne bir şey konabilen yüzeyin yüksekliği, varlık boyunun oranı (masa ~0,95, sandalye oturağı ~0,5). */
+  /** Üstüne bir şey konabilen yüzeyin yüksekliği, varlık boyunun alttan oranı (masa ~0,95, sandalye oturağı ~0,5). */
   surface: z.number().min(0).max(1).optional(),
+  /**
+   * Çizimden ölçülen üst yüzey (alttan oran): render doldurur, saklanmaz (layout `tableTop`). Üstten ilk geniş satır;
+   * masada tablanın üstü, sandalyede çoğu kez arkalık ya da ayak tabanı, o yüzden yalnız masa rolünde kullanılır.
+   */
+  top: z.number().min(0).max(1).optional(),
   /** Yerde durur mu (masa, sandalye, insan) yoksa duvarda/havada mı (saat, pano, lamba). */
   grounded: z.boolean().optional(),
   /** Ayakta üstüne yazılan pano (tahta, kara tahta, kâğıt sehpası): yazı jesti ona da yapılır (layout BOARD). */
